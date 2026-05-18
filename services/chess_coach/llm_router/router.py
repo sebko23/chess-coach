@@ -1,6 +1,5 @@
 """Minimal async OpenRouter client."""
 from __future__ import annotations
-import asyncio
 import logging
 from openai import AsyncOpenAI
 from .config import (
@@ -22,9 +21,8 @@ class LLMUnavailableError(RuntimeError):
 class LLMRouter:
     """Completions router with primary/fallback model.
 
-    Simple instead of complex — no streaming, no function calling,
-    no per-request model override.  Designed for controlled grounding
-    where we pass a full prompt and expect tagged structured text.
+    Accepts a full ``messages`` list (OpenAI chat format) so callers
+    can express multi-turn conversations, not just single system+user pairs.
     """
 
     def __init__(self) -> None:
@@ -40,8 +38,7 @@ class LLMRouter:
 
     async def complete(
         self,
-        system: str,
-        user: str,
+        messages: list[dict[str, str]],
         *,
         max_tokens: int = 800,
         temperature: float = 0.3,
@@ -55,10 +52,7 @@ class LLMRouter:
                 self._client.timeout = timeout
                 resp = await self._client.chat.completions.create(
                     model=model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
+                    messages=messages,  # type: ignore[arg-type]
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )

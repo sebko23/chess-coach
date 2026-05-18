@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
 from chess_coach.narration.pipeline import NarrationPipeline
-from chess_coach.narration.validator import validate_citations, _normalize_move
+from chess_coach.narration.validator import (
+    validate_citations,
+    _normalize_move,
+    _parse_eval_tag,
+)
 from chess_coach.llm_router.router import LLMUnavailableError
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -32,6 +36,40 @@ def _analysis_result(pv_moves=None, score_cp=38):
             )
         ],
     )
+
+
+class TestParseEvalTag:
+    """Tests for _parse_eval_tag — the regex-based eval parser."""
+
+    def test_parse_cp_float(self):
+        assert _parse_eval_tag("+0.38") == ("cp", 38)
+
+    def test_parse_cp_negative(self):
+        assert _parse_eval_tag("-1.25") == ("cp", -125)
+
+    def test_parse_cp_whole_number(self):
+        assert _parse_eval_tag("2") == ("cp", 200)
+
+    def test_parse_mate_hash(self):
+        assert _parse_eval_tag("#2") == ("mate", 2)
+
+    def test_parse_mate_negative_hash(self):
+        assert _parse_eval_tag("#-3") == ("mate", -3)
+
+    def test_parse_mate_in_word_form(self):
+        assert _parse_eval_tag("mate in 2") == ("mate", 2)
+
+    def test_parse_mate_in_word_form_negative(self):
+        assert _parse_eval_tag("mate in -1") == ("mate", -1)
+
+    def test_parse_mate_in_case_insensitive(self):
+        assert _parse_eval_tag("Mate In 3") == ("mate", 3)
+
+    def test_parse_unparseable(self):
+        assert _parse_eval_tag("blah") is None
+
+    def test_parse_empty(self):
+        assert _parse_eval_tag("") is None
 
 
 class TestValidator:
@@ -94,6 +132,30 @@ class TestValidator:
             ],
         )
         narration = "Mate in <eval>#2</eval> with <move>e4</move>."
+        vr = validate_citations(narration, result)
+        assert vr.valid
+
+    def test_validate_mate_in_two_word_form(self):
+        """mate in 2 word form should also pass validation."""
+        result = AnalysisResult(
+            engine_id="sf",
+            engine_version="SF 18",
+            fen=START_FEN,
+            depth_reached=10,
+            multipv=1,
+            settings_hash="x",
+            cpu_arch="x86_64",
+            thread_count=1,
+            pvs=[
+                PVLine(
+                    multipv=1,
+                    score=Score(kind="mate", value=2),
+                    depth=10,
+                    moves=["e2e4", "e7e5", "d1h5"],
+                )
+            ],
+        )
+        narration = "Mate in <eval>mate in 2</eval> with <move>e4</move>."
         vr = validate_citations(narration, result)
         assert vr.valid
 

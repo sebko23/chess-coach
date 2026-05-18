@@ -32,8 +32,6 @@ from .auth import generate_token_if_needed, set_active_token
 from .config import GatewaySettings
 from .descriptor import Descriptor, remove_descriptor, write_descriptor
 from .routes import engines_router, analysis_router, narration_router
-from .routes.narration import set_engine_pool as _set_narr_engine_pool
-from .routes.narration import set_narration_pipeline as _set_narr_pipeline
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.narration import NarrationPipeline
 from .exception_handlers import install_exception_handlers
@@ -66,7 +64,6 @@ class GatewayState:
 
 def _configure_logging(level_name: str) -> None:
     level = getattr(logging, level_name.upper(), logging.INFO)
-    # Idempotent: replace any existing root handlers.
     root = logging.getLogger()
     for h in list(root.handlers):
         root.removeHandler(h)
@@ -79,7 +76,6 @@ def _configure_logging(level_name: str) -> None:
     )
     root.addHandler(handler)
     root.setLevel(level)
-    # Quiet uvicorn's noisy access logger by default; users can re-enable.
     logging.getLogger("uvicorn.access").setLevel(max(level, logging.WARNING))
 
 
@@ -104,7 +100,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_workers=1,
         )
         app.state.engine_pool = engine_pool  # type: ignore[attr-defined]
-        # Pre-warm the engine subprocess
         await engine_pool._acquire(  # type: ignore[attr-defined]
             EngineSpec(engine_id="stockfish", path=stockfish_path), {}
         )
@@ -113,17 +108,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine_pool = app.state.engine_pool  # type: ignore[attr-defined]
         logger.info("gateway.startup: engine pool pre-injected, skipping auto-init")
 
-    # 1c. Narration pipeline
-    narration = NarrationPipeline()
-    _set_narr_engine_pool(engine_pool)
-    _set_narr_pipeline(narration)
+    # 1c. Narration pipeline (stored on app.state for FastAPI Depends)
+    app.state.narration_pipeline = NarrationPipeline()  # type: ignore[attr-defined]
     logger.info("gateway.startup: narration pipeline ready")
 
     # 2. Token.
     token = generate_token_if_needed(settings.backend_token)
     set_active_token(token)
-
-    # 3. Descriptor write happens AFTER uvicorn binds; see __main__.
 
     logger.info(
         "gateway.startup: backend_version=%s protocol=%s..%s data_dir=%s",
@@ -135,7 +126,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         if state.descriptor is not None:
             remove_descriptor(settings.descriptor_path)
-            logger.info("gateway.shutdown: removed %s", settings.descriptor_path)
         else:
             remove_descriptor(settings.descriptor_path)
         try:
@@ -158,10 +148,6 @@ async def _request_id_middleware(
 
 
 def create_app(settings: GatewaySettings | None = None) -> FastAPI:
-    """Build the FastAPI app.
-
-    Importing this module has no side effects; all wiring happens here.
-    """
     settings = settings or GatewaySettings()
     _configure_logging(settings.log_level)
 
@@ -183,7 +169,6 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     install_exception_handlers(app)
     app.middleware("http")(_request_id_middleware)
 
-    # Routers
     app.include_router(
         build_system_router(
             backend_version=BACKEND_VERSION,
@@ -199,10 +184,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         tags=["system"],
     )
 
-    # Engine management + analysis routes
     app.include_router(engines_router)
     app.include_router(analysis_router)
-    # Narration route
     app.include_router(narration_router)
 
     return app

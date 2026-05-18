@@ -11,6 +11,7 @@ except ImportError:
 
 _MOVE_RE = re.compile(r"<move>([^<]+)</move>")
 _EVAL_RE = re.compile(r"<eval>([^<]+)</eval>")
+_MATE_RE = re.compile(r"^(?:#|mate\s+in\s+)(-?\d+)$", re.IGNORECASE)
 EVAL_TOLERANCE_CP = 20  # ±0.20 pawns
 
 
@@ -31,6 +32,22 @@ def _normalize_move(fen: str, san: str) -> str | None:
         move = board.parse_san(san)
         return move.uci()
     except Exception:
+        return None
+
+
+def _parse_eval_tag(raw: str) -> tuple[str, int] | None:
+    """Parse an <eval> tag value.
+
+    Returns ("cp", centipawns_int) or ("mate", moves_int) or None if unparseable.
+    """
+    s = raw.strip()
+    # Handle: #2, #-2, mate in 2, mate in -2, M2, Mate in 3
+    mate_match = _MATE_RE.match(s)
+    if mate_match:
+        return ("mate", int(mate_match.group(1)))
+    try:
+        return ("cp", round(float(s) * 100))
+    except ValueError:
         return None
 
 
@@ -69,21 +86,24 @@ def validate_citations(
 
     # --- eval validation ---
     for raw_eval in _EVAL_RE.findall(narration):
-        raw_eval = raw_eval.strip()
-        if raw_eval.startswith("#") or raw_eval.startswith("mate"):
-            if not any_mate_gt:
-                vr.missing_evals.append(raw_eval)
+        parsed = _parse_eval_tag(raw_eval)
+        if parsed is None:
+            vr.missing_evals.append(raw_eval.strip())
             continue
-        try:
-            cp_claimed = round(float(raw_eval) * 100)
-        except ValueError:
-            vr.missing_evals.append(raw_eval)
-            continue
-        if not any(
-            k == "cp" and abs(v - cp_claimed) <= EVAL_TOLERANCE_CP
-            for k, v in ground_scores
-        ):
-            vr.missing_evals.append(raw_eval)
+        kind, value = parsed
+        if kind == "mate":
+            if not any(
+                gk == "mate" and gv == value
+                for gk, gv in ground_scores
+            ):
+                vr.missing_evals.append(raw_eval.strip())
+        else:
+            # cp: check within tolerance
+            if not any(
+                gk == "cp" and abs(gv - value) <= EVAL_TOLERANCE_CP
+                for gk, gv in ground_scores
+            ):
+                vr.missing_evals.append(raw_eval.strip())
 
     vr.valid = (
         len(vr.missing_moves) == 0
@@ -91,3 +111,12 @@ def validate_citations(
         and len(vr.bad_notation) == 0
     )
     return vr
+
+
+__all__ = [
+    "EVAL_TOLERANCE_CP",
+    "ValidationResult",
+    "_normalize_move",
+    "_parse_eval_tag",
+    "validate_citations",
+]

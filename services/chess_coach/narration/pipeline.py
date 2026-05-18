@@ -1,4 +1,9 @@
-"""Grounded narration pipeline: prompt → LLM → validate → retry/fallback."""
+"""Grounded narration pipeline: prompt → LLM → validate → retry/fallback.
+
+Uses multi-turn conversation on retry: the failed narration is fed back as an
+assistant turn, and the correction instruction arrives as a user turn.  This
+preserves system-prompt authority while giving the model direct recency-weight.
+"""
 from __future__ import annotations
 import logging
 
@@ -26,28 +31,58 @@ def _template_fallback(result: AnalysisResult) -> str:
     )
 
 
+def _build_correction_prompt(last_error: str) -> str:
+    """Build the correction instruction for retry attempts.
+
+    Explicitly tells the model WHY the validation failed and forbids
+    the most common failure modes: averaging scores, inventing moves.
+    """
+    return (
+        f"Your previous response failed validation because: {last_error}. "
+        "Revise your narration. RULES:\n"
+        "- Cite only moves that appear EXACTLY in the ENGINE ANALYSIS above.\n"
+        "- Cite a score exactly as provided — do NOT average, interpolate, "
+        "round, or summarise evaluations across lines.\n"
+        "- Do not invent moves, lines, or variations not present in the "
+        "analysis.\n"
+        "- Keep the narration under 150 words."
+    )
+
+
 class NarrationPipeline:
     def __init__(self, router: LLMRouter | None = None) -> None:
         self._router = router or LLMRouter()
 
     async def explain(self, result: AnalysisResult) -> str:
+        """Return a narration string (always succeeds)."""
         user_prompt = build_user_prompt(result)
         last_narration: str | None = None
         last_error: str | None = None
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
-                extra = ""
+                messages: list[dict[str, str]] = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                ]
                 if last_narration is not None and last_error:
-                    extra = (
-                        f"\n\nCORRECTION REQUIRED (attempt {attempt}/{MAX_ATTEMPTS}): "
-                        f"Your previous response failed validation because: {last_error}. "
-                        f"Revise your narration to cite only the moves listed above."
+                    # Multi-turn correction: assistant turn with failed output,
+                    # then user turn with explicit correction instruction.
+                    messages.append(
+                        {"role": "user", "content": user_prompt}
                     )
-                narration = await self._router.complete(
-                    system=SYSTEM_PROMPT,
-                    user=user_prompt + extra,
-                )
+                    messages.append(
+                        {"role": "assistant", "content": last_narration}
+                    )
+                    messages.append(
+                        {"role": "user", "content": _build_correction_prompt(last_error)}
+                    )
+                else:
+                    # First attempt: simple system + user.
+                    messages.append(
+                        {"role": "user", "content": user_prompt}
+                    )
+
+                narration = await self._router.complete(messages)
                 validation = validate_citations(narration, result)
                 if validation.valid:
                     return narration

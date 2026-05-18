@@ -9,6 +9,7 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Change this single line to switch models during benchmarking.
 PRIMARY_MODEL: str = "anthropic/claude-sonnet-4-5"
-FALLBACK_MODEL: str = "openai/gpt-4o-mini"
+# Within-family fallback: same prompt format, tokenizer, tagging conventions.
+FALLBACK_MODEL: str = "anthropic/claude-haiku-4-5"
 PRIMARY_TIMEOUT: float = 60.0
 FALLBACK_TIMEOUT: float = 60.0
