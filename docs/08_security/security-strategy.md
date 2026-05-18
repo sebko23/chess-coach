@@ -1,0 +1,99 @@
+# Security Strategy
+
+## Threat model (single-user desktop, optionally networked)
+
+| Asset | Threats |
+|---|---|
+| User PGN / training data | Local malware reading `%APPDATA%`; accidental exfil via misconfigured cloud sync |
+| LLM provider API keys | Theft via process inspection, repo leakage, log leakage |
+| Lichess/Chess.com OAuth tokens | Same as above |
+| User-supplied PDFs / PGNs | Malicious payloads (PDF JS, oversized files, decompression bombs, malformed PGN) |
+| Cloud responses (LLM, OpenRouter) | Prompt injection trying to exfil local data or trigger destructive tool calls |
+| Tauri ↔ backend IPC | Same-host attacker hijacking the local port |
+| Auto-update channel | MITM, malicious release |
+
+## Process and trust boundaries
+
+```
+┌─────────────────────────────────────────┐
+│ Tauri shell (Rust + webview)            │  ← user-trusted
+│   ↓ Tauri IPC (validated commands only) │
+│ React renderer (sandboxed)              │  ← partly trusted (renders content)
+└─────────────────────────────────────────┘
+                ↓ HTTP/WS to 127.0.0.1:8765 (token-authenticated)
+┌─────────────────────────────────────────┐
+│ Backend gateway (FastAPI)               │  ← user-trusted (own process)
+│   ↓                                     │
+│ Agents (separate processes/containers)  │  ← user-trusted, but compartmentalized
+│   ↓                                     │
+│ External: OpenRouter, Lichess, Chess.com│  ← untrusted (network)
+└─────────────────────────────────────────┘
+```
+
+## Local IPC hardening
+
+- Backend gateway binds **only** to `127.0.0.1` (never 0.0.0.0) by default.
+- On startup the gateway generates a random **session token** (32 bytes, base64url) and writes it to a 0600-mode file in the user data dir. The Tauri shell reads it and includes it in every request as `Authorization: Bearer <token>`. Tokens rotate on each backend restart.
+- WebSocket upgrade verifies the token on the connection request.
+- CORS: deny by default; `tauri://localhost` and `http://localhost:1420` (dev) explicitly allowed.
+- Port: chosen at startup from a pool (8765 → 8800) if default is busy; written to the same token file.
+
+## Tauri configuration
+
+- `allowlist` minimized to commands we actually use (fs scoped to user data dir, dialog open/save, shell disabled, http via our gateway only).
+- CSP locked down: `default-src 'self'; connect-src 'self' http://127.0.0.1:8765 ws://127.0.0.1:8765; img-src 'self' data: blob:; script-src 'self'`.
+- No remote URLs loaded in the main window.
+- Auto-updater uses **signed manifests** (Tauri's built-in Ed25519 signing). Public key embedded in binary; private key offline.
+
+## Secrets management
+
+- API keys (OpenRouter, OpenAI, Anthropic, Lichess, Chess.com) stored in OS-native keychain:
+  - Windows: Credential Manager (via `keyring` Python lib)
+  - macOS (future): Keychain
+  - Linux (future): Secret Service / libsecret
+- Plaintext fallback (`secrets.env`) **only** in dev mode and only when an explicit `--dev-secrets` flag is passed.
+- Secrets are NEVER logged. A redaction filter wraps the logger and replaces matched key patterns with `***`.
+- Process inspection: keys are loaded once at startup, stored in memory of the gateway process, not propagated to subprocess env vars unless the subprocess strictly needs them.
+- `.env` and any secret file is in `.gitignore` and additionally checked by a pre-commit hook (`detect-secrets`).
+
+## User content safety
+
+- **PDFs**: opened with PyMuPDF in a Celery worker (separate process). JavaScript in PDF is ignored by PyMuPDF. Size cap 200 MB; page-count cap 5000 (overridable).
+- **PGNs**: parsed by python-chess with strict mode (`Visitor` pattern catches malformed input). Size cap 500 MB. NAGs and comments stripped of HTML/script before storage.
+- **Engine binaries**: only installed from a curated allowlist of upstream URLs with SHA-256 checksums recorded; user can add custom engines but must paste path + accept a warning.
+- **Decompression bombs**: zip/tar uploads cap at 1 GB uncompressed; bail if ratio > 100x.
+
+## LLM safety
+
+- **Prompt injection**: any content sourced from user PDFs / PGN comments / cloud results is wrapped in a clearly demarcated `<user_content>` block in prompts. System prompts explicitly tell the model to treat that block as data, not instructions.
+- **Tool calls from LLM**: the LLM is used for narration/reasoning, **not** for executing actions. There is no agentic loop where the LLM directly invokes file/system tools without an explicit user-confirmed workflow. The exception (Research Agent web fetches) uses a tight allowlist of sources.
+- **Data minimization to providers**: by default we send only the chess content needed for the prompt — never raw PGN headers with player names unless the user opts in for personalization, never local file paths, never API keys (obviously), never the contents of `secrets.env`.
+- **Provider opt-outs**: respect OpenRouter "do not train" flags where supported; document which providers retain data.
+
+## External API hygiene
+
+- All outbound requests go through a **single HTTP client wrapper** (`httpx.AsyncClient`) that enforces:
+  - TLS verification (no insecure flag).
+  - Per-domain timeout (connect 5 s / read 30 s).
+  - Per-domain rate limit (configurable).
+  - Automatic redaction of `Authorization` headers in logs.
+  - Circuit breaker (`pybreaker`).
+
+## Docker isolation
+
+- Each backend service runs in its own container with `read_only: true` filesystem + tmpfs for caches.
+- Container user is non-root (`uid 1000`).
+- Data dir mounted as a named volume; engines mounted read-only.
+- Inter-container network is a private bridge; only the gateway maps a host port.
+- `cap_drop: [ALL]`; `cap_add` only what's needed (none for most services).
+
+## Auditability
+
+- All destructive operations (forget memory, delete game, delete book, remove engine) require a typed confirmation token from the GUI and are recorded in an append-only `audit_log` table with timestamp, agent, action, and parameters.
+- `chess-coach audit export --since=…` produces a tamper-evident JSON Lines log (each line hashed with the previous line's hash).
+
+## Update / supply-chain
+
+- Python deps pinned via `uv.lock` (or `poetry.lock`); CI runs `pip-audit` weekly.
+- JS deps: `pnpm` with `lockfileVersion: 6`, `pnpm audit` in CI.
+- Tauri auto-update signed; release artifacts hashed and posted in a SLSA-style provenance file.
