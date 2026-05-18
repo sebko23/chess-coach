@@ -225,3 +225,33 @@ Unit + golden + integration + E2E + perf + security + tier-rule packaging enforc
 | Psych profiling | Confidence bands only | + effect-size threshold + permanent "experimental" + UI rebrand |
 | LLM narration | implicit | **Mandatory** grounded-narration pipeline |
 | GPL boundary | Asserted (sep process = clean) | **Blocked on user U1** |
+
+
+---
+
+## Post-Legal-Opinion Amendments (2026-05-18)
+
+External OSS counsel returned a plausibly-NO verdict on the combined-work question (U1) contingent on three pre-coding actions (P1/P2/P3). See `docs/13_review_response/legal-opinion-integration.md`. The plan is amended accordingly.
+
+### Gate 0 (now)
+
+Added exit criteria:
+- [ ] User confirms acceptance of P1 (CLA with broad sublicensing grant), P2 (non-blocking auto-updater per GPL-3.0 §6), and P3 (public protocol spec) as binding architectural requirements.
+- [ ] Protocol contract draft (`docs/16_protocol/chess-coach-protocol-v1.md`) sent back to counsel; precise §6 assessment received and any recommended revisions integrated.
+
+U1 remains conditionally open until the protocol-review round returns. Once it returns clean, Gate 0 closes and Phase 1 may begin.
+
+### Phase 1 — additional exit criteria
+
+- [ ] `CONTRIBUTING.md`, `CLA-ICLA.md`, `CLA-CCLA.md` published in repo root.
+- [ ] CLA-bot or `cla-assistant.io` wired into CI as a hard merge gate for the Backend codebase.
+- [ ] `BUILDING.md` published with reproducible GUI build instructions.
+- [ ] `chess-coach-protocol-v1.md` published as protocol v1.0.0 (final, post-counsel-review).
+- [ ] JSON Schema documents for every payload (§15 of the protocol) committed under `specs/v1.0/schemas/`.
+- [ ] Reference test vectors (§14 of the protocol) committed under `specs/v1.0/tests/`.
+
+### Phase 8 — additional exit criteria
+
+- [ ] P2 verification: GUI built from source on a clean Windows VM using only `BUILDING.md`, installed, and run against the Backend without any difference from our signed build.
+- [ ] User-visible documentation of update opt-out and self-hosting paths.
+- [ ] Source-availability obligations for bundled engine binaries (Stockfish) documented and linked in installer notes.

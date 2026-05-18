@@ -177,3 +177,35 @@ We accept the cost of slower CI on touch-all-services changes; we mitigate with 
 - `.gitattributes` marks generated files and large binaries so accidental edits surface in PRs.
 - A pre-commit hook refuses commits that touch `.a0proj/` or `LICENSING.md` without `--allow-meta-edit`.
 - `tools/lint_tier_rules.py` runs on every commit; failing exits non-zero.
+
+
+---
+
+## Post-Legal-Opinion Addendum (2026-05-18)
+
+External OSS counsel's P1/P2/P3 require the following additions at repo root and under `docs/`:
+
+```
+chess_coach/
+├── CONTRIBUTING.md              # contributor guide; references CLA
+├── CLA-ICLA.md                  # Apache ICLA, lightly adapted (P1)
+├── CLA-CCLA.md                  # Apache CCLA, lightly adapted (P1)
+├── BUILDING.md                  # reproducible GUI build instructions (P2)
+├── LICENSING.md                 # authored at gate-1 (post-U1-final-resolution)
+├── docs/
+│   ├── 14_adrs/
+│   │   ├── ADR-0001-async-sync-boundary.md
+│   │   ├── ADR-0002-cla-policy.md
+│   │   ├── ADR-0003-anti-tivoization-compliance.md
+│   │   └── ADR-0004-public-protocol-policy.md
+│   ├── 15_integration_surfaces/
+│   │   └── en-croissant.md      # formal interface contract with upstream
+│   └── 16_protocol/
+│       └── chess-coach-protocol-v1.md    # drafted, awaiting counsel review
+└── specs/
+    └── v1.0/
+        ├── schemas/             # machine-readable JSON Schemas (P3)
+        └── tests/               # reference test vectors
+```
+
+The `specs/` directory at repo root is **published independently of source-code licenses**: the protocol specification and JSON Schemas are CC-BY-4.0; reference test code is MIT. This independence is part of P3: a third party may publish a conforming implementation under any license they choose, including proprietary, without touching CHESS COACH source code.
