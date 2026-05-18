@@ -39,7 +39,7 @@ class GatewaySettings(BaseSettings):
         description="Bind address. Uses 0.0.0.0 to accept connections from outside Docker/remote hosts.",
     )
     port: int = Field(
-        default=0,
+        default=18080,
         ge=0,
         le=65535,
         description="Port to bind on. 0 = OS-assigned ephemeral port.",
