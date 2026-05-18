@@ -45,6 +45,17 @@ class GatewaySettings(BaseSettings):
         description="Port to bind on. 0 = OS-assigned ephemeral port.",
     )
 
+    # --- discovery ---
+    announce_host: str | None = Field(
+        default=None,
+        description=(
+            "Hostname or IP written into the backend.json descriptor. "
+            "When None (default), the gateway automatically uses 127.0.0.1 "
+            "if the bind host is 0.0.0.0 (the wildcard is not a routable destination "
+            "on Windows/macOS), otherwise the bind host itself."
+        ),
+    )
+
     # --- data ---
     data_dir: Path = Field(
         default=_DEFAULT_DATA_DIR,

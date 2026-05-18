@@ -68,9 +68,8 @@ async function fetchNarration(
     throw new Error(`Backend returned ${resp.status}: ${errBody}`);
   }
 
-  const envelope = await resp.json();
-  // Protocol envelope: { data: { fen, narration, ... } }
-  return envelope.data as NarrationResult;
+  // Narration endpoint returns NarrationResponse directly (no {data:{...}} envelope).
+  return (await resp.json()) as NarrationResult;
 }
 
 function ConnectionStatus() {

@@ -68,7 +68,10 @@ async def _run_async(settings: GatewaySettings) -> int:
         # the descriptor must announce 127.0.0.1 so that clients on the
         # same machine can connect.  0.0.0.0 is not a routable destination
         # address on Windows and macOS (though Linux tolerates it).
-        announce_host = "127.0.0.1" if settings.host == "0.0.0.0" else settings.host
+        announce_host = (
+            settings.announce_host
+            or ("127.0.0.1" if settings.host == "0.0.0.0" else settings.host)
+        )
         descriptor = Descriptor(
             host=announce_host,
             port=bound_port,

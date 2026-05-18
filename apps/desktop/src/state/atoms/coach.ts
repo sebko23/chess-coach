@@ -80,10 +80,26 @@ backendDescriptorAtom.onMount = (setAtom) => {
 /**
  * Full base URL for the backend API, e.g. ``http://127.0.0.1:41781``.
  */
+/**
+ * Resolve a descriptor host to a routable address.
+ *
+ * ``0.0.0.0`` is a bind wildcard (listen on all interfaces), not a
+ * destination that can be connected to.  Normalize it to ``127.0.0.1``
+ * for same-machine Docker port-proxy connections.
+ *
+ * This is defensive-programming guard; the gateway should already
+ * announce ``127.0.0.1`` in the descriptor.  The normalization here
+ * catches any future config drift or descriptors written by older
+ * gateway versions.
+ */
+function resolveHost(host: string): string {
+  return host === "0.0.0.0" ? "127.0.0.1" : host;
+}
+
 export const backendBaseUrlAtom = atom<string | null>((get) => {
   const d = get(backendDescriptorAtom);
   if (!d) return null;
-  return `http://${d.host}:${d.port}`;
+  return `http://${resolveHost(d.host)}:${d.port}`;
 });
 
 /** Bearer token extracted from the descriptor. */
