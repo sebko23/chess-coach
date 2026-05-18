@@ -8,12 +8,17 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
+// MANUAL ADDITION for CHESS COACH Phase 1 vertical slice:
+//   + CoachRouteImport + CoachRoute + all interfaces updated.
+// Run `pnpm run route-gen` on the Windows host to regenerate.
+
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as FilesRouteImport } from './routes/files'
 import { Route as EnginesRouteImport } from './routes/engines'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CoachRouteImport } from './routes/coach'
 import { Route as DatabasesIndexRouteImport } from './routes/databases/index'
 import { Route as DatabasesDatabaseIdRouteImport } from './routes/databases/$databaseId'
 
@@ -42,6 +47,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CoachRoute = CoachRouteImport.update({
+  id: '/coach',
+  path: '/coach',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DatabasesIndexRoute = DatabasesIndexRouteImport.update({
   id: '/databases/',
   path: '/databases/',
@@ -56,6 +66,7 @@ const DatabasesDatabaseIdRoute = DatabasesDatabaseIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRoute
+  '/coach': typeof CoachRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
   '/settings': typeof SettingsRoute
@@ -65,6 +76,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRoute
+  '/coach': typeof CoachRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
   '/settings': typeof SettingsRoute
@@ -75,6 +87,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accounts': typeof AccountsRoute
+  '/coach': typeof CoachRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
   '/settings': typeof SettingsRoute
@@ -86,6 +99,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/accounts'
+    | '/coach'
     | '/engines'
     | '/files'
     | '/settings'
@@ -95,6 +109,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/accounts'
+    | '/coach'
     | '/engines'
     | '/files'
     | '/settings'
@@ -104,6 +119,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/accounts'
+    | '/coach'
     | '/engines'
     | '/files'
     | '/settings'
@@ -114,6 +130,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountsRoute: typeof AccountsRoute
+  CoachRoute: typeof CoachRoute
   EnginesRoute: typeof EnginesRoute
   FilesRoute: typeof FilesRoute
   SettingsRoute: typeof SettingsRoute
@@ -151,6 +168,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AccountsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/coach': {
+      id: '/coach'
+      path: '/coach'
+      fullPath: '/coach'
+      preLoaderRoute: typeof CoachRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -178,6 +202,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountsRoute: AccountsRoute,
+  CoachRoute: CoachRoute,
   EnginesRoute: EnginesRoute,
   FilesRoute: FilesRoute,
   SettingsRoute: SettingsRoute,
