@@ -14,6 +14,13 @@ from typing import Any
 
 import uvicorn
 
+# Load .env before any application code reads OPENROUTER_API_KEY.
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from .app import BACKEND_VERSION, PROTOCOL_MAX, create_app
 from .auth import get_active_token
 from .config import GatewaySettings

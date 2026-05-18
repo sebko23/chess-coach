@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import pathlib
 import platform
 import sys
 import time
@@ -30,8 +31,11 @@ from chess_coach.storage import ensure_writable, migrate
 from .auth import generate_token_if_needed, set_active_token
 from .config import GatewaySettings
 from .descriptor import Descriptor, remove_descriptor, write_descriptor
-from .routes import engines_router, analysis_router
+from .routes import engines_router, analysis_router, narration_router
+from .routes.narration import set_engine_pool as _set_narr_engine_pool
+from .routes.narration import set_narration_pipeline as _set_narr_pipeline
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
+from chess_coach.narration import NarrationPipeline
 from .exception_handlers import install_exception_handlers
 from .routes.system import build_system_router
 
@@ -95,28 +99,31 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         stockfish_path = '/usr/local/bin/stockfish'
         if not pathlib.Path(stockfish_path).exists():
             stockfish_path = 'stockfish'  # fallback to PATH
-        app.state.engine_pool = EnginePool(  # type: ignore[attr-defined]
+        engine_pool = EnginePool(
             [EngineSpec(engine_id="stockfish", path=stockfish_path)],
             max_workers=1,
         )
+        app.state.engine_pool = engine_pool  # type: ignore[attr-defined]
         # Pre-warm the engine subprocess
-        await app.state.engine_pool._acquire(  # type: ignore[attr-defined]
+        await engine_pool._acquire(  # type: ignore[attr-defined]
             EngineSpec(engine_id="stockfish", path=stockfish_path), {}
         )
         logger.info("gateway.startup: engine pool ready (stockfish=%s)", stockfish_path)
     else:
+        engine_pool = app.state.engine_pool  # type: ignore[attr-defined]
         logger.info("gateway.startup: engine pool pre-injected, skipping auto-init")
+
+    # 1c. Narration pipeline
+    narration = NarrationPipeline()
+    _set_narr_engine_pool(engine_pool)
+    _set_narr_pipeline(narration)
+    logger.info("gateway.startup: narration pipeline ready")
 
     # 2. Token.
     token = generate_token_if_needed(settings.backend_token)
     set_active_token(token)
 
     # 3. Descriptor write happens AFTER uvicorn binds; see __main__.
-    # (Lifespan runs inside uvicorn but BEFORE serving traffic; the bound
-    # port is already assigned by the time lifespan startup executes, but the
-    # gateway itself doesn't know which port without uvicorn's cooperation.
-    # __main__ reads the bound socket and stamps state.descriptor before
-    # entering the serve loop.)
 
     logger.info(
         "gateway.startup: backend_version=%s protocol=%s..%s data_dir=%s",
@@ -130,11 +137,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             remove_descriptor(settings.descriptor_path)
             logger.info("gateway.shutdown: removed %s", settings.descriptor_path)
         else:
-            # Defensive cleanup: descriptor may still exist if lifespan was
-            # interrupted mid-startup.
             remove_descriptor(settings.descriptor_path)
         try:
-            await app.state.engine_pool.shutdown()  # type: ignore[attr-defined]
+            await engine_pool.shutdown()  # type: ignore[attr-defined]
             logger.info("gateway.shutdown: engine pool stopped")
         except Exception as exc:
             logger.warning("gateway.shutdown: engine pool error: %s", exc)
@@ -167,7 +172,6 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
             "Conforming implementation of the CHESS COACH GUI <-> Backend "
             "protocol; see specs/v1.0/chess-coach-protocol-v1.md."
         ),
-        # We define our own envelope shape; suppress FastAPI's default 422 schema.
         responses={},
         lifespan=_lifespan,
     )
@@ -198,6 +202,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     # Engine management + analysis routes
     app.include_router(engines_router)
     app.include_router(analysis_router)
+    # Narration route
+    app.include_router(narration_router)
 
     return app
 

@@ -39,6 +39,8 @@ dependencies = [
     "aiosqlite>=0.20",
     "httpx>=0.27",
     "python-chess>=1.999",
+    "openai",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]

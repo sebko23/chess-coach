@@ -1,5 +1,5 @@
-"""chess_coach.llm_router (placeholder).
+"""LLM routing and OpenAI-compatible client abstraction."""
+from .router import LLMRouter, LLMUnavailableError
+from . import config
 
-Phase-1 plan: see docs/02_modules/module-decomposition.md § llm_router.
-This module is intentionally empty until its corresponding feature commit lands.
-"""
+__all__ = ["LLMRouter", "LLMUnavailableError", "config"]

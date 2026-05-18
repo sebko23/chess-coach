@@ -1,5 +1,5 @@
-"""chess_coach.narration (placeholder).
+"""Grounded narration pipeline."""
+from .pipeline import NarrationPipeline
+from .prompt import build_user_prompt, SYSTEM_PROMPT
 
-Phase-1 plan: see docs/02_modules/module-decomposition.md § narration.
-This module is intentionally empty until its corresponding feature commit lands.
-"""
+__all__ = ["NarrationPipeline", "build_user_prompt", "SYSTEM_PROMPT"]
