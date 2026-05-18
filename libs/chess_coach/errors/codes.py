@@ -31,6 +31,10 @@ class ErrorCode(StrEnum):
     PAYLOAD_TOO_LARGE = "client.payload_too_large"
     UNSUPPORTED_VERSION = "client.unsupported_version"
 
+    # ----- server state -----
+    SERVER_UNAVAILABLE = "server.unavailable"
+    VALIDATION_ERROR = "client.validation_error"
+
     # ----- engine domain -----
     ENGINE_NOT_FOUND = "engine.not_found"
     ENGINE_FAILED_TO_START = "engine.failed_to_start"

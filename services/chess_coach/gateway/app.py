@@ -30,6 +30,8 @@ from chess_coach.storage import ensure_writable, migrate
 from .auth import generate_token_if_needed, set_active_token
 from .config import GatewaySettings
 from .descriptor import Descriptor, remove_descriptor, write_descriptor
+from .routes import engines_router, analysis_router
+from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from .exception_handlers import install_exception_handlers
 from .routes.system import build_system_router
 
@@ -88,6 +90,23 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     if applied:
         logger.info("gateway.startup: applied %d migration(s)", len(applied))
 
+    # 1b. Engine pool (skip if already injected, e.g. by test fixtures)
+    if not hasattr(app.state, 'engine_pool') or getattr(app.state, 'engine_pool', None) is None:
+        stockfish_path = '/usr/local/bin/stockfish'
+        if not pathlib.Path(stockfish_path).exists():
+            stockfish_path = 'stockfish'  # fallback to PATH
+        app.state.engine_pool = EnginePool(  # type: ignore[attr-defined]
+            [EngineSpec(engine_id="stockfish", path=stockfish_path)],
+            max_workers=1,
+        )
+        # Pre-warm the engine subprocess
+        await app.state.engine_pool._acquire(  # type: ignore[attr-defined]
+            EngineSpec(engine_id="stockfish", path=stockfish_path), {}
+        )
+        logger.info("gateway.startup: engine pool ready (stockfish=%s)", stockfish_path)
+    else:
+        logger.info("gateway.startup: engine pool pre-injected, skipping auto-init")
+
     # 2. Token.
     token = generate_token_if_needed(settings.backend_token)
     set_active_token(token)
@@ -114,6 +133,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             # Defensive cleanup: descriptor may still exist if lifespan was
             # interrupted mid-startup.
             remove_descriptor(settings.descriptor_path)
+        try:
+            await app.state.engine_pool.shutdown()  # type: ignore[attr-defined]
+            logger.info("gateway.shutdown: engine pool stopped")
+        except Exception as exc:
+            logger.warning("gateway.shutdown: engine pool error: %s", exc)
         logger.info("gateway.shutdown: complete")
 
 
@@ -170,6 +194,10 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         prefix="/v1/system",
         tags=["system"],
     )
+
+    # Engine management + analysis routes
+    app.include_router(engines_router)
+    app.include_router(analysis_router)
 
     return app
 

@@ -1,10 +1,11 @@
-"""Route-builders for the gateway.
+"""Gateway route modules.
 
-Each feature area exposes a ``build_<area>_router`` factory; ``app.create_app``
-includes them under stable URL prefixes.
+Each submodule registers its own FastAPI router; the app includes them
+in ``app.py`` via ``app.include_router(router)``.
 """
-from __future__ import annotations
+from .analysis import router as analysis_router
+from .engines import router as engines_router
 
-from .system import build_system_router
+# system.py uses a builder pattern (build_system_router); kept as-is.
 
-__all__ = ["build_system_router"]
+__all__ = ["analysis_router", "engines_router"]

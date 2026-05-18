@@ -1,6 +1,7 @@
-"""Async UCI client (placeholder).
+"""Async UCI client library.
 
-Phase-1 plan: implement an asyncio-subprocess-based UCI client per ADR-0001
-and ``docs/02_modules/module-decomposition.md`` § engine_orch. This module is
-empty until the engine adapter commit lands.
+Provides :class:`UCIEngine` for speaking UCI to a chess engine subprocess.
 """
+from .engine import UCIEngine, InfoEvent
+
+__all__ = ["UCIEngine", "InfoEvent"]

@@ -1,5 +1,7 @@
-"""chess_coach.engine_orch (placeholder).
+"""chess_coach.engine_orch — Engine Pool orchestrator.
 
-Phase-1 plan: see docs/02_modules/module-decomposition.md § engine_orch.
-This module is intentionally empty until its corresponding feature commit lands.
+Manages a bounded FIFO pool of UCI engine workers.
 """
+from .pool import EnginePool, EngineSpec
+
+__all__ = ["EnginePool", "EngineSpec"]
