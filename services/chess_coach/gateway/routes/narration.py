@@ -32,7 +32,7 @@ async def _get_narration_pipeline(request: Request) -> NarrationPipeline:
     return pipeline
 
 
-@router.post("/narration/explain", response_model=NarrationResponse)
+@router.post("/v1/narration/explain", response_model=NarrationResponse)
 async def explain_position(
     body: NarrationRequest,
     engine_pool: EnginePool = Depends(_get_engine_pool),
