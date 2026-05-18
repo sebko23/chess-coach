@@ -33,11 +33,11 @@ export interface NarrationResult {
 
 /**
  * Resolved path to the backend descriptor file.
- * The gateway writes this to ``~/.chess-coach/runtime/backend.json``.
+ * The gateway writes this to ``~/.local/share/chess-coach/runtime/backend.json``.
  */
 export const backendDescriptorPathAtom = atom<string>(async () => {
   const home = await homeDir();
-  return await resolve(home, ".chess-coach", "runtime", "backend.json");
+  return await resolve(home, ".local", "share", "chess-coach", "runtime", "backend.json");
 });
 
 /**
@@ -56,7 +56,7 @@ export async function loadDescriptor(
 ): Promise<void> {
   try {
     const home = await homeDir();
-    const path = await resolve(home, ".chess-coach", "runtime", "backend.json");
+    const path = await resolve(home, ".local", "share", "chess-coach", "runtime", "backend.json");
 
     const fileExists = await exists(path);
     if (!fileExists) {
