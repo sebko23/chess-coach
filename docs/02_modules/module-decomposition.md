@@ -92,6 +92,7 @@ Language: Python 3.11 unless noted. All agents are FastAPI services running as s
 
 **Data flow**
 - Request → pool selects free engine instance → UCI `position fen … go depth N` → parse `info` lines → emit incremental events → `bestmove` → write to `engine_analyses` cache → return.
+- **Cache key** (canonical, post-review): `(fen, engine_id, engine_version, depth, multipv, settings_hash, cpu_arch, thread_count)`. `cpu_arch` is needed because NNUE SIMD paths (AVX2 / AVX-512) can produce divergent transposition orderings; `thread_count` because Stockfish parallel search is non-deterministic. Time-limited search MUST NOT be cached — depth-limited only.
 
 **Debugging strategy**
 - Raw UCI transcript logged per session (truncated to last 1 MB per engine).
@@ -444,3 +445,75 @@ Language: Python 3.11 unless noted. All agents are FastAPI services running as s
 **Scaling concerns**
 - Per-provider concurrency caps (configurable). Default: OpenRouter 8 concurrent, local Ollama 1.
 - Backpressure: if budget low, downgrade to cheaper model; if circuit open, fail fast.
+
+---
+
+# Post-Review Addenda (2026-05-18)
+
+These sections were added in response to the Claude.ai architecture review (see `docs/13_review_response/`). They strengthen or clarify specific module specs without rewriting them.
+
+## A-F2. Engine memory tiers (Module 3 — Engine Orchestrator)
+
+The installer detects available RAM and recommends one of three modes; user can override.
+
+| Mode | Detected RAM | Engines runnable concurrently | Stockfish hash cap | Local LLM |
+|---|---|---|---|---|
+| **Lite** | 8–12 GB | Stockfish only | 512 MB | not supported |
+| **Standard** | 12–24 GB | Stockfish + (Maia OR Leela small net) | 1 GB | quantized 3B–7B optional |
+| **Full** | 24 GB+ | Stockfish + Leela + Maia + LLM | 2 GB | up to 13B quantized |
+
+The orchestrator enforces the mode at runtime: requests that would exceed the active mode's budget are rejected with a typed error (`EngineBudgetExceeded`) and the GUI surfaces a clear "upgrade mode" suggestion. This is the explicit response to the memory-OOM risk identified in the review (§7.2 + §11.2).
+
+Mode is **per-installation, not per-session**. Switching requires a backend restart.
+
+## A-F5. LLM Router degradation mode (Module 14)
+
+When Redis is unreachable, the Router enters **degraded mode** rather than failing:
+
+- Rate limiting becomes per-process in-memory (no cross-process coordination).
+- Cache becomes per-process LRU (still useful within one run).
+- Budget tracking falls back to a local file write with atomic rename; loses some accuracy at process boundaries.
+- A one-time WARNING log line is emitted on entering degraded mode; the Debug Panel shows it.
+- Recovery is automatic on next successful Redis ping.
+
+For the Phase 1 monolith-first deployment (no Redis), the Router runs **permanently in degraded mode** until Redis is introduced. This is acceptable for single-user scale and removes Redis as a hard dependency.
+
+## A-F6. Grounded LLM narration pipeline (Module 14 — **MANDATORY**)
+
+This is the architectural mitigation for LLM hallucinations contradicting engine ground truth.
+
+**Rule**: every LLM call that produces user-facing coaching narration MUST flow through the grounded-narration pipeline. Free-form LLM coaching output that bypasses this pipeline is forbidden by lint rule.
+
+```
+  Engine analysis available (best_move, eval_cp, top_pvs, classification, motifs[])
+     │
+     ▼
+  GroundingPayload builder (Pydantic-typed, immutable)
+     │
+     ▼
+  LLM Router: prompt = system_template + <ground_truth>…</ground_truth> + <user_content>…</user_content>
+     │  Instruction: "Do not contradict <ground_truth>. If you cannot narrate without
+     │   contradicting it, return the special token __NEED_FALLBACK__."
+     ▼
+  LLM response
+     │
+     ▼
+  Narration validator (parses claims out of prose; cross-checks against GroundingPayload)
+     │
+     ├── consistent + no fallback token → deliver to user (also store call+response for audit)
+     └── inconsistent OR fallback token → emit a deterministic template-rendered narration
+                                          based purely on GroundingPayload; log discrepancy
+                                          to `data/debug/llm_grounding_violations/`
+```
+
+The validator does not need to fully understand the prose — it checks for concrete falsifiable claims (a stated best move != ground-truth best move; a stated eval direction opposite to ground truth; a named motif not in `motifs[]`). When unsure, it errs on "consistent" so we don't over-reject; the audit log captures everything for offline review.
+
+## A-F7. PDF parsing isolation (Module 6 — PDF/Vision Agent)
+
+PDF parsing runs in an **isolated subprocess** with:
+- **No network access** (use a subprocess wrapper that disables sockets via seccomp on Linux containers; on Windows, run as a separate Celery worker with no outbound DNS).
+- **Read-only filesystem** except for the per-book artifact dir under `data/debug/books/<book_id>/`.
+- **Memory limit** (cgroup on Linux; Windows job object) of 2 GB per parser process.
+- **Timeout** of 5 minutes per page; exceeding triggers a clean kill + re-route to manual review.
+
+This isolates the attack surface from PDF parser CVEs (PyMuPDF and PaddleOCR are large native-code stacks).

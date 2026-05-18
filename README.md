@@ -4,64 +4,100 @@
 
 ## Project Status
 
-**Phase 1 — Architecture Analysis: ✅ COMPLETE (2026-05-18).**
-All 12 architecture deliverables produced. No implementation code yet — by design. Awaiting user / external (Claude) review at gate 0 before Phase 1 implementation begins (see roadmap).
+**Phase 1 — Architecture Analysis: ✅ COMPLETE.**
+**External (Claude.ai) review: ✅ RECEIVED AND INTEGRATED (2026-05-18).**
+**Implementation: ⛔ BLOCKED on user decision U1 (GPL license boundary).**
+
+See `docs/13_review_response/response-to-review.md` for the full point-by-point response and `docs/10_roadmap/phase-plan-v2.md` for the revised (monolith-first, scope-reduced) roadmap.
+
+---
+
+## ⛔ Decisions you (the user) must make before implementation starts
+
+These cannot be made autonomously per the project's own operating rules.
+
+| # | Question | Default if you don't decide | Blocks |
+|---|---|---|---|
+| **U1** | **GPL boundary**: (a) license everything GPL-3.0, (b) get a formal legal opinion, or (c) replace en-croissant entirely | **NONE — blocks impl** | All implementation |
+| **U2** | Adopt the revised monolith-first + scope-reduced Phase 1 plan (`phase-plan-v2.md`)? | yes (recommended) | Phase 1 start |
+| **U8** | Phase 1 engine roster: Stockfish only (recommended), +Leela, or original 6-engine plan | Stockfish only | Phase 1 start |
+
+These can wait until their respective phases:
+
+| # | Question | Default | Blocks |
+|---|---|---|---|
+| U3 | Default embedding provider: `nomic-embed-text` local vs `text-embedding-3-small` cloud | nomic-embed-text | Phase 3 |
+| U4 | Backend service license (downstream of U1) | Apache-2.0 if U1 permits split | LICENSING.md |
+| U5 | Telemetry posture: opt-in / never / opt-in-by-default | never | Phase 8 |
+| U6 | Phase-6 FEN-accuracy gate (recommended: ≥97% piece, ≥90% board) | adopt review's numbers | Phase 6 |
+| U7 | UI label for the Profile Agent: keep "Psychological Profiling" vs rebrand to "Playing Style Patterns" | rebrand in UI, keep module name internal | Phase 4 |
+| U9 | Sidecar packaging: PyInstaller, Docker-launcher shim, or both | PyInstaller | Phase 8 |
+
+---
 
 ## Repository Layout (current)
 
 ```
 chess_coach/
-├── README.md                  # this file
+├── README.md                       # this file
 ├── docs/
-│   ├── 01_architecture/       # System architecture report (master)
-│   ├── 02_modules/            # 14-module decomposition
-│   ├── 03_technology/         # Technology comparison
-│   ├── 04_database/           # Database decision (SQLite + Qdrant)
-│   ├── 05_desktop_shell/      # Desktop shell decision (Tauri)
-│   ├── 06_multi_agent/        # Multi-agent workflow + bus + tier rules
-│   ├── 07_risk/               # Risk analysis (20 risks)
-│   ├── 08_security/           # Security strategy
-│   ├── 09_performance/        # Performance strategy + budgets
-│   ├── 10_roadmap/            # 9-phase implementation roadmap
-│   ├── 11_repo_structure/     # Recommended code repo structure
-│   ├── 12_claude_review/      # External (Claude) review package
-│   ├── research/              # Raw research (en-croissant, ChessStalker)
-│   └── diagrams/              # (reserved; ASCII diagrams inline in docs)
-└── .a0proj/                   # Agent Zero project metadata (do not modify)
+│   ├── 01_architecture/            # System architecture (master)
+│   ├── 02_modules/                 # 14-module decomposition (+ post-review addenda)
+│   ├── 03_technology/              # Technology comparison
+│   ├── 04_database/                # Database decision (+ chunking, LRU addenda)
+│   ├── 05_desktop_shell/           # Tauri decision
+│   ├── 06_multi_agent/             # Bus + tier rules (+ Redis logical-DB addendum)
+│   ├── 07_risk/                    # Risk register (now 31 risks, post-review)
+│   ├── 08_security/                # Security strategy (+ PDF sandbox, PGN sanitization)
+│   ├── 09_performance/             # Performance budgets
+│   ├── 10_roadmap/
+│   │   ├── phase-plan-v2.md        # ★ ACTIVE roadmap (monolith-first, scope-reduced)
+│   │   └── implementation-roadmap-v1.md  # superseded; kept for history
+│   ├── 11_repo_structure/          # Repo layout + license posture (TBD pending U1)
+│   ├── 12_claude_review/           # The package we sent to Claude for review
+│   ├── 13_review_response/         # ★ Review received + our point-by-point response
+│   │   ├── claude-review-received.md
+│   │   └── response-to-review.md
+│   └── research/                   # Raw research (en-croissant, ChessStalker)
+└── .a0proj/                        # Agent Zero project metadata (do not modify)
 ```
 
-## Deliverables (Phase 1)
+---
 
-| # | Deliverable                            | Location                              | Status |
-|---|----------------------------------------|---------------------------------------|--------|
-| 1 | System architecture report             | docs/01_architecture/                 | ✅ |
-| 2 | Module decomposition report (14 modules) | docs/02_modules/                    | ✅ |
-| 3 | Technology comparison report           | docs/03_technology/                   | ✅ |
-| 4 | Database decision report               | docs/04_database/                     | ✅ |
-| 5 | Desktop shell recommendation report    | docs/05_desktop_shell/                | ✅ |
-| 6 | Multi-agent workflow report            | docs/06_multi_agent/                  | ✅ |
-| 7 | Risk analysis report                   | docs/07_risk/                         | ✅ |
-| 8 | Security strategy report               | docs/08_security/                     | ✅ |
-| 9 | Performance strategy report            | docs/09_performance/                  | ✅ |
-|10 | Implementation roadmap (9 phases)      | docs/10_roadmap/                      | ✅ |
-|11 | Recommended repository structure       | docs/11_repo_structure/               | ✅ |
-|12 | Claude review package                  | docs/12_claude_review/                | ✅ |
+## Phase 1 Deliverables — Final Status
 
-## Key Phase-1 Decisions (TL;DR)
+| # | Deliverable | Status |
+|---|---|---|
+| 1 | System architecture | ✅ + post-review addenda |
+| 2 | Module decomposition | ✅ + 4 post-review addenda |
+| 3 | Technology comparison | ✅ + `instructor` adoption |
+| 4 | Database decision | ✅ + chunking + LRU |
+| 5 | Desktop shell decision | ✅ (unchanged) |
+| 6 | Multi-agent workflow | ✅ + DLQ hard requirement + Redis logical-DB split |
+| 7 | Risk analysis | ✅ (now 31 risks; 2 eliminated by monolith-first) |
+| 8 | Security strategy | ✅ + PDF sandbox + PGN sanitization + same-user secrets caveat |
+| 9 | Performance strategy | ✅ (unchanged) |
+| 10 | Implementation roadmap | ✅ **superseded by phase-plan-v2.md** |
+| 11 | Repo structure | ✅ license cells marked TBD pending U1 |
+| 12 | Claude review package | ✅ |
+| 13 | **Review response (new)** | ✅ point-by-point accept/modify/reject |
 
-- **Desktop shell**: Tauri 2.x (preserves en-croissant; better resource posture than Electron).
-- **Backend language**: Python 3.11 + FastAPI; multi-process agents.
-- **Architecture**: 14 specialized agents with tier-rule dependency graph; Redis Streams bus.
-- **Persistence**: SQLite (WAL) + Qdrant (vectors) + filesystem; Postgres upgrade path documented.
-- **LLM**: OpenRouter primary via a central `llm_router` library; LLMs used surgically (narration, summarization) not as a main control loop.
-- **License posture**: GUI fork is GPL-3.0-only (inherited from en-croissant); backend services run as separate processes and are licensed independently (default: Apache-2.0).
-- **Deployment**: Docker for dev, PyInstaller sidecar for end-user installs.
+---
 
-## How to Review
+## Key changes since the external review
 
-1. Start with **`docs/01_architecture/system-architecture.md`** (master integrative doc).
-2. Drill into module specs at **`docs/02_modules/`**.
-3. Read the **`docs/12_claude_review/claude-review-package.md`** — it is the token-efficient summary for external review and lists the open questions we most want pressure-tested.
+1. **Monolith-first deployment.** 14 conceptual modules still exist but ship inside one Python service for Phase 1–3. Process extraction is empirically driven, not planned upfront.
+2. **Phase 1 scope reduced** to: en-croissant fork + Stockfish-only + SQLite + grounded LLM commentary + opening explorer. No Redis, no Qdrant, no Celery, no PDF ingest, no profiling, no saga framework.
+3. **GPL boundary is now a user-decision blocker.** Was: asserted. Now: paused until U1 resolves.
+4. **Grounded LLM narration pipeline** is now mandatory and architecturally enforced. Free-form LLM coaching output that bypasses it is forbidden by lint rule.
+5. **Psychological profiling rigor**: hypothesis + effect-size (Cohen's d ≥ 0.5 to surface) + permanent "experimental" label + non-clinical disclaimer + UI rename (pending U7).
+6. **PDF/Vision phase extended** from 3 weeks to 8–12 weeks; dataset-first; PDF parsing in isolated subprocess.
+7. **Engine memory tiers** (Lite / Standard / Full) selected at install time; orchestrator enforces budget.
+8. **Engine cache key** includes `cpu_arch` and `thread_count`; time-limited search not cached.
+9. **DLQ pattern** promoted to hard requirement; bus refuses to start consumers without it.
+10. **PGN comment sanitization** required before any PGN-sourced text enters an LLM prompt.
+
+---
 
 ## Operating Rules (binding for implementation)
 
@@ -69,5 +105,5 @@ chess_coach/
 - ALWAYS commit before major operations.
 - ALWAYS `docker commit agentZero agent-zero-with-port9000` before risky Docker ops.
 - Backend services run **detached** (`docker exec -d`), never blocking foreground.
-- Modular > monolithic. Maintainability > speed.
-
+- Modular > monolithic for design; **monolithic > microservices for first deployment**.
+- Decisions on license / scope / data deletion / publishing / repo identity require explicit user approval.

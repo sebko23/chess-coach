@@ -71,5 +71,5 @@ The router decides per-task based on cost tier, latency requirement, and model c
 - **PostgreSQL as default** — too heavy for end-user local install; offered as optional upgrade.
 - **MongoDB** — schema-on-read is the wrong tradeoff for a chess analytics platform where the data model is well-known.
 - **Chroma as vector DB** — see `04_database/`. Qdrant is more production-ready.
-- **LangChain** — heavyweight and unstable API surface. We will use the OpenAI/Anthropic/OpenRouter SDKs directly + a thin orchestration layer.
+- **LangChain** — heavyweight and unstable API surface. We will use the OpenAI/Anthropic/OpenRouter SDKs directly + a thin orchestration layer. **Post-review note**: we will adopt [`instructor`](https://github.com/jxnl/instructor) for Pydantic-validated structured LLM output (retry-on-parse-failure, format coercion). This addresses the specific value LangChain offered without taking LangChain.
 - **Direct UCI engine integration in Tauri/Rust** — we keep all engine orchestration in Python so it can be hot-reloaded, mocked, and benchmarked without rebuilding the desktop binary.

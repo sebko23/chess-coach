@@ -85,7 +85,7 @@ Driven by the constraint to **preserve en-croissant**:
 
 - Stack: Tauri 2.x + Rust + React 19 + Mantine 8 + Vite 8 + chessground (inherited).
 - Code we author lives **only** in `apps/desktop/src/panels/coach/*` and a few well-known integration points (Tauri commands, lib/api, lib/ws, lib/state). Upstream files are touched sparingly so that periodic rebases against en-croissant remain low-cost.
-- State: existing en-croissant Zustand stores are preserved; we add new stores under `lib/state/coach/*` for new panels.
+- State: existing en-croissant Zustand stores are preserved; we add new stores under `lib/state/coach/*` for new panels. **Decision (post-review)**: Zustand is the chosen state library for all new `panels/coach/*` work, matching upstream and avoiding a second state-management paradigm in the same renderer. Prop drilling beyond two component levels is forbidden by lint rule.
 - Client API: a TypeScript client is **generated** from the FastAPI OpenAPI schema (`tools/gen_ts_client.py`) so contracts stay in lockstep with the backend.
 - WebSocket: a single multiplexed WS connection at `/ws` with topic subscriptions per panel — engine streams, agent status, log tails.
 - All cross-process traffic terminates at the gateway. Tauri commands themselves do nothing chess-specific; they only handle OS-level concerns (file dialogs, screenshots, system tray).
@@ -379,6 +379,7 @@ These are listed as Phase 9 candidates in `10_roadmap/`. The architecture does *
 
 ## 18. Open decisions (carried to gate-0 review)
 
+0. **(BLOCKER) GPL license boundary** — external review (see `docs/13_review_response/`) found the original "separate process = clean boundary" analysis dangerously under-examined. Three viable paths: (a) license the entire stack GPL-3.0-only, (b) obtain a written legal opinion before backend code is written, (c) replace en-croissant entirely. **Implementation cannot start until the user picks a path.**
 1. **Default sidecar vs Docker** for end-user installs — currently "Docker-first for dev, PyInstaller sidecar for users". Confirm with user before Phase 8.
 2. **Embedding model default** — `bge-small` (offline, 384-dim) vs OpenAI `text-embedding-3-small` (cloud, 1536-dim). Both supported; default needs choosing.
 3. **Backend service license** — Apache-2.0 vs MIT vs proprietary closed. User decision; affects `LICENSING.md`.

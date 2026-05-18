@@ -116,7 +116,7 @@ Mechanism: Redis Streams + a `sagas` SQLite table tracking state.
 ## Failure handling
 
 - **Retries**: per-task, exponential backoff with jitter, max 3 attempts. Configured per Celery task.
-- **Dead letter**: After max retries → `events._dlq` + SQLite `failed_jobs` table + visible in Debug panel.
+- **Dead letter**: After max retries → `events._dlq` + SQLite `failed_jobs` table + visible in Debug panel. **Hard requirement (post-review)**: every consumer group MUST declare `max_retries`, `dlq_stream`, and an alerting hook in its `agent.yaml` manifest **before any consumer code is written**. The bus router refuses to start if a registered consumer is missing these fields. Without this, a buggy agent produces an infinite redelivery loop that is very hard to diagnose.
 - **Compensations**: Saga steps register their compensation function. On saga abort, compensations run in reverse order.
 - **Circuit breaker**: LLM Router and external APIs (Lichess, Chess.com, OpenRouter) wrap calls in a circuit breaker (`pybreaker`). Open circuit → return stale cached result if available, else 503 to caller.
 - **Healthchecks**: every agent exposes `/health` (liveness) and `/ready` (readiness). Debug Agent aggregates.
@@ -149,3 +149,19 @@ A single Agent-Zero-style mega-loop driving everything via LLM tool calls would:
 - Be hard to scale (one model bottleneck).
 
 Instead, LLMs are used **surgically** — for natural-language coaching output, psychological narrative generation, semantic search query rewriting, lesson narration, and Research-Agent web reasoning. Everything else is deterministic Python.
+
+---
+
+## Post-Review Addendum: Redis logical-DB separation (2026-05-18)
+
+When Redis is reintroduced (post-Phase-1, see roadmap v2), the three uses MUST live on separate logical DBs (or transports) with distinct eviction policies:
+
+| Use | Redis DB | `maxmemory-policy` | Persistence |
+|---|---|---|---|
+| Agent bus (Redis Streams) | DB 0 | `noeviction` (never drop messages!) | AOF + RDB |
+| Cache (LLM responses, engine analyses, HTTP) | DB 1 | `allkeys-lru` | RDB only |
+| Celery broker | DB 2 (or separate transport) | `noeviction` | AOF |
+
+This prevents a cache-driven eviction from silently corrupting the agent message stream — a failure mode flagged by the external review (§2.3) that I had not protected against.
+
+For Phase 1 monolith-first (no Redis), this is informational. Becomes binding when Redis appears.

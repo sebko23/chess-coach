@@ -42,3 +42,23 @@ Agent Zero will not, without explicit user approval, do any of:
 - delete user data (only the user, via confirmation UI, can do this)
 - publish/upload anything outside the local machine
 - alter `.a0proj/` or repo identity files
+
+---
+
+## Post-Review Risk Additions (2026-05-18)
+
+Risks newly identified or re-prioritized by the Claude.ai external review (see `docs/13_review_response/`).
+
+| # | Risk | L | I | LxI | Mitigation | Owner |
+|---|---|---|---|---|---|---|
+| R21 | Memurai redistribution license / maintenance trajectory | 3 | 4 | 12 | Phase-1 monolith-first removes Redis as hard dep; evaluate Valkey when Redis reintroduced | DevOps |
+| R22 | LLM narration hallucinates content contradicting engine ground truth | 4 | 4 | 16 | Mandatory grounded-narration pipeline (Module 14 § A-F6); validator + fallback template; no free-form LLM coaching output ships without it | LLM Router |
+| R23 | Engine cache invalidated by CPU arch / thread count differences across machines | 3 | 2 | 6 | Cache key includes `cpu_arch` + `thread_count` (Module 3 cache-key update); only depth-limited search cached | Engine Orch. |
+| R24 | PDF parser CVE compromises main backend process | 2 | 4 | 8 | PDF parsing in isolated subprocess (no net, ro fs, mem cap, timeout) — Module 6 § A-F7 | PDF/Vision |
+| R25 | 14-process deployment topology stalls Phase 1 delivery | (eliminated) | — | — | Monolith-first deployment + module-level decomposition; agents extract to processes only when empirically required | Lead arch. |
+| R26 | Saga framework built before any saga flows exist | (eliminated) | — | — | No saga code until a real saga flow demands it; PDF ingest pipeline becomes linear Celery chain in Phase 6 | Lead arch. |
+| R27 | GPL boundary invalidated → forced relicense after months of code | 4 | 5 | **20** | **Implementation blocked on user decision U1** (see `docs/13_review_response/response-to-review.md` § E) | Lead arch. |
+| R28 | Psychological profiling metrics surface confident-but-invalid claims | 4 | 4 | 16 | Hypothesis + effect-size rigor (Cohen's d > 0.5 to surface); permanent "experimental" UI label; non-clinical disclaimer; rename UI label to "Playing Style Patterns" (pending U7) | Profile Agent |
+| R29 | Engine pool + local LLM OOM on 16 GB machines | 4 | 4 | 16 | Lite / Standard / Full memory tiers selected at install time; orchestrator enforces tier budget with typed error | Engine Orch. |
+| R30 | Naive 512-token chunking destroys book retrieval quality | 4 | 3 | 12 | Diagram-boundary-aware chunking is mandatory in chess-book ingest (see DB doc § A-F8) | KB / PDF Vision |
+| R31 | Redis eviction policy collision corrupts agent message stream | 3 | 5 | 15 | Logical-DB separation: bus DB has `noeviction`, cache DB has `allkeys-lru`, separate Redis DBs / transports — see multi-agent doc addendum | DevOps |

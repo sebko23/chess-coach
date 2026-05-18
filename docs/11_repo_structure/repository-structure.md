@@ -124,15 +124,17 @@ chess_coach/
 
 ## License posture per workspace
 
-| Path | License | Reason |
+**⚠️ Post-review status: ALL non-GUI license cells are TBD pending the user decision on the GPL boundary (see `docs/13_review_response/response-to-review.md` U1). Defaults below are the *original* proposal, NOT a decision.**
+
+| Path | License (PROPOSED — pending U1) | Reason |
 |---|---|---|
-| `apps/desktop/` (the Tauri shell, en-croissant fork) | **GPL-3.0-only** | Inherited from en-croissant. |
-| `apps/cli/` | TBD by user (default: same as backend) | Decoupled from GUI. |
-| `services/*` | TBD by user (default: Apache-2.0 or MIT) | Separate processes; not linked to GUI. |
+| `apps/desktop/` (the Tauri shell, en-croissant fork) | **GPL-3.0-only** (forced by en-croissant) | Inherited from en-croissant; not negotiable while we keep the fork. |
+| `apps/cli/` | TBD by user | Decoupled from GUI. |
+| `services/*` | TBD by user (proposed default: Apache-2.0 IF legal opinion permits; otherwise GPL-3.0-only) | Process-separated; treatment depends on combined-work analysis. |
 | `libs/*` | Same as services | Imported by services only. |
 | `docs/` | CC-BY-4.0 | Documentation. |
 
-`LICENSING.md` at the repo root will spell this out unambiguously and link to the GPL boundary justification.
+`LICENSING.md` will be authored at gate-1 (after U1 resolves), not earlier.
 
 ## Why monorepo vs polyrepo
 
