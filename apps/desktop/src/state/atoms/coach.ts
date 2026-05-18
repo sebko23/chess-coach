@@ -44,28 +44,37 @@ export const backendDescriptorPathAtom = atom<string>(async () => {
  * Parsed BackendDescriptor, or null when the backend is not reachable.
  */
 export const backendDescriptorAtom = atom<BackendDescriptor | null>(null);
-backendDescriptorAtom.onMount = (setAtom) => {
-  const loadDescriptor = async () => {
-    try {
-      // We can't call other atoms from here, so compute the path directly.
-      const home = await homeDir();
-      const path = await resolve(home, ".chess-coach", "runtime", "backend.json");
 
-      const fileExists = await exists(path);
-      if (!fileExists) {
-        setAtom(null);
-        return;
-      }
+/**
+ * Re-read the backend descriptor file and update the atom.
+ *
+ * Idempotent — safe to call at any time.  Never throws.
+ * Returns true if the descriptor changed compared to the atom's current value.
+ */
+export async function loadDescriptor(
+  setAtom: (value: BackendDescriptor | null) => void,
+): Promise<void> {
+  try {
+    const home = await homeDir();
+    const path = await resolve(home, ".chess-coach", "runtime", "backend.json");
 
-      const raw = await readTextFile(path);
-      const descriptor: BackendDescriptor = JSON.parse(raw);
-      setAtom(descriptor);
-    } catch {
+    const fileExists = await exists(path);
+    if (!fileExists) {
       setAtom(null);
+      return;
     }
-  };
 
-  loadDescriptor();
+    const raw = await readTextFile(path);
+    const descriptor: BackendDescriptor = JSON.parse(raw);
+    setAtom(descriptor);
+  } catch {
+    setAtom(null);
+  }
+}
+
+// ── onMount: read once at startup ──
+backendDescriptorAtom.onMount = (setAtom) => {
+  loadDescriptor(setAtom);
 };
 
 /**

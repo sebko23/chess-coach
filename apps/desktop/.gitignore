@@ -27,3 +27,6 @@ tsconfig.tsbuildinfo
 *.sw?
 
 src-tauri/gen/
+
+# TanStack Router generated files (CHESS COACH addendum)
+src/routeTree.gen.ts

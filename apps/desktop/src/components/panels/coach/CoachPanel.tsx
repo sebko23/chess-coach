@@ -4,6 +4,7 @@ import {
   Alert,
   Badge,
   Box,
+  Button,
   Card,
   Container,
   Group,
@@ -19,9 +20,10 @@ import {
   IconExternalLink,
   IconPlugConnected,
   IconPlugConnectedX,
+  IconRefresh,
 } from "@tabler/icons-react";
-import { useAtom, useAtomValue } from "jotai";
-import { useEffect } from "react";
+import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useCallback, useEffect, useRef } from "react";
 import {
   backendBaseUrlAtom,
   backendTokenAtom,
@@ -29,6 +31,7 @@ import {
   narrationResultAtom,
   narrationLoadingAtom,
   narrationErrorAtom,
+  loadDescriptor,
 } from "@/state/atoms/coach";
 import type { NarrationResult } from "@/state/atoms/coach";
 
@@ -181,18 +184,47 @@ export default function CoachPanel() {
   const [result, setResult] = useAtom(narrationResultAtom);
   const [loading, setLoading] = useAtom(narrationLoadingAtom);
   const [error, setError] = useAtom(narrationErrorAtom);
+  const setDescriptor = useSetAtom(backendDescriptorAtom);
 
-  // Analyse the starting position on mount
+  // Track whether an analysis has been attempted, so we don't auto-fetch
+  // when the user hasn't explicitly requested one (avoids mount-triggered fetch
+  // in Phase 2 when the FEN is wired to the board).
+  const hasRun = useRef(false);
+
+  /** Re-read the backend descriptor and re-trigger analysis. */
+  const handleRetry = useCallback(async () => {
+    // The user may have started the backend since the error appeared.
+    // Re-read the descriptor; the derived atoms (baseUrl, token) will
+    // update, and the useEffect below will fire the analysis if needed.
+    await loadDescriptor(setDescriptor);
+    // Clear the error so the UI shows a fresh state.
+    setError(null);
+    setResult(null);
+    // Allow the useEffect to re-trigger (ref is reset by the dep change).
+    hasRun.current = false;
+  }, [setDescriptor, setError, setResult]);
+
+  // Analyse the starting position on mount, or when connection appears
   useEffect(() => {
+    if (!baseUrl || !token) {
+      // Backend not available — don't attempt yet.
+      return;
+    }
+
+    if (hasRun.current) {
+      // Already ran the analysis for this connection.
+      return;
+    }
+
     let cancelled = false;
 
     const run = async () => {
-      if (!baseUrl || !token) return;
-
       setLoading(true);
       setError(null);
-      try {
-        const narration = await fetchNarration(
+      setResult(null);
+
+      const attemptFetch = async () => {
+        return fetchNarration(
           baseUrl,
           token,
           DEFAULT_FEN,
@@ -200,10 +232,41 @@ export default function CoachPanel() {
           "stockfish",
           1,     // multipv
         );
-        if (!cancelled) setResult(narration);
-      } catch (err) {
+      };
+
+      try {
+        // First attempt
+        const narration = await attemptFetch();
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setResult(narration);
+          hasRun.current = true;
+        }
+      } catch (firstErr) {
+        // Connection failure — likely stale descriptor.  Re-read once and retry.
+        await loadDescriptor(setDescriptor);
+
+        // Wait one microtask tick for derived atoms to settle.
+        await new Promise((r) => setTimeout(r, 0));
+
+        // If the re-read gave us a new connection, retry the fetch.
+        // (We use the atom values directly — they may have updated.)
+        try {
+          const narration = await attemptFetch();
+          if (!cancelled) {
+            setResult(narration);
+            hasRun.current = true;
+            return;
+          }
+        } catch (_secondErr) {
+          // Still failing — show error with retry button.
+        }
+
+        if (!cancelled) {
+          setError(
+            firstErr instanceof Error
+              ? firstErr.message
+              : String(firstErr),
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -212,16 +275,25 @@ export default function CoachPanel() {
 
     run();
     return () => { cancelled = true; };
-  }, [baseUrl, token, setResult, setLoading, setError]);
+  }, [baseUrl, token, setResult, setLoading, setError, setDescriptor]);
 
   return (
     <Container size="md" py="xl">
       <Stack gap="lg">
-        <Group>
+        <Group justify="space-between">
           <Title order={1}>
             <IconBrain size={32} style={{ verticalAlign: "middle", marginRight: 10 }} />
             CHESS COACH
           </Title>
+          {error && (
+            <Button
+              variant="light"
+              leftSection={<IconRefresh size={16} />}
+              onClick={handleRetry}
+            >
+              Retry
+            </Button>
+          )}
         </Group>
 
         <ConnectionStatus />
@@ -235,15 +307,25 @@ export default function CoachPanel() {
           </Box>
         )}
 
-        {error && (
-          <Alert color="red" title="Analysis error">
-            {error}
+        {error && !loading && (
+          <Alert
+            color="red"
+            title="Analysis error"
+            icon={<IconRefresh size={16} />}
+          >
+            <Stack gap="sm">
+              <Text>{error}</Text>
+              <Text size="sm" c="dimmed">
+                The backend may have restarted on a different port. Click Retry
+                to re-discover the backend and try again.
+              </Text>
+            </Stack>
           </Alert>
         )}
 
         {result && !loading && <NarrationResultView result={result} />}
 
-        {!baseUrl && !loading && (
+        {!baseUrl && !loading && !error && (
           <Card withBorder py="xl">
             <Stack align="center" gap="md">
               <IconBrain size={48} opacity={0.3} />
