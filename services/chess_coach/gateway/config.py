@@ -77,12 +77,10 @@ class GatewaySettings(BaseSettings):
     log_level: str = Field(
         default=_DEFAULT_LOG_LEVEL,
         pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
+    )
 
     # --- descriptor ---
     enable_descriptor: bool = Field(
         default=True,
         description="Write backend.json descriptor file for frontend discovery.",
-    )
-        default=_DEFAULT_LOG_LEVEL,
-        pattern=r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)$",
     )
