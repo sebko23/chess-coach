@@ -23,18 +23,29 @@ class LLMRouter:
 
     Accepts a full ``messages`` list (OpenAI chat format) so callers
     can express multi-turn conversations, not just single system+user pairs.
+
+    The underlying ``AsyncOpenAI`` client is created lazily on the first
+    ``complete()`` call so the gateway can boot and serve engine analysis
+    even when ``OPENROUTER_API_KEY`` is not set.
     """
 
     def __init__(self) -> None:
+        self._client: AsyncOpenAI | None = None
+
+    async def _get_client(self) -> AsyncOpenAI:
+        if self._client is not None:
+            return self._client
         if not OPENROUTER_API_KEY:
-            logger.warning(
-                "OPENROUTER_API_KEY not set; router will fail at call time."
+            raise LLMUnavailableError(
+                "OPENROUTER_API_KEY is not set. Set the environment variable "
+                "or add it to .env at the project root."
             )
         self._client = AsyncOpenAI(
             api_key=OPENROUTER_API_KEY,
             base_url=OPENROUTER_BASE_URL,
             timeout=PRIMARY_TIMEOUT,
         )
+        return self._client
 
     async def complete(
         self,
@@ -44,13 +55,14 @@ class LLMRouter:
         temperature: float = 0.3,
     ) -> str:
         """Return the completed text, trying primary then fallback."""
+        client = await self._get_client()
         for model, timeout in (
             (PRIMARY_MODEL, PRIMARY_TIMEOUT),
             (FALLBACK_MODEL, FALLBACK_TIMEOUT),
         ):
             try:
-                self._client.timeout = timeout
-                resp = await self._client.chat.completions.create(
+                client.timeout = timeout
+                resp = await client.chat.completions.create(
                     model=model,
                     messages=messages,  # type: ignore[arg-type]
                     max_tokens=max_tokens,
