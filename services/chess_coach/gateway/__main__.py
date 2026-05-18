@@ -64,8 +64,13 @@ async def _run_async(settings: GatewaySettings) -> int:
     bound_port = _resolve_bound_port(server, fallback=settings.port)
     if settings.enable_descriptor:
         token = get_active_token() or ""
+        # When the gateway binds to 0.0.0.0 (listen on all interfaces),
+        # the descriptor must announce 127.0.0.1 so that clients on the
+        # same machine can connect.  0.0.0.0 is not a routable destination
+        # address on Windows and macOS (though Linux tolerates it).
+        announce_host = "127.0.0.1" if settings.host == "0.0.0.0" else settings.host
         descriptor = Descriptor(
-            host=settings.host,
+            host=announce_host,
             port=bound_port,
             session_token=token,
             protocol_version=PROTOCOL_MAX,
