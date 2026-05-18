@@ -1,0 +1,153 @@
+# CHESS COACH — Python project configuration
+#
+# Layout: namespace package `chess_coach` whose subpackages are split across:
+#   - libs/chess_coach/*       (cross-cutting libraries)
+#   - services/chess_coach/*   (in-process services; monolith-first per ADR-0004)
+#   - apps/cli/chess_coach/*   (user-facing CLI entrypoints)
+#
+# Build backend: setuptools, with explicit `packages` and `package-dir`.
+# (We tried `packages.find` with multiple `where`s; setuptools cannot resolve
+# subpackages that exist in only one root, so we declare them explicitly.
+# Cost: ~30 lines of TOML each time a subpackage is added; benefit:
+# packaging is deterministic and fails loudly if a directory is missing.)
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chess-coach"
+version = "0.1.0"
+description = "Grandmaster-level autonomous chess coaching backend."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "CHESS COACH project" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment :: Board Games",
+]
+
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "aiosqlite>=0.20",
+    "httpx>=0.27",
+    "python-chess>=1.999",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+chess-coach = "chess_coach.cli.__main__:main"
+chess-coach-gateway = "chess_coach.gateway.__main__:main"
+
+[project.urls]
+Repository = "https://example.invalid/chess-coach"
+
+# ---- explicit multi-source layout ----
+
+[tool.setuptools]
+packages = [
+    "chess_coach.errors",
+    "chess_coach.storage",
+    "chess_coach.storage.migrations",
+    "chess_coach.protocol_types",
+    "chess_coach.uci",
+    "chess_coach.testkit",
+    "chess_coach.gateway",
+    "chess_coach.gateway.routes",
+    "chess_coach.engine_orch",
+    "chess_coach.analysis",
+    "chess_coach.narration",
+    "chess_coach.llm_router",
+    "chess_coach.memory_kb",
+    "chess_coach.debug",
+    "chess_coach.jobs",
+    "chess_coach.cli",
+]
+
+[tool.setuptools.package-dir]
+"chess_coach.errors"             = "libs/chess_coach/errors"
+"chess_coach.storage"            = "libs/chess_coach/storage"
+"chess_coach.storage.migrations" = "libs/chess_coach/storage/migrations"
+"chess_coach.protocol_types"     = "libs/chess_coach/protocol_types"
+"chess_coach.uci"                = "libs/chess_coach/uci"
+"chess_coach.testkit"            = "libs/chess_coach/testkit"
+"chess_coach.gateway"            = "services/chess_coach/gateway"
+"chess_coach.gateway.routes"     = "services/chess_coach/gateway/routes"
+"chess_coach.engine_orch"        = "services/chess_coach/engine_orch"
+"chess_coach.analysis"           = "services/chess_coach/analysis"
+"chess_coach.narration"          = "services/chess_coach/narration"
+"chess_coach.llm_router"         = "services/chess_coach/llm_router"
+"chess_coach.memory_kb"          = "services/chess_coach/memory_kb"
+"chess_coach.debug"              = "services/chess_coach/debug"
+"chess_coach.jobs"               = "services/chess_coach/jobs"
+"chess_coach.cli"                = "apps/cli/chess_coach/cli"
+
+[tool.setuptools.package-data]
+"chess_coach.storage.migrations" = ["*.sql"]
+
+# ---- ruff ----
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["libs", "services", "apps/cli"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "C4", "SIM", "ASYNC", "S", "PT"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S", "ASYNC"]
+
+# ---- mypy ----
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+show_error_codes = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "libs:services:apps/cli"
+
+[[tool.mypy.overrides]]
+module = ["chess.*"]
+ignore_missing_imports = true
+
+# ---- pytest ----
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+asyncio_mode = "auto"
+markers = [
+    "unit: fast unit tests (default).",
+    "integration: cross-package tests.",
+    "e2e: GUI<->Backend roundtrip tests.",
+    "perf: performance budgets.",
+    "golden: golden-output regression tests.",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["libs/chess_coach", "services/chess_coach", "apps/cli/chess_coach"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

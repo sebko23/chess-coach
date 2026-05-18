@@ -72,3 +72,8 @@ backend.json
 *.AppImage
 *.deb
 *.rpm
+
+# Setuptools editable / build artifacts (project-specific)
+chess_coach.egg-info/
+.pytest_cache/
+_editable_impl_*.pth

@@ -1,0 +1,73 @@
+"""Typed exception hierarchy and error-code registry.
+
+See :mod:`chess_coach.errors.codes` and :mod:`chess_coach.errors.exceptions`.
+ADR-0002 governs the design.
+"""
+from __future__ import annotations
+
+from .codes import RETRIABLE, ErrorCode
+from .exceptions import (
+    BadRequestError,
+    ChessCoachError,
+    ConflictError,
+    EngineBadOutputError,
+    EngineError,
+    EngineNotFoundError,
+    EngineStartError,
+    EngineTimeoutError,
+    ForbiddenError,
+    InvalidPositionError,
+    JobCancelledError,
+    JobFailedError,
+    JobNotFoundError,
+    LLMBudgetExceededError,
+    LLMProviderError,
+    LLMTimeoutError,
+    MigrationFailedError,
+    NarrationGroundingFailedError,
+    NarrationValidationFailedError,
+    NoLegalMovesError,
+    NotFoundError,
+    NotImplementedYetError,
+    PayloadTooLargeError,
+    RateLimitedError,
+    StorageCorruptionError,
+    StorageError,
+    StorageLockedError,
+    UnauthorizedError,
+    UnsupportedProtocolVersionError,
+)
+
+__all__ = [
+    "RETRIABLE",
+    "BadRequestError",
+    "ChessCoachError",
+    "ConflictError",
+    "EngineBadOutputError",
+    "EngineError",
+    "EngineNotFoundError",
+    "EngineStartError",
+    "EngineTimeoutError",
+    "ErrorCode",
+    "ForbiddenError",
+    "InvalidPositionError",
+    "JobCancelledError",
+    "JobFailedError",
+    "JobNotFoundError",
+    "LLMBudgetExceededError",
+    "LLMProviderError",
+    "LLMTimeoutError",
+    "MigrationFailedError",
+    "NarrationGroundingFailedError",
+    "NarrationValidationFailedError",
+    "NoLegalMovesError",
+    "NotFoundError",
+    "NotImplementedYetError",
+    "PayloadTooLargeError",
+    "RateLimitedError",
+    "StorageCorruptionError",
+    "StorageError",
+    "StorageLockedError",
+    "UnauthorizedError",
+    "UnsupportedProtocolVersionError",
+]
