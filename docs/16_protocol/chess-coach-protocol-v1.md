@@ -1,8 +1,8 @@
-# CHESS COACH GUI ↔ Backend Protocol — v1.0 (DRAFT)
+# CHESS COACH GUI ↔ Backend Protocol — v1.0
 
-**Document version**: 1.0.0-draft.1
+**Document version**: 1.0.0
 **Document license**: **CC-BY-4.0** (this specification is distinct from, and independent of, the license of any software that implements it).
-**Status**: DRAFT for legal review by OSS counsel (re: aggregate/separate-works analysis under GPL-3.0). Not yet stabilized; once counsel confirms no clauses weaken the separate-works position, this document will be cut as v1.0.0 final and published in the public CHESS COACH repository.
+**Status**: STABLE. Cleared for publication 2026-05-18 following OSS counsel review (R1 and R2 applied; counsel's verdict: "this protocol contract supports the conclusion that the GUI and Backend are separate works in an aggregate under GPL-3.0 §5").
 **Implementations**: This specification is intended to be implementable by any third party in either direction. A conforming GUI may speak this protocol to a conforming Backend without any code or build-time dependency between the two.
 
 ---
@@ -99,6 +99,17 @@ Neither side is privileged in the lifecycle of the other.
 - The Backend MUST reject any request whose token does not match the current `session_token`.
 - Tokens are **opaque** to the GUI; the GUI MUST NOT parse them.
 - Tokens rotate on Backend restart; the GUI re-reads `backend.json` and reconnects on `401 Unauthorized`.
+
+### 2.1 Standard Bearer Credential (R1)
+
+The `session_token` is a **standard bearer credential**, not a privileged handshake between specific binaries. Specifically:
+
+- Any client that can read the connection descriptor file (§1.4) — or that has been provided the token out-of-band by the operator — MAY authenticate. The Backend MUST NOT restrict authentication by **process identity, binary signature, launch parent, working directory, executable path, code-signing certificate, or any other property tied to who started the client**. Authentication is solely a check of bearer-token equality.
+- A Backend operator MAY configure a **static token** via the `CHESS_COACH_BACKEND_TOKEN` environment variable (or equivalent configuration file entry) for remote, LAN, or multi-client deployments. When a static token is configured, the Backend MAY skip writing the `session_token` field to `backend.json`, or MAY write a static value there; either is conforming.
+- The `CHESS_COACH_DATA_DIR` environment variable (§1.4) lets any client point at the descriptor file at any path. There is no protocol-defined restriction on which clients may read the descriptor.
+- The token is a **session credential**, not a cryptographic key in the sense of GPL-3.0 §6 "Installation Information": it does not verify the client binary's provenance, is not bound to any binary's identity, is freshly generated at each Backend restart, and may be re-read by any user-built modified GUI on the same machine.
+
+In short: the auth mechanism is the standard "bearer token from a known location, or supplied by the operator" pattern. Third-party GUIs and third-party Backends interoperate via the same auth surface that the reference implementation uses; there is no privileged channel.
 
 ---
 
@@ -337,6 +348,10 @@ The GUI subscribes by sending `{"type":"subscribe","topic":"<name>","correlation
 
 The Backend MAY drop messages on the floor for a client whose receive queue exceeds an internal threshold; clients SHOULD detect this via `system.health` `ws_dropped` counter and request a snapshot via the equivalent REST endpoint.
 
+### 5.1 Diagnostic-only topics (R2)
+
+The `system.log.<level>` topic is **advisory / diagnostic only**. A conforming GUI MUST NOT condition any user-visible behavior or any business-logic decision on the content, structure, or presence of log messages. Specifically: log lines are intended for the in-GUI Debug Panel and for developer observability; they are not part of the protocol's control plane. Log message text, fields, and levels MAY change in any minor protocol version without breaking conformance.
+
 ---
 
 ## 6. Engine Analysis Request — Canonical Form
@@ -520,7 +535,8 @@ The schemas are normative; the prose in this document is explanatory.
 
 ## 16. Changelog
 
-- **1.0.0-draft.1** (2026-05-18): Initial draft for legal review prior to publication.
+- **1.0.0** (2026-05-18): First stable publication. Applied counsel revisions R1 (explicit standard-bearer-credential language in §2.1) and R2 (explicit advisory-only language for `system.log.*` topics in §5.1). Counsel verdict: separate-works position supported.
+- **1.0.0-draft.1** (2026-05-18): Initial draft for legal review.
 
 ---
 

@@ -185,3 +185,38 @@ For CHESS COACH, this obligation applies to **the GUI binary** (`chess-coach-gui
 - Any "hardware-bound" or "machine-bound" license check that prevents a self-built binary from running.
 - DRM-style attestation between the GUI and any external service (including our Backend) that would prevent a user-built GUI from connecting.
 - Telemetry that is mandatory for runtime function.
+
+
+---
+
+## I. Final Status — U1 RESOLVED (2026-05-18 evening)
+
+The protocol-review round counsel offered (§F above) returned the same day.
+
+**Counsel verdict (verbatim, from `legal-protocol-assessment-received.md`)**:
+
+> Plausibly no, with **low** residual risk, conditional on one targeted revision (R1) to §2 of the protocol spec.
+>
+> Conclusion for the project record: With R1 applied, this protocol contract supports the conclusion that the GUI and Backend are separate works in an aggregate under GPL-3.0 §5. The "intimacy of communication" residual uncertainty identified in the prior analysis is resolved in your favour by the protocol's design. **U1 (GPL boundary decision) may be treated as resolved — not merely conditionally — subject to P1+P2+P3 adoption as binding requirements and R1 being applied before v1.0.0 is published.**
+
+**Counsel's required and recommended revisions**:
+
+| ID | Section | Status |
+|---|---|---|
+| R1 | §2.1 Standard Bearer Credential (mandatory) | **applied** |
+| R2 | §5.1 Diagnostic-only log topic (recommended) | **applied** |
+| R3 | Appendix A retained as-is | no change needed |
+
+**Protocol status**: `docs/16_protocol/chess-coach-protocol-v1.md` is **v1.0.0 stable** (no longer DRAFT), cleared for publication.
+
+**Project status**: U1 is **RESOLVED**. P1+P2+P3 remain binding. No further legal round-trip required for Gate 0 closure.
+
+**Remaining Gate 0 conditions** (all user-facing decisions, no further external dependencies):
+
+| # | Decision | Recommendation |
+|---|---|---|
+| U2 | Adopt monolith-first + scope-reduced Phase 1 plan? | yes |
+| U8 | Phase 1 engine roster: Stockfish only / +Leela / original 6 | Stockfish only |
+| U10 | CLA template: Apache ICLA+CCLA vs alternative | Apache ICLA+CCLA |
+
+The user can resolve U2, U8, U10 in a single confirmation. Phase 1 implementation begins immediately after.

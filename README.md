@@ -5,67 +5,68 @@
 ## Project Status
 
 **Phase 1 — Architecture Analysis: ✅ COMPLETE.**
-**External (Claude.ai) review: ✅ RECEIVED AND INTEGRATED (2026-05-18).**
-**OSS legal counsel review: ✅ ALL 27 QUESTIONS ADDRESSED (2026-05-18).**
-**U1 (GPL boundary): ⚠️ CONDITIONALLY RESOLVED — pending counsel's protocol-spec follow-up review.**
-**Implementation start: ⛔ NOT YET — Gate 0 closes when the protocol-review round returns clean.**
+**External (Claude.ai) review: ✅ RECEIVED AND INTEGRATED.**
+**OSS legal counsel review: ✅ COMPLETE — U1 (GPL boundary) RESOLVED 2026-05-18.**
+**Protocol contract v1.0.0: ✅ PUBLISHED (R1 + R2 applied per counsel).**
+**Gate 0: 🟡 OPEN — closes when user confirms U2, U8, U10 (no further external dependencies).**
+**Implementation: ⏳ Begins immediately after Gate 0 closes.**
 
 ---
 
-## Where we are right now
+## Counsel's final verdict (verbatim)
 
-Counsel's verdict on the combined-work question (Q1) is **plausibly NO** — the Backend can be permissively licensed — **conditional on**:
+> Plausibly no, with **low** residual risk, conditional on one targeted revision (R1) to §2 of the protocol spec.
+>
+> **Conclusion for the project record**: With R1 applied, this protocol contract supports the conclusion that the GUI and Backend are separate works in an aggregate under GPL-3.0 §5. The "intimacy of communication" residual uncertainty identified in the prior analysis is resolved in your favour by the protocol's design. **U1 (GPL boundary decision) may be treated as resolved — not merely conditionally — subject to P1+P2+P3 adoption as binding requirements and R1 being applied before v1.0.0 is published.**
 
-- **P1**: A Contributor License Agreement with a broad sublicensing grant, wired into CI as a hard merge gate, before any external contributor touches the Backend.
-- **P2**: A **non-blocking auto-updater** that honors GPL-3.0 §6 "Installation Information" — users must be able to install self-built modified GUI binaries on the same hardware.
-- **P3**: The HTTP/WS protocol between GUI and Backend published as a **separate public specification** before launch (the strongest single fact establishing the aggregate position).
-
-These three are now **binding architectural requirements**, integrated into the package (see §"Key changes since legal review" below).
-
-Counsel additionally **offered** a precise §6 assessment of the protocol contract once we draft it. **We have done that.** The draft is at `docs/16_protocol/chess-coach-protocol-v1.md` (543 lines, CC-BY-4.0, includes Appendix A explaining design intent for legal review).
-
-**Immediate next step for the user**: send the protocol draft back to counsel for the precise §6 assessment, with this cover note (also embedded in `docs/13_review_response/legal-opinion-integration.md` § F):
-
-> Per your closing observation #3 and your offer to do a precise §6 assessment, attached is the protocol contract for CHESS COACH v1. Please assess (a) whether the protocol design supports the aggregate/separate-works position you previously characterized as "plausibly NO" on Q1, (b) any specific clauses, endpoints, or design choices that **weaken** the position and that we should revise before publishing, and (c) whether anything in the protocol triggers obligations we have not yet considered (notably §6 of GPL-3.0).
+R1 and R2 have been applied; v1.0.0 is cut and published. Full assessment is preserved in `docs/13_review_response/legal-protocol-assessment-received.md`.
 
 ---
 
-## Decisions you (the user) must make
+## Decisions you (the user) must make to close Gate 0
 
-### Blocking Gate 0
+These are the only remaining items between us and writing code. All three are user-only decisions; no further legal or external review is needed.
 
-| # | Question | Default | Status |
-|---|---|---|---|
-| U1 | GPL boundary | **CONDITIONALLY RESOLVED** pending protocol-review | adopt P1+P2+P3 binding requirements? |
-| U2 | Adopt monolith-first + scope-reduced Phase 1 plan? | yes (recommended) | open |
-| U8 | Phase 1 engine roster: Stockfish only / +Leela / original 6 | Stockfish only | open |
-| **U10 (new)** | CLA template: Apache ICLA+CCLA vs alternative | Apache ICLA+CCLA | open |
+| # | Question | Recommendation |
+|---|---|---|
+| **U2** | Adopt the monolith-first + scope-reduced Phase 1 plan (`phase-plan-v2.md`)? | yes |
+| **U8** | Phase 1 engine roster: Stockfish only / +Leela / original 6 | Stockfish only |
+| **U10** | CLA template: Apache ICLA+CCLA vs alternative | Apache ICLA+CCLA |
 
-### Non-blocking (can wait until their phases)
+### Non-blocking decisions (deferred to their phases)
 
 | # | Question | Default | Phase |
 |---|---|---|---|
 | U3 | Default embedding provider: nomic-embed-text local vs OpenAI cloud | nomic-embed-text | 3 |
-| U4 | Backend service license (downstream of U1 final) | Apache-2.0 if U1 permits | gate-1 |
+| U4 | Backend service license (now unblocked, recommended Apache-2.0) | Apache-2.0 | gate-1 |
 | U5 | Telemetry posture: opt-in / never / opt-in-by-default | never | 8 |
 | U6 | Phase-6 FEN-accuracy gate | ≥97% piece, ≥90% board | 6 |
-| U7 | UI label for Profile Agent: "Psychological Profiling" vs "Playing Style Patterns" | rebrand UI to "Playing Style Patterns" | 4 |
+| U7 | UI label for Profile Agent | rebrand UI to "Playing Style Patterns"; keep module name | 4 |
 | U9 | Sidecar packaging: PyInstaller / Docker-launcher / both | PyInstaller | 8 |
-| **U11 (new)** | CLA gating tooling: cla-bot vs cla-assistant.io | cla-assistant.io | gate-1 |
-| **U12 (new)** | Protocol spec license | CC-BY-4.0 | gate-1 |
+| U11 | CLA gating tooling | cla-assistant.io | gate-1 |
+| U12 | Protocol spec license | CC-BY-4.0 (already set in v1.0.0) | resolved |
 
 ---
 
-## Key changes since legal review
+## Architectural commitments now binding
 
-1. **U1 conditionally resolved** by external counsel's plausibly-NO verdict, contingent on P1+P2+P3 (above).
-2. **P1 (CLA)**: Apache ICLA+CCLA recommended; binding before any external PR to the Backend. Documented in `docs/13_review_response/legal-opinion-integration.md` §C.1.
-3. **P2 (anti-tivoization)**: Auto-updater architecture now has binding rules (no binary signature check at launch; updater disablable; user-built binaries must run identically). Documented in `docs/08_security/security-strategy.md` post-legal addendum and in `docs/13_review_response/legal-opinion-integration.md` §C.2 + §H.
-4. **P3 (public protocol)**: Draft at `docs/16_protocol/chess-coach-protocol-v1.md` (CC-BY-4.0, 543 lines, normative §1–§13, conformance §12, schema index §15, appendix for counsel §A). Awaiting counsel's precise §6 review.
-5. **Phase-plan-v2 amended**: Gate 0 and Phase 1 and Phase 8 exit criteria updated to enforce P1/P2/P3.
-6. **Repo structure amended**: `CONTRIBUTING.md`, `CLA-ICLA.md`, `CLA-CCLA.md`, `BUILDING.md`, `LICENSING.md` added at root; `docs/14_adrs/`, `docs/15_integration_surfaces/`, `docs/16_protocol/` added; `specs/v1.0/{schemas,tests}/` added (CC-BY-4.0 for specs; MIT for reference tests).
-
-(Earlier Claude.ai review changes — monolith-first deployment, scope-reduced Phase 1, grounded LLM narration, engine memory tiers, etc. — remain in force; see `docs/13_review_response/response-to-review.md`.)
+| Commitment | Source | Where it lives |
+|---|---|---|
+| **P1 — CLA with broad sublicensing grant** | counsel priority | `docs/13_review_response/legal-opinion-integration.md` §C.1 |
+| **P2 — Non-blocking auto-updater (GPL-3.0 §6 Installation Information)** | counsel priority | `docs/08_security/security-strategy.md` post-legal addendum + `legal-opinion-integration.md` §C.2/§H |
+| **P3 — Public protocol spec, third-party-implementable** | counsel priority | `docs/16_protocol/chess-coach-protocol-v1.md` v1.0.0 |
+| **R1 — §2.1 Standard Bearer Credential language** | counsel mandatory revision | `docs/16_protocol/chess-coach-protocol-v1.md` §2.1 |
+| **R2 — §5.1 Diagnostic-only log topic language** | counsel recommended revision | `docs/16_protocol/chess-coach-protocol-v1.md` §5.1 |
+| Monolith-first deployment (Phase 1–3) | Claude.ai review | `docs/10_roadmap/phase-plan-v2.md` |
+| Scope-reduced Phase 1 (Stockfish + SQLite + grounded narration) | Claude.ai review | `phase-plan-v2.md` |
+| Grounded LLM narration pipeline (mandatory) | Claude.ai review | `docs/02_modules/module-decomposition.md` § A-F6 + protocol §8 |
+| Engine memory tiers (Lite / Standard / Full) | Claude.ai review | module-decomposition § A-F2 |
+| Engine cache key includes `cpu_arch` + `thread_count` | Claude.ai review | module-decomposition § 3 |
+| DLQ pattern as bus pre-start requirement | Claude.ai review | multi-agent § Failure handling |
+| PGN comment sanitization before any LLM ingestion | Claude.ai review | security-strategy § A-F12 |
+| PDF parsing in isolated subprocess | Claude.ai review | security-strategy § A-F11 |
+| Diagram-boundary-aware chunking | Claude.ai review | database-decision § A-F8 |
+| Engine cache size cap + LRU at `(fen, engine_id)` prefix | Claude.ai review | database-decision § A-F9 |
 
 ---
 
@@ -75,54 +76,47 @@ Counsel additionally **offered** a precise §6 assessment of the protocol contra
 chess_coach/
 ├── README.md                       # this file
 ├── docs/
-│   ├── 01_architecture/            # System architecture (master, with addenda)
-│   ├── 02_modules/                 # 14-module decomposition (with post-review addenda)
-│   ├── 03_technology/              # Technology comparison
-│   ├── 04_database/                # Database decision (with chunking + LRU addenda)
-│   ├── 05_desktop_shell/           # Tauri decision
-│   ├── 06_multi_agent/             # Bus + tier rules (with Redis-DB-split addendum)
-│   ├── 07_risk/                    # 31-risk register
-│   ├── 08_security/                # Security strategy (with P2 anti-tivoization addendum)
-│   ├── 09_performance/             # Performance budgets
+│   ├── 01_architecture/system-architecture.md
+│   ├── 02_modules/module-decomposition.md
+│   ├── 03_technology/technology-comparison.md
+│   ├── 04_database/database-decision.md
+│   ├── 05_desktop_shell/desktop-shell-decision.md
+│   ├── 06_multi_agent/multi-agent-workflow.md
+│   ├── 07_risk/risk-analysis.md
+│   ├── 08_security/security-strategy.md
+│   ├── 09_performance/performance-strategy.md
 │   ├── 10_roadmap/
-│   │   ├── phase-plan-v2.md        # ★ ACTIVE roadmap (with post-legal amendments)
-│   │   └── implementation-roadmap-v1.md
-│   ├── 11_repo_structure/          # Repo layout (with post-legal addendum)
-│   ├── 12_claude_review/           # Package we sent to Claude.ai for review
-│   ├── 13_review_response/         # Review + responses (Claude + Legal)
+│   │   ├── phase-plan-v2.md                       # ★ ACTIVE roadmap
+│   │   └── implementation-roadmap-v1.md           # superseded
+│   ├── 11_repo_structure/repository-structure.md
+│   ├── 12_claude_review/claude-review-package.md
+│   ├── 13_review_response/
 │   │   ├── claude-review-received.md
 │   │   ├── response-to-review.md
 │   │   ├── legal-questions-brief.md
-│   │   └── legal-opinion-integration.md     ★ counsel's three priorities, integrated
-│   ├── 16_protocol/                # ★ NEW: public protocol contract
-│   │   └── chess-coach-protocol-v1.md       ★ draft, send to counsel for §6 review
-│   ├── research/                   # en-croissant + ChessStalker + GPL LICENSE
+│   │   ├── legal-opinion-integration.md
+│   │   └── legal-protocol-assessment-received.md  # ★ counsel's verdict (verbatim)
+│   ├── 16_protocol/
+│   │   └── chess-coach-protocol-v1.md             # ★ v1.0.0 STABLE
+│   ├── research/
+│   │   ├── en-croissant-analysis.md
+│   │   ├── chessstalker-concepts.md
+│   │   └── en-croissant-LICENSE.txt
 │   └── diagrams/
 └── .a0proj/
 ```
 
 ---
 
-## Phase 1 Deliverables — Final Status
+## What happens when you close Gate 0
 
-| # | Deliverable | Status |
-|---|---|---|
-| 1 | System architecture | ✅ + post-review addenda |
-| 2 | Module decomposition | ✅ + 4 post-review addenda |
-| 3 | Technology comparison | ✅ + `instructor` adoption |
-| 4 | Database decision | ✅ + chunking + LRU |
-| 5 | Desktop shell decision | ✅ |
-| 6 | Multi-agent workflow | ✅ + DLQ + Redis-DB-split |
-| 7 | Risk analysis | ✅ 31 risks; 2 eliminated |
-| 8 | Security strategy | ✅ + PDF sandbox + PGN sanitization + P2 anti-tivoization |
-| 9 | Performance strategy | ✅ |
-| 10 | Implementation roadmap | ✅ phase-plan-v2 with legal amendments |
-| 11 | Repo structure | ✅ + CLA/BUILDING/protocol additions |
-| 12 | Claude review package | ✅ |
-| 13 | Review response (Claude.ai) | ✅ |
-| 14 | Legal questions brief | ✅ 27 questions sent |
-| 15 | Legal opinion integration | ✅ P1/P2/P3 binding |
-| 16 | Public protocol contract | ✅ draft v1.0.0-draft.1; awaiting counsel review |
+On confirmation of U2 + U8 + U10, Phase 1 implementation begins immediately, in this order (per `phase-plan-v2.md`):
+
+1. Fork en-croissant from a pinned tag; commit `apps/desktop/` per `repo-structure`.
+2. Author `CONTRIBUTING.md`, `CLA-ICLA.md`, `CLA-CCLA.md` (using selected template), `BUILDING.md`, `LICENSING.md`. Wire CLA gate into CI.
+3. Publish `docs/16_protocol/chess-coach-protocol-v1.md` as `specs/v1.0/` in the public repo; commit JSON Schemas under `specs/v1.0/schemas/`.
+4. Author en-croissant integration-surface contract under `docs/15_integration_surfaces/`.
+5. Begin the vertical slice: SQLite schema + Stockfish 18 integration + FastAPI gateway + grounded narration pipeline + first React panel in `panels/coach/`.
 
 ---
 
@@ -134,5 +128,5 @@ chess_coach/
 - Backend services run **detached** (`docker exec -d`).
 - Modular > monolithic for design; **monolithic > microservices for first deployment**.
 - License / scope / data deletion / publishing / repo identity decisions require explicit user approval.
-- **New**: CLA must be wired in CI before any external PR is merged to the Backend.
-- **New**: GPL-3.0 §6 anti-tivoization rules apply to every GUI binary distribution (no binary signature check, updater disablable, user-built binaries must run unmodified).
+- CLA wired into CI before any external PR is merged to the Backend.
+- GPL-3.0 §6 anti-tivoization rules apply to every GUI binary distribution (no binary signature check at launch, updater disablable, user-built binaries must run unmodified).

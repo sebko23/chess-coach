@@ -237,9 +237,9 @@ External OSS counsel returned a plausibly-NO verdict on the combined-work questi
 
 Added exit criteria:
 - [ ] User confirms acceptance of P1 (CLA with broad sublicensing grant), P2 (non-blocking auto-updater per GPL-3.0 §6), and P3 (public protocol spec) as binding architectural requirements.
-- [ ] Protocol contract draft (`docs/16_protocol/chess-coach-protocol-v1.md`) sent back to counsel; precise §6 assessment received and any recommended revisions integrated.
+- [x] Protocol contract draft sent back to counsel; precise §6 assessment received (2026-05-18). Counsel verdict: separate-works position supported. R1 (§2.1) and R2 (§5.1) revisions applied; protocol cut as v1.0.0 stable. See `docs/13_review_response/legal-protocol-assessment-received.md`.
 
-U1 remains conditionally open until the protocol-review round returns. Once it returns clean, Gate 0 closes and Phase 1 may begin.
+**U1 is now RESOLVED.** Gate 0 closes when the user confirms U2 (monolith-first plan), U8 (Stockfish-only Phase 1), and U10 (Apache ICLA+CCLA template). Phase 1 may begin immediately after those three confirmations.
 
 ### Phase 1 — additional exit criteria
 

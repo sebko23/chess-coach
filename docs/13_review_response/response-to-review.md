@@ -251,7 +251,7 @@ Per the master prompt's "decisions NOT autonomous" rule:
 
 | # | Decision | Default if no user input | Blocks |
 |---|---|---|---|
-| U1 | ~~**GPL boundary**~~ — **CONDITIONALLY RESOLVED 2026-05-18**: external counsel returned plausibly-NO verdict on the combined-work question, contingent on adoption of P1 (CLA with broad sublicensing grant), P2 (non-blocking auto-updater per §6 Installation Information), P3 (public protocol spec). See `legal-opinion-integration.md`. Final unblock pending counsel's precise §6 review of the drafted protocol contract in `docs/16_protocol/`. | adopted; awaiting protocol-review round | (no longer blocks Gate 0 once protocol review returns clean) |
+| U1 | ~~**GPL boundary**~~ — **RESOLVED 2026-05-18** (counsel verdict: plausibly-NO with **low** residual risk). Conditions all met: P1 + P2 + P3 adopted as binding architectural requirements; R1 + R2 applied to protocol; v1.0.0 published. Verbatim verdict in `legal-protocol-assessment-received.md`. Counsel quote: *"this protocol contract supports the conclusion that the GUI and Backend are separate works in an aggregate under GPL-3.0 §5"*. | RESOLVED | no longer blocks Gate 0 |
 | U2 | **Scope reduction approval**: adopt the reduced Phase 1 (Stockfish only, monolith-first, no Qdrant/saga/PDF) | not adopted (we stay with original ambitious plan) | Phase 1 implementation start |
 | U3 | **Default embedding provider**: `nomic-embed-text` (local Ollama) vs `text-embedding-3-small` (cloud) | nomic-embed-text (offline-first) | Phase 3 (KB) |
 | U4 | **Backend service license** (downstream of U1): if GPL-everything is rejected and legal opinion permits split, then Apache-2.0 vs MIT for backend | Apache-2.0 | LICENSING.md creation |
