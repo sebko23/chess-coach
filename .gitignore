@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.uv/
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / TS
+node_modules/
+.pnpm-store/
+.parcel-cache/
+.next/
+dist/
+out/
+*.tsbuildinfo
+
+# Rust / Tauri
+target/
+*.rs.bk
+
+# OS / Editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local data — NEVER commit user data
+data/games/*
+data/books/*
+data/engines/*
+data/models/*
+data/reports/*
+data/debug/*
+data/sqlite/*
+data/secrets/*
+!data/**/.gitkeep
+!data/**/README.md
+
+# Logs
+*.log
+logs/
+
+# Secrets / runtime
+.env
+.env.local
+.env.*.local
+secrets.env
+*.pem
+*.key
+backend.json
+
+# Build artifacts
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
