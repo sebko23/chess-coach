@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+
 
 from chess_coach.storage import ensure_writable, migrate
 
@@ -168,6 +170,16 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
 
     install_exception_handlers(app)
     app.middleware("http")(_request_id_middleware)
+
+    # CORS: required for Tauri dev mode (Vite dev server at localhost:1420)
+    # Also allows production Tauri webview (tauri://localhost)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:1420", "tauri://localhost"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
     app.include_router(
         build_system_router(
