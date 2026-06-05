@@ -20,7 +20,12 @@ class BlunderOut(BaseModel):
     cp_delta: float | None = None
 
 
-@router.get("/v1/blunders/by-fen", response_model=list[BlunderOut])
+
+
+class BlunderEnvelope(BaseModel):
+    blunders: list[BlunderOut]
+
+@router.get("/v1/blunders/by-fen", response_model=BlunderEnvelope)
 async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50):
     """Return blunders matching a specific FEN."""
     settings = request.app.state.gateway.settings
@@ -36,4 +41,4 @@ async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50):
             (fen, limit),
         )
         rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+    return BlunderEnvelope(blunders=[dict(r) for r in rows]

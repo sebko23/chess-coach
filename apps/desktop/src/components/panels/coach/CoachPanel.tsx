@@ -381,7 +381,7 @@ export default function CoachPanel() {
           setEvalPoints(data.points || []);
           // Set current ply from the game data if available
           if (data.points && data.points.length > 0) {
-            setCurrentPly(data.points[data.points.length - 1].ply);
+            setCurrentPly(data.points[data.points.length - 1]?.ply ?? 0);
           }
         }
       } catch {
