@@ -23,7 +23,7 @@ import {
   IconRefresh,
 } from "@tabler/icons-react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   backendBaseUrlAtom,
   backendTokenAtom,
@@ -31,12 +31,34 @@ import {
   narrationResultAtom,
   narrationLoadingAtom,
   narrationErrorAtom,
+  boardFenAtom,
+  blunderResultAtom,
+  blunderLoadingAtom,
+  BLUNDER_COLORS,
+  DEFAULT_FEN,
   loadDescriptor,
 } from "@/state/atoms/coach";
-import type { NarrationResult } from "@/state/atoms/coach";
+import type { NarrationResult, BlunderByFenResult } from "@/state/atoms/coach";
+import EvalGraph from "./EvalGraph";
+import { EvalBar } from "./EvalBar";
+import { currentGameIdAtom } from "@/state/atoms";
+import { SuggestionList, type EvalPoint } from "./SuggestionList";
 
-/** Default FEN — the starting position. */
-const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+/**
+ * Default FEN — used as fallback when no board tab is open.
+ * The live board position is read from ``boardFenAtom`` instead.
+ */
+const FALLBACK_FEN = DEFAULT_FEN;
+
+/**
+ * Analysis depth for Stockfish evaluation.
+ *
+ * Temporary: depth 10 provides ~1-2s engine response for quick feedback
+ * during Phase 1 testing.  Phase 2 will replace this with a dual-mode
+ * pipeline: quick eval at depth 10 (no LLM) + full narration at depth 14+.
+ */
+const ANALYSIS_DEPTH = 10;
+
 
 /**
  * Fetch a grounded narration from the backend for the given position.
@@ -133,8 +155,26 @@ function PVLine({
     </Group>
   );
 }
+/** Strip citation tags from narration text for clean display. */
+function renderNarration(text: string): string {
+  return text
+    .replace(/<move>([^<]+)<\/move>/g, '$1')
+    .replace(/<eval>([^<]+)<\/eval>/g, '$1')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1');
+}
 
-function NarrationResultView({ result }: { result: NarrationResult }) {
+function parseScoreDisplay(s: string): { cp: number; isMate: boolean } {
+  if (!s) return { cp: 0, isMate: false };
+  const mate = s.match(/mate in (-?\d+)/i) ?? s.match(/[Mm](-?\d+)/);
+  if (mate) return { cp: parseInt(mate[1]) > 0 ? 400 : -400, isMate: true };
+  const num = parseFloat(s.replace("+", ""));
+  return { cp: isNaN(num) ? 0 : Math.round(num * 100), isMate: false };
+}
+
+function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { result: NarrationResult; evalPoints: EvalPoint[]; currentPly: number; onPlyClick: (ply: number) => void }) {
+  const blunderResult = useAtomValue(blunderResultAtom);
   return (
     <Stack gap="md">
       <Card withBorder>
@@ -144,10 +184,19 @@ function NarrationResultView({ result }: { result: NarrationResult }) {
             Coach Analysis
           </Title>
           <Badge variant="outline">depth {result.depth_reached}</Badge>
+          {blunderResult?.position_classification && (
+            <Badge
+              size="lg"
+              color={BLUNDER_COLORS[blunderResult.position_classification.classification] || "gray"}
+              variant="filled"
+            >
+              {blunderResult.position_classification.classification}
+            </Badge>
+          )}
         </Group>
 
         <Text size="md" style={{ lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-          {result.narration}
+          {renderNarration(result.narration)}
         </Text>
       </Card>
 
@@ -162,6 +211,56 @@ function NarrationResultView({ result }: { result: NarrationResult }) {
           isBest
         />
       </Card>
+
+
+      {blunderResult && blunderResult?.blunders?.length > 0 && (
+        <Card withBorder>
+          <Title order={4} mb="sm">
+            Game Blunders
+          </Title>
+          <Box style={{ maxHeight: 300, overflowY: "auto" }}>
+            {blunderResult.blunders.map((b) => (
+              <Group key={b.ply} gap="xs" mb="xs" wrap="nowrap">
+                <Badge
+                  size="sm"
+                  color={BLUNDER_COLORS[b.classification] || "gray"}
+                >
+                  {b.classification}
+                </Badge>
+                <Text size="sm" ff="monospace">
+                  {b.move_san}
+                </Text>
+                <Text size="xs" c="dimmed">
+                  ({b.cp_delta >= 0 ? "+" : ""}{b.cp_delta}cp)
+                </Text>
+                <Text size="xs" fw={700}>
+                  → {b.best_move}
+                </Text>
+              </Group>
+            ))}
+          </Box>
+        </Card>
+      )}
+
+      {(() => {
+        const score = parseScoreDisplay(result?.score_display ?? "");
+        return (
+          <Group gap="md" align="flex-start" wrap="nowrap">
+            <EvalBar scoreCpWhite={score.cp} isMate={score.isMate} height={320} />
+            <Box style={{ flex: 1 }}>
+              <SuggestionList
+                points={evalPoints}
+                currentPly={currentPly}
+                onPlyClick={(ply) => setCurrentPly(ply)}
+                pvMoves={result.pv_moves}
+                scoreDisplay={result.score_display}
+                depthReached={result.depth_reached}
+              />
+            </Box>
+          </Group>
+        );
+      })()}
+      <EvalGraph />
 
       {result.fen && (
         <Group gap="xs" justify="flex-end">
@@ -180,40 +279,129 @@ function NarrationResultView({ result }: { result: NarrationResult }) {
 export default function CoachPanel() {
   const baseUrl = useAtomValue(backendBaseUrlAtom);
   const token = useAtomValue(backendTokenAtom);
+  const [evalPoints, setEvalPoints] = useState<EvalPoint[]>([]);
+  const [currentPly, setCurrentPly] = useState(0);
+  const gameId = useAtomValue(currentGameIdAtom);
   const [result, setResult] = useAtom(narrationResultAtom);
   const [loading, setLoading] = useAtom(narrationLoadingAtom);
   const [error, setError] = useAtom(narrationErrorAtom);
+  const [blunderResult, setBlunderResult] = useAtom(blunderResultAtom);
+  const [blunderLoading, setBlunderLoading] = useAtom(blunderLoadingAtom);
   const setDescriptor = useSetAtom(backendDescriptorAtom);
+  const liveFen = useAtomValue(boardFenAtom);  // null = no board tab yet
+  // Game ID from first training card or current board game
+  const [evalGraphGameId, setEvalGraphGameId] = useState<string | null>(null);
 
-  // Track whether an analysis has been attempted, so we don't auto-fetch
-  // when the user hasn't explicitly requested one (avoids mount-triggered fetch
-  // in Phase 2 when the FEN is wired to the board).
-  const hasRun = useRef(false);
+  // Debounce the live FEN so analysis only triggers after a pause.
+  // Without this, fast move browsing fires 10+ sequential analysis requests.
+  const [debouncedFen, setDebouncedFen] = useState<string | null>(null);
+  const lastAnalyzedFen = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Skip analysis until the sessionStorage bridge has read the live FEN.
+    // Otherwise we analyze the starting position before the board is ready.
+    if (liveFen === null) return;
+    const timer = setTimeout(() => setDebouncedFen(liveFen), 800);
+    return () => clearTimeout(timer);
+  }, [liveFen]);
 
   /** Re-read the backend descriptor and re-trigger analysis. */
   const handleRetry = useCallback(async () => {
-    // The user may have started the backend since the error appeared.
     // Re-read the descriptor; the derived atoms (baseUrl, token) will
     // update, and the useEffect below will fire the analysis if needed.
     await loadDescriptor(setDescriptor);
     // Clear the error so the UI shows a fresh state.
     setError(null);
     setResult(null);
-    // Allow the useEffect to re-trigger (ref is reset by the dep change).
-    hasRun.current = false;
+    // Reset the analyzed-FEN cache so the next debounce fires analysis.
+    lastAnalyzedFen.current = null;
   }, [setDescriptor, setError, setResult]);
 
-  // Analyse the starting position on mount, or when connection appears
+
+  // Watch for tab switches by polling sessionStorage.
+  // When the active tab changes, reset the analyzed-FEN cache so the
+  // next FEN variation triggers re-analysis regardless of identical FEN.
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const id = sessionStorage.getItem("activeTab");
+      setActiveTabId(prev => {
+        if (prev !== id) {
+          // Tab switched — reset cache so next FEN triggers re-analysis
+          lastAnalyzedFen.current = null;
+        }
+        return id;
+      });
+    }, 200);
+    return () => clearInterval(interval);
+  }, []);
+
+
+  // Fetch blunder-by-fen result when FEN stabilises.
+  useEffect(() => {
+    if (!baseUrl || !token || !debouncedFen) return;
+
+    let cancelled = false;
+    const fetchBlunders = async () => {
+      setBlunderLoading(true);
+      try {
+        const resp = await fetch(
+          `${baseUrl}/v1/blunders/by-fen?fen=${encodeURIComponent(debouncedFen)}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!cancelled) {
+          if (resp.ok) {
+            setBlunderResult(await resp.json() as BlunderByFenResult);
+          } else {
+            setBlunderResult(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setBlunderResult(null);
+      } finally {
+        if (!cancelled) setBlunderLoading(false);
+      }
+    };
+    fetchBlunders();
+    return () => { cancelled = true; };
+  }, [baseUrl, token, debouncedFen]);
+  
+  // Fetch eval-graph points when we have a game ID
+  useEffect(() => {
+    if (!baseUrl || !token || !gameId) return;
+    let cancelled = false;
+    const fetchEval = async () => {
+      try {
+        const resp = await fetch(
+          `${baseUrl}/v1/games/${gameId}/eval-graph?limit=100`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!cancelled && resp.ok) {
+          const data = await resp.json();
+          setEvalPoints(data.points || []);
+          // Set current ply from the game data if available
+          if (data.points && data.points.length > 0) {
+            setCurrentPly(data.points[data.points.length - 1].ply);
+          }
+        }
+      } catch {
+        if (!cancelled) setEvalPoints([]);
+      }
+    };
+    fetchEval();
+    return () => { cancelled = true; };
+  }, [baseUrl, token, gameId]);
+  // Analyse the current board position when the FEN changes.
+  // debouncedFen in deps ensures re-analysis on position change.
   useEffect(() => {
     if (!baseUrl || !token) {
       // Backend not available — don't attempt yet.
       return;
     }
 
-    if (hasRun.current) {
-      // Already ran the analysis for this connection.
-      return;
-    }
+    // Skip if we already analyzed this exact FEN.
+    if (lastAnalyzedFen.current === debouncedFen) return;
+    lastAnalyzedFen.current = debouncedFen;
 
     let cancelled = false;
 
@@ -226,8 +414,8 @@ export default function CoachPanel() {
         return fetchNarration(
           baseUrl,
           token,
-          DEFAULT_FEN,
-          18,    // depth
+          debouncedFen,
+          ANALYSIS_DEPTH,    // TODO: replace with dual-mode quick/narration pipeline (Phase 2)
           "stockfish",
           1,     // multipv
         );
@@ -238,7 +426,7 @@ export default function CoachPanel() {
         const narration = await attemptFetch();
         if (!cancelled) {
           setResult(narration);
-          hasRun.current = true;
+
         }
       } catch (firstErr) {
         // Connection failure — likely stale descriptor.  Re-read once and retry.
@@ -253,7 +441,7 @@ export default function CoachPanel() {
           const narration = await attemptFetch();
           if (!cancelled) {
             setResult(narration);
-            hasRun.current = true;
+  
             return;
           }
         } catch (_secondErr) {
@@ -274,7 +462,7 @@ export default function CoachPanel() {
 
     run();
     return () => { cancelled = true; };
-  }, [baseUrl, token, setResult, setLoading, setError, setDescriptor]);
+  }, [baseUrl, token, debouncedFen, setResult, setLoading, setError, setDescriptor]);
 
   return (
     <Container size="md" py="xl">
@@ -322,7 +510,7 @@ export default function CoachPanel() {
           </Alert>
         )}
 
-        {result && !loading && <NarrationResultView result={result} />}
+        {result && !loading && <NarrationResultView result={result} evalPoints={evalPoints} currentPly={currentPly} onPlyClick={setCurrentPly} />}
 
         {!baseUrl && !loading && !error && (
           <Card withBorder py="xl">
