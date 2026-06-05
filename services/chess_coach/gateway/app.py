@@ -39,6 +39,7 @@ from .routes import (
     engines_router,
     eval_graph_router,
     game_router,
+    repertoire_router,
     narration_router,
     profile_router,
     training_router,
@@ -213,6 +214,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(eval_graph_router)
     app.include_router(blunder_router)
     app.include_router(game_router)
+    app.include_router(repertoire_router)
     app.include_router(profile_router)
 
     return app

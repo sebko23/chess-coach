@@ -22,19 +22,33 @@ class GameSummary(BaseModel):
     import_status: str = "pending"
 
 
-@router.get("/v1/games", response_model=list[GameSummary])
+class GamesListResponse(BaseModel):
+    games: list[GameSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get("/v1/games", response_model=GamesListResponse)
 async def list_games(request: Request, limit: int = 100, offset: int = 0):
     """Return a page of games ordered by creation date descending."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT COUNT(*) as cnt FROM games")
+        total = (await cur.fetchone())["cnt"]
         cur = await db.execute(
             "SELECT id, white, black, date, event, result, import_status "
             "FROM games ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (limit, offset),
         )
         rows = await cur.fetchall()
-    return [dict(r) for r in rows]
+    return GamesListResponse(
+        games=[dict(r) for r in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/v1/games/{game_id}/pgn", response_class=PlainTextResponse)

@@ -10,6 +10,7 @@ from .eval_graph import router as eval_graph_router
 from .game_routes import router as game_router
 from .narration import router as narration_router
 from .profile import router as profile_router
+from .repertoire import router as repertoire_router
 from .training import router as training_router
 
 # system.py uses a builder pattern (build_system_router); kept as-is.
@@ -22,5 +23,6 @@ __all__ = [
     "game_router",
     "narration_router",
     "profile_router",
+    "repertoire_router",
     "training_router",
 ]
