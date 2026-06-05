@@ -33,7 +33,16 @@ from chess_coach.storage import ensure_writable, migrate
 from .auth import generate_token_if_needed, set_active_token
 from .config import GatewaySettings
 from .descriptor import Descriptor, remove_descriptor, write_descriptor
-from .routes import engines_router, analysis_router, narration_router
+from .routes import (
+    analysis_router,
+    blunder_router,
+    engines_router,
+    eval_graph_router,
+    game_router,
+    narration_router,
+    profile_router,
+    training_router,
+)
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.narration import NarrationPipeline
 from .exception_handlers import install_exception_handlers
@@ -199,6 +208,12 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(engines_router)
     app.include_router(analysis_router)
     app.include_router(narration_router)
+
+    app.include_router(training_router)
+    app.include_router(eval_graph_router)
+    app.include_router(blunder_router)
+    app.include_router(game_router)
+    app.include_router(profile_router)
 
     return app
 

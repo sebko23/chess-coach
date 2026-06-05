@@ -4,9 +4,23 @@ Each submodule registers its own FastAPI router; the app includes them
 in ``app.py`` via ``app.include_router(router)``.
 """
 from .analysis import router as analysis_router
+from .blunder_routes import router as blunder_router
 from .engines import router as engines_router
+from .eval_graph import router as eval_graph_router
+from .game_routes import router as game_router
 from .narration import router as narration_router
+from .profile import router as profile_router
+from .training import router as training_router
 
 # system.py uses a builder pattern (build_system_router); kept as-is.
 
-__all__ = ["analysis_router", "engines_router", "narration_router"]
+__all__ = [
+    "analysis_router",
+    "blunder_router",
+    "engines_router",
+    "eval_graph_router",
+    "game_router",
+    "narration_router",
+    "profile_router",
+    "training_router",
+]
