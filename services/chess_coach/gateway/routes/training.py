@@ -6,6 +6,7 @@ the review endpoint updates FSRS parameters after a learner response.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -20,11 +21,28 @@ router = APIRouter(tags=["training"], dependencies=[Depends(require_bearer)])
 
 _DEFAULT_PLAYER = "default"
 
+# ── PGN header extraction helpers ──────────────────────────────────────
+
+
+def _extract_pgn_header(pgn_raw: str, tag: str) -> str | None:
+    """Extract a PGN header value like [ECO "B10"] -> "B10"."""
+    m = re.search(rf'\[{tag} "([^"]+)"\]', pgn_raw)
+    return m.group(1) if m else None
+
+
+# ── Pydantic models ────────────────────────────────────────────────────
 
 class CardOut(BaseModel):
     id: str
     card_type: str
     reference_id: str
+    fen: str | None = None
+    move_san: str | None = None
+    game_id: str | None = None
+    white: str | None = None
+    black: str | None = None
+    eco: str | None = None
+    opening: str | None = None
     stability: float
     difficulty: float
     retrievability: float
@@ -56,6 +74,8 @@ class SeedRequest(BaseModel):
     player: str = "default"
 
 
+# ── FSRS-5 simplified ──────────────────────────────────────────────────
+
 def _fsrs_next(
     rating: int,
     stability: float,
@@ -73,6 +93,8 @@ def _fsrs_next(
     return new_stability, new_difficulty, new_retrievability, due_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# ── Routes ─────────────────────────────────────────────────────────────
+
 @router.get("/v1/training/queue/{player}", response_model=QueueResponse)
 async def get_queue(player: str, request: Request, limit: int = 20):
     """Return up to limit due training cards for player.
@@ -81,24 +103,45 @@ async def get_queue(player: str, request: Request, limit: int = 20):
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
+
+        # SQL: JOIN with games to get player names; ECO/opening done in Python
         base_sql = (
-            "SELECT id, card_type, reference_id, stability, difficulty, "
-            "retrievability, reviews, lapses, due, last_review FROM training_cards"
+            "SELECT tc.id, tc.card_type, tc.reference_id, "
+            "g.id AS game_id, "
+            "g.white, g.black, "
+            "g.pgn_raw, "
+            "tc.stability, tc.difficulty, "
+            "tc.retrievability, tc.reviews, tc.lapses, tc.due, tc.last_review "
+            "FROM training_cards tc "
+            "LEFT JOIN games g ON g.id = substr(tc.reference_id, 1, instr(tc.reference_id, ':')"
+            "  - 1)"
         )
-        count_sql = "SELECT COUNT(*) FROM training_cards"
-        due_clause = " due <= strftime('%Y-%m-%dT%H:%M:%fZ','now')"
+        count_sql = "SELECT COUNT(*) FROM training_cards tc"
+        due_clause = " tc.due <= strftime('%Y-%m-%dT%H:%M:%fZ','now')"
+
         if player and player != 'default':
-            where = f"WHERE player_name = ? AND{due_clause}"
+            where = f"WHERE tc.player_name = ? AND{due_clause}"
             params = (player, limit)
         else:
             where = f"WHERE{due_clause}"
             params = (limit,)
+
         # Queue query
-        cur = await db.execute(
-            f"{base_sql} {where} ORDER BY due ASC, stability ASC LIMIT ?",
-            params,
-        )
-        cards = [dict(r) for r in await cur.fetchall()]
+        cur = await db.execute(f"{base_sql} {where} ORDER BY due ASC, stability ASC LIMIT ?", params)
+        rows = [dict(r) for r in await cur.fetchall()]
+
+        # Enrich with ECO/opening extracted from PGN
+        cards = []
+        for r in rows:
+            pgn_raw = r.pop('pgn_raw', None)
+            if pgn_raw:
+                r['eco'] = _extract_pgn_header(pgn_raw, 'ECO')
+                r['opening'] = _extract_pgn_header(pgn_raw, 'Opening')
+            else:
+                r['eco'] = None
+                r['opening'] = None
+            cards.append(CardOut(**r))
+
         # Count query
         if player and player != 'default':
             count_params = (player,)
@@ -106,6 +149,7 @@ async def get_queue(player: str, request: Request, limit: int = 20):
             count_params = ()
         cur2 = await db.execute(f"{count_sql} {where}", count_params)
         due_count = (await cur2.fetchone())[0]
+
     return QueueResponse(due_count=due_count, cards=cards)
 
 

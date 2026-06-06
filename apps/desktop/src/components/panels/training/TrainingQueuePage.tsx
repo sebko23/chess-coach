@@ -22,6 +22,8 @@ interface CardData {
   game_id: string;
   white: string;
   black: string;
+  eco: string | null;
+  opening: string | null;
   stability: number;
   difficulty: number;
   retrievability: number;
@@ -169,6 +171,16 @@ function CardReview({
             >
               {card.card_type.replace(/_/g, " ")}
             </Badge>
+            {card.eco && card.opening && (
+              <Badge
+                size="sm"
+                variant="outline"
+                color="cyan"
+                title={`${card.eco}: ${card.opening}`}
+              >
+                {card.eco}
+              </Badge>
+            )}
             <BlunderBadge baseUrl={baseUrl} token={token} fen={card.fen} />
           </Group>
           <Badge size="sm" variant="outline" color="gray">
