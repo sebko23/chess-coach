@@ -43,6 +43,7 @@ from .routes import (
     narration_router,
     profile_router,
     training_router,
+    pdf_ingest_router,
 )
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.narration import NarrationPipeline
@@ -215,6 +216,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(blunder_router)
     app.include_router(game_router)
     app.include_router(repertoire_router)
+    app.include_router(pdf_ingest_router)
     app.include_router(profile_router)
 
     return app

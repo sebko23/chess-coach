@@ -13,6 +13,7 @@ from .profile import router as profile_router
 from .repertoire import router as repertoire_router
 from .training import router as training_router
 
+from .pdf_ingest import router as pdf_ingest_router
 # system.py uses a builder pattern (build_system_router); kept as-is.
 
 __all__ = [
@@ -25,4 +26,5 @@ __all__ = [
     "profile_router",
     "repertoire_router",
     "training_router",
+    "pdf_ingest_router",
 ]
