@@ -75,24 +75,36 @@ def _fsrs_next(
 
 @router.get("/v1/training/queue/{player}", response_model=QueueResponse)
 async def get_queue(player: str, request: Request, limit: int = 20):
-    """Return up to limit due training cards for player."""
+    """Return up to limit due training cards for player.
+    When player='default' (no specific player on the Windows host),
+    aggregate due cards across ALL players."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
-        cur = await db.execute(
+        base_sql = (
             "SELECT id, card_type, reference_id, stability, difficulty, "
-            "retrievability, reviews, lapses, due, last_review "
-            "FROM training_cards "
-            "WHERE player_name = ? AND due <= strftime('%Y-%m-%dT%H:%M:%fZ','now') "
-            "ORDER BY due ASC, stability ASC LIMIT ?",
-            (player or _DEFAULT_PLAYER, limit),
+            "retrievability, reviews, lapses, due, last_review FROM training_cards"
+        )
+        count_sql = "SELECT COUNT(*) FROM training_cards"
+        due_clause = " due <= strftime('%Y-%m-%dT%H:%M:%fZ','now')"
+        if player and player != 'default':
+            where = f"WHERE player_name = ? AND{due_clause}"
+            params = (player, limit)
+        else:
+            where = f"WHERE{due_clause}"
+            params = (limit,)
+        # Queue query
+        cur = await db.execute(
+            f"{base_sql} {where} ORDER BY due ASC, stability ASC LIMIT ?",
+            params,
         )
         cards = [dict(r) for r in await cur.fetchall()]
-        cur2 = await db.execute(
-            "SELECT COUNT(*) FROM training_cards "
-            "WHERE player_name = ? AND due <= strftime('%Y-%m-%dT%H:%M:%fZ','now')",
-            (player or _DEFAULT_PLAYER,),
-        )
+        # Count query
+        if player and player != 'default':
+            count_params = (player,)
+        else:
+            count_params = ()
+        cur2 = await db.execute(f"{count_sql} {where}", count_params)
         due_count = (await cur2.fetchone())[0]
     return QueueResponse(due_count=due_count, cards=cards)
 
