@@ -167,7 +167,7 @@ const GameDetailPage: FC = () => {
         <Card.Section p="md">
           <Title order={5} mb="xs">Evaluation Graph</Title>
           {evalPoints.length > 0 ? (
-            <EvalGraph data={{ points: evalPoints }} />
+            <EvalGraph data={{ points: evalPoints as any }} />
           ) : (
             <Text c="dimmed" size="sm">No evaluation data available.</Text>
           )}

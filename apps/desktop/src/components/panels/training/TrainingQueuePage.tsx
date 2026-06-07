@@ -60,51 +60,18 @@ const BLUNDER_COLORS: Record<string, string> = {
 };
 
 function BlunderBadge({
-  baseUrl,
-  token,
-  fen,
+  classification,
 }: {
-  baseUrl: string | null;
-  token: string | null;
-  fen: string | undefined;
+  classification: string | null;
 }) {
-  const [classification, setClassification] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!baseUrl || !token || !fen) {
-      setClassification(null);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    const encoded = encodeURIComponent(fen);
-    fetch(`${baseUrl}/v1/blunders/by-fen?fen=${encoded}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.ok ? r.json() : { blunders: [] })
-      .then((data: { blunders?: { classification: string }[] }) => {
-        if (cancelled) return;
-        const blunders = data.blunders ?? [];
-        if (blunders.length > 0 && blunders[0].classification) {
-          setClassification(blunders[0].classification);
-        } else {
-          setClassification(null);
-        }
-      })
-      .catch(() => { if (!cancelled) setClassification(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [baseUrl, token, fen]);
-
-  if (!classification) return null;
   return (
     <Badge
       size="sm"
       variant="filled"
-      color={BLUNDER_COLORS[classification] ?? "gray"}
+      color={BLUNDER_COLORS[classification ?? ""] ?? "gray"}
     >
-      {loading ? "…" : classification}
+      {classification ? classification.charAt(0).toUpperCase() + classification.slice(1) : "—"}
     </Badge>
   );
 }
@@ -181,7 +148,7 @@ function CardReview({
                 {card.eco}
               </Badge>
             )}
-            <BlunderBadge baseUrl={baseUrl} token={token} fen={card.fen} />
+            
           </Group>
           <Badge size="sm" variant="outline" color="gray">
             Reviews: {card.reviews}
@@ -272,6 +239,7 @@ export default function TrainingQueuePage() {
   const token = useAtomValue(backendTokenAtom);
 
   const [cards, setCards] = useState<CardData[]>([]);
+  const [classifications, setClassifications] = useState<Record<string, string | null>>({});
   const [dueCount, setDueCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [reviewedCount, setReviewedCount] = useState(0);
@@ -280,7 +248,7 @@ export default function TrainingQueuePage() {
   const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
 
   const fetchQueue = useCallback(async () => {
     if (!baseUrl) return;
@@ -292,6 +260,18 @@ export default function TrainingQueuePage() {
       if (!res.ok) throw new Error(`Queue: ${res.status}`);
       const data: QueueResponse = await res.json();
       setCards(data.cards || []);
+      // Batch fetch blunder classifications
+      const fens = (data.cards ?? []).map((c: { fen: string }) => c.fen).filter(Boolean);
+      if (fens.length > 0) {
+        fetch(`${baseUrl}/v1/blunders/batch-by-fen`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ fens }),
+        })
+          .then(r => r.json())
+          .then(batchData => setClassifications(batchData.results ?? {}))
+          .catch(() => {});
+      }
       setDueCount(data.due_count || 0);
       setCurrentIndex(0);
     } catch (e: any) {

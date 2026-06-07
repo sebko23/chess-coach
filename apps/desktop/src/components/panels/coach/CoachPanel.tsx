@@ -187,7 +187,7 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
           {blunderResult?.position_classification && (
             <Badge
               size="lg"
-              color={BLUNDER_COLORS[blunderResult.position_classification.classification] || "gray"}
+              color={BLUNDER_COLORS[blunderResult.position_classification.classification ?? ""] || "gray"}
               variant="filled"
             >
               {blunderResult.position_classification.classification}
@@ -278,10 +278,10 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
  */
 export default function CoachPanel() {
   const baseUrl = useAtomValue(backendBaseUrlAtom);
+  const [currentPly, setCurrentPly] = useState(0);
   const token = useAtomValue(backendTokenAtom);
   const [evalPoints, setEvalPoints] = useState<EvalPoint[]>([]);
   const [currentPly, setCurrentPly] = useState(0);
-  const gameId = useAtomValue(currentGameIdAtom);
   const [result, setResult] = useAtom(narrationResultAtom);
   const [loading, setLoading] = useAtom(narrationLoadingAtom);
   const [error, setError] = useAtom(narrationErrorAtom);
@@ -347,7 +347,7 @@ export default function CoachPanel() {
       try {
         const resp = await fetch(
           `${baseUrl}/v1/blunders/by-fen?fen=${encodeURIComponent(debouncedFen)}`,
-          { headers: { Authorization: `Bearer ${token}` } },
+          { headers: { Authorization: `Bearer ${token}` } as HeadersInit },
         );
         if (!cancelled) {
           if (resp.ok) {
@@ -374,7 +374,7 @@ export default function CoachPanel() {
       try {
         const resp = await fetch(
           `${baseUrl}/v1/games/${gameId}/eval-graph?limit=100`,
-          { headers: { Authorization: `Bearer ${token}` } },
+          { headers: { Authorization: `Bearer ${token}` } as HeadersInit },
         );
         if (!cancelled && resp.ok) {
           const data = await resp.json();
@@ -414,7 +414,7 @@ export default function CoachPanel() {
         return fetchNarration(
           baseUrl,
           token,
-          debouncedFen,
+          debouncedFen!,
           ANALYSIS_DEPTH,    // TODO: replace with dual-mode quick/narration pipeline (Phase 2)
           "stockfish",
           1,     // multipv
@@ -462,7 +462,7 @@ export default function CoachPanel() {
 
     run();
     return () => { cancelled = true; };
-  }, [baseUrl, token, debouncedFen, setResult, setLoading, setError, setDescriptor]);
+          debouncedFen!,
 
   return (
     <Container size="md" py="xl">
