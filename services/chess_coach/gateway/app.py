@@ -219,6 +219,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(repertoire_router)
     app.include_router(pdf_ingest_router)
     app.include_router(lichess_import_router)
+    app.include_router(repertoire_recommendations_router)
     app.include_router(profile_router)
 
     return app
