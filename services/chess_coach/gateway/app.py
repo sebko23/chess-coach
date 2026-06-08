@@ -45,6 +45,7 @@ from .routes import (
     training_router,
     pdf_ingest_router,
     lichess_import_router,
+    repertoire_recommendations_router,
 )
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.narration import NarrationPipeline

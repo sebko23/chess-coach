@@ -98,13 +98,11 @@ async def get_recommendations(
         if player == "default":
             rows = await db.execute_fetchall(
                 """
-                SELECT DISTINCT p.fen, p.ply
+                SELECT p.fen, p.ply, COUNT(*) as cnt
                 FROM positions p
                 WHERE p.ply BETWEEN 6 AND 16
-                  AND p.fen NOT IN (
-                      SELECT DISTINCT fen FROM positions
-                      WHERE player_name IS NOT NULL AND player_name != ''
-                  )
+                GROUP BY p.fen, p.ply
+                HAVING cnt < 3
                 ORDER BY p.ply ASC
                 LIMIT ?
                 """,
@@ -113,11 +111,11 @@ async def get_recommendations(
         else:
             rows = await db.execute_fetchall(
                 """
-                SELECT DISTINCT p.fen, p.ply
+                SELECT p.fen, p.ply, COUNT(*) as cnt
                 FROM positions p
-                WHERE p.player_name = ?
-                  AND p.ply BETWEEN 6 AND 16
-                  AND p.times_reached = 0
+                WHERE p.ply BETWEEN 6 AND 16
+                GROUP BY p.fen, p.ply
+                HAVING cnt < 3
                 ORDER BY p.ply ASC
                 LIMIT ?
                 """,
@@ -127,6 +125,7 @@ async def get_recommendations(
     total_gaps = len(rows)
     recommendations: list[RecommendationItem] = []
 
+    # rows now include cnt column (times_reached), but we treat as gaps anyway
     for row in rows:
         fen = row["fen"]
         ply = row["ply"]
