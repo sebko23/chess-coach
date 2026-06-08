@@ -1,4 +1,4 @@
-"use no memo";
+﻿"use no memo";
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -123,7 +123,7 @@ const GameDetailPage: FC = () => {
     return (
       <Stack align="center" p="xl">
         <Loader />
-        <Text c="dimmed" size="sm">Loading game details…</Text>
+        <Text c="dimmed" size="sm">Loading game detailsâ€¦</Text>
       </Stack>
     );
   }
@@ -159,7 +159,7 @@ const GameDetailPage: FC = () => {
           </Button>
           <Title order={3}>Game Detail</Title>
         </Group>
-        <Badge size="lg">ID: {gameId?.substring(0, 8)}…</Badge>
+        <Badge size="lg">ID: {gameId?.substring(0, 8)}â€¦</Badge>
       </Group>
 
       {/* Eval Graph */}
@@ -167,7 +167,7 @@ const GameDetailPage: FC = () => {
         <Card.Section p="md">
           <Title order={5} mb="xs">Evaluation Graph</Title>
           {evalPoints.length > 0 ? (
-            <EvalGraph data={{ points: evalPoints as any }} />
+            <EvalGraph />
           ) : (
             <Text c="dimmed" size="sm">No evaluation data available.</Text>
           )}
@@ -206,7 +206,7 @@ const GameDetailPage: FC = () => {
                         ? `${(b.score_cp / 100).toFixed(2)}`
                         : b.score_mate != null
                         ? `#${b.score_mate}`
-                        : "—"}
+                        : "â€”"}
                     </Table.Td>
                   </Table.Tr>
                 ))}

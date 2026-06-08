@@ -1,4 +1,4 @@
-"use no memo";
+﻿"use no memo";
 
 import { Box, Card, Text, Title } from "@mantine/core";
 import { useAtomValue } from "jotai";
@@ -26,6 +26,7 @@ interface EvalPoint {
   score_cp_white: number;
   best_move: string | null;
   is_mate: boolean;
+  display_score?: number;
 }
 
 interface EvalGraphData {
@@ -49,7 +50,6 @@ function EvalTooltip({
         Ply {d.ply}: {d.move_san ?? "starting"}
       </Text>
       <Text size="xs" c={d.score_cp_white >= 0 ? "green" : "red"}>
-        {d.is_mate ? (d.score_cp_white > 0 ? "M" : "-M") : String(d.display_score ?? "")}cp
         {d.is_mate ? (d.score_cp_white > 0 ? "M" : "-M") : String(d.display_score ?? "")}cp
       </Text>
       {d.best_move && (

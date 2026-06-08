@@ -1,4 +1,4 @@
-import { useAtomValue } from "jotai";
+﻿import { useAtomValue } from "jotai";
 import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
 import {
   Container, Title, Text, SimpleGrid, Card, RingProgress, Progress,
@@ -47,13 +47,13 @@ function formatDate(dateStr: string | null): string {
 }
 
 function trendEmoji(current: number | null, previous: number | null, higherIsBetter: boolean): { emoji: string; color: string; text: string } {
-  if (current === null || previous === null) return { emoji: "→", color: "gray", text: "No trend data" };
+  if (current === null || previous === null) return { emoji: "â†’", color: "gray", text: "No trend data" };
   const diff = current - previous;
   const improving = higherIsBetter ? diff > 0 : diff < 0;
   const threshold = 0.03;
-  if (Math.abs(diff) < threshold) return { emoji: "→", color: "gray", text: "Stable" };
-  if (improving) return { emoji: "↑", color: "green", text: `Improved by ${Math.abs(diff).toFixed(2)}` };
-  return { emoji: "↓", color: "red", text: `Declined by ${Math.abs(diff).toFixed(2)}` };
+  if (Math.abs(diff) < threshold) return { emoji: "â†’", color: "gray", text: "Stable" };
+  if (improving) return { emoji: "â†‘", color: "green", text: `Improved by ${Math.abs(diff).toFixed(2)}` };
+  return { emoji: "â†“", color: "red", text: `Declined by ${Math.abs(diff).toFixed(2)}` };
 }
 
 export default function ProfileDashboard() {
@@ -65,7 +65,7 @@ export default function ProfileDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}) as HeadersInit, [token]);
+  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
 
   const fetchData = useCallback(async () => {
     if (!baseUrl) return;
@@ -123,19 +123,19 @@ export default function ProfileDashboard() {
   const insight = useMemo(() => {
     const parts: string[] = [];
     if (blunderRate !== null) {
-      if (blunderRate < 0.1) parts.push("Low blunder rate — excellent tactical accuracy.");
-      else if (blunderRate < 0.2) parts.push("Moderate blunder rate — tactical consistency is average.");
-      else parts.push("High blunder rate — tactical errors are a key weakness.");
+      if (blunderRate < 0.1) parts.push("Low blunder rate â€” excellent tactical accuracy.");
+      else if (blunderRate < 0.2) parts.push("Moderate blunder rate â€” tactical consistency is average.");
+      else parts.push("High blunder rate â€” tactical errors are a key weakness.");
     }
     if (conversionAbility !== null) {
-      if (conversionAbility > 0.6) parts.push("Strong conversion — you capitalize on advantages effectively.");
-      else if (conversionAbility > 0.4) parts.push("Average conversion — winning positions need more precision.");
-      else parts.push("Weak conversion — closing out games is a priority area.");
+      if (conversionAbility > 0.6) parts.push("Strong conversion â€” you capitalize on advantages effectively.");
+      else if (conversionAbility > 0.4) parts.push("Average conversion â€” winning positions need more precision.");
+      else parts.push("Weak conversion â€” closing out games is a priority area.");
     }
     if (openingComfort !== null) {
-      if (openingComfort > 0.8) parts.push("High opening comfort — you excel in familiar structures.");
-      else if (openingComfort > 0.6) parts.push("Moderate opening comfort — expanding the repertoire may help.");
-      else parts.push("Low opening comfort — position unfamiliarity is costing points.");
+      if (openingComfort > 0.8) parts.push("High opening comfort â€” you excel in familiar structures.");
+      else if (openingComfort > 0.6) parts.push("Moderate opening comfort â€” expanding the repertoire may help.");
+      else parts.push("Low opening comfort â€” position unfamiliarity is costing points.");
     }
     if (parts.length === 0) return "Import more games to generate profile insights.";
     return parts.join(" ");
@@ -182,7 +182,7 @@ export default function ProfileDashboard() {
       <Title order={2}>Profile</Title>
       <Text c="dimmed" size="sm" mb="lg">
         Based on {gameCount > 0 ? `${gameCount} analysed games` : "0 games"}
-        {computedAt ? ` · Updated ${formatDate(computedAt)}` : ""}
+        {computedAt ? ` Â· Updated ${formatDate(computedAt)}` : ""}
       </Text>
 
       <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md" mb="xl">
