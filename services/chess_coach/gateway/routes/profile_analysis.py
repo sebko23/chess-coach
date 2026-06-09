@@ -1,19 +1,22 @@
-"""Psychological profiling — player tendency analysis (Phase 5 Option A).
-
-Returns metrics derived from 551 games + 24,962 position analyses.
+"""Psychological profiling endpoint.
+POST /v1/profile/{player}/analysis
 """
 from __future__ import annotations
-
+import logging
 import aiosqlite
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
+from ..auth import require_bearer
 
-from chess_coach.gateway.auth import require_bearer
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/v1/profile", tags=["profile"])
 
-router = APIRouter(tags=["profile"], dependencies=[Depends(require_bearer)])
+
+def _db_path(request: Request) -> str:
+    return str(request.app.state.gateway.settings.sqlite_path)
 
 
-class ProfileAnalysisResult(BaseModel):
+class ProfileAnalysisResponse(BaseModel):
     player_name: str
     total_games: int
     tactical_tendency: float
@@ -23,199 +26,115 @@ class ProfileAnalysisResult(BaseModel):
     opening_breadth: int
 
 
-@router.post("/v1/profile/{player}/analysis", response_model=ProfileAnalysisResult)
-async def get_profile_analysis(player: str, request: Request):
-    """Compute 5 psychological metrics for a player from game/position/analysis data."""
-    settings = request.app.state.gateway.settings
-    async with aiosqlite.connect(str(settings.sqlite_path)) as db:
+@router.post(
+    "/{player}/analysis",
+    response_model=ProfileAnalysisResponse,
+    dependencies=[Depends(require_bearer)],
+)
+async def get_profile_analysis(
+    player: str,
+    db_path: str = Depends(_db_path),
+) -> ProfileAnalysisResponse:
+    async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
 
-        # --- 1. Total games for the player ---
-        cur = await db.execute(
-            "SELECT COUNT(*) FROM games WHERE white = ? OR black = ?",
-            (player, player),
-        )
-        total_games = (await cur.fetchone())[0]
+        # Resolve default player
+        if player == "default":
+            row = await db.execute_fetchall(
+                """SELECT white AS player, COUNT(*) as cnt FROM games
+                   WHERE white != '?' GROUP BY white
+                   UNION ALL
+                   SELECT black AS player, COUNT(*) as cnt FROM games
+                   WHERE black != '?' GROUP BY black
+                   ORDER BY cnt DESC LIMIT 1"""
+            )
+            resolved = row[0]["player"] if row else "unknown"
+        else:
+            resolved = player
 
-        # --- 2. Tactical tendency ---
-        # Find positions where cp_delta > 200 (tactical opportunity)
-        # Check if next position's cp_delta < 50 (player recovered = took the tactic)
-        cur = await db.execute(
-            """
-            WITH player_games AS (
-                SELECT id FROM games WHERE white = ? OR black = ?
+        # Total games
+        total_row = await db.execute_fetchall(
+            "SELECT COUNT(*) as cnt FROM games WHERE white=? OR black=?",
+            (resolved, resolved),
+        )
+        total_games = total_row[0]["cnt"] if total_row else 0
+
+        # --- Tactical tendency + risk appetite + time pressure ---
+        # Join: analyses -> positions -> games
+        # Side-aware delta: even ply = White moved, odd ply = Black moved
+        metrics_rows = await db.execute_fetchall(
+            """WITH scored AS (
+              SELECT
+                an.score_cp,
+                po.ply,
+                po.game_id,
+                LAG(an.score_cp) OVER (PARTITION BY po.game_id ORDER BY po.ply) AS prev_cp
+              FROM analyses an
+              JOIN positions po ON an.position_id = po.id
+              JOIN games g ON po.game_id = g.id
+              WHERE (g.white = ? OR g.black = ?)
+                AND an.score_cp IS NOT NULL
+                AND po.is_mainline = 1
             ),
-            tactical_opps AS (
-                SELECT
-                    a.position_id,
-                    p.game_id,
-                    p.ply,
-                    a.cp_delta
-                FROM analyses a
-                JOIN positions p ON p.id = a.position_id
-                JOIN player_games pg ON pg.id = p.game_id
-                WHERE ABS(COALESCE(a.cp_delta, 0)) > 200
-                  AND p.is_mainline = 1
-            ),
-            next_position AS (
-                SELECT
-                    t.position_id,
-                    t.game_id,
-                    t.ply,
-                    t.cp_delta AS opp_delta,
-                    n.cp_delta AS next_delta
-                FROM tactical_opps t
-                LEFT JOIN positions p2 ON p2.game_id = t.game_id AND p2.ply = t.ply + 1 AND p2.is_mainline = 1
-                LEFT JOIN analyses n ON n.position_id = p2.id
+            deltas AS (
+              SELECT
+                ply,
+                CASE WHEN ply % 2 = 0
+                  THEN score_cp - prev_cp
+                  ELSE prev_cp - score_cp
+                END AS side_delta
+              FROM scored
+              WHERE prev_cp IS NOT NULL
             )
             SELECT
-                COUNT(*) AS total_opps,
-                SUM(CASE WHEN next_delta IS NOT NULL AND ABS(COALESCE(next_delta, 0)) < 50 THEN 1 ELSE 0 END) AS taken
-            FROM next_position
-            """,
-            (player, player),
+              COUNT(CASE WHEN ABS(side_delta) > 80 THEN 1 END) AS opportunities,
+              COUNT(CASE WHEN ABS(side_delta) > 80 AND side_delta > 0 THEN 1 END) AS taken,
+              AVG(CASE WHEN side_delta < 0 AND side_delta > -100 THEN ABS(side_delta) END) AS avg_loss,
+              AVG(CASE WHEN ply > 30 AND side_delta < -100 THEN 1.0 ELSE 0.0 END) AS deep_blunder,
+              AVG(CASE WHEN ply <= 30 AND side_delta < -100 THEN 1.0 ELSE 0.0 END) AS early_blunder
+            FROM deltas""",
+            (resolved, resolved),
         )
-        row = await cur.fetchone()
-        total_opps = row["total_opps"] or 0
-        taken = row["taken"] or 0
-        tactical_tendency = round(taken / total_opps, 4) if total_opps > 0 else 0.0
 
-        # --- 3. Risk appetite ---
-        # Average absolute cp_delta on non-blunder moves (cp_delta < 150)
-        cur = await db.execute(
-            """
-            SELECT AVG(ABS(COALESCE(a.cp_delta, 0))) AS avg_loss
-            FROM analyses a
-            JOIN positions p ON p.id = a.position_id
-            JOIN games g ON g.id = p.game_id
-            WHERE (g.white = ? OR g.black = ?)
-              AND p.is_mainline = 1
-              AND ABS(COALESCE(a.cp_delta, 0)) < 150
-              AND a.cp_delta IS NOT NULL
-            """,
-            (player, player),
+        if metrics_rows:
+            m = metrics_rows[0]
+            opps = m["opportunities"] or 0
+            taken = m["taken"] or 0
+            tactical_tendency = round(taken / opps, 4) if opps > 0 else 0.0
+            risk_appetite = round(float(m["avg_loss"] or 0), 2)
+            deep = float(m["deep_blunder"] or 0)
+            early = float(m["early_blunder"] or 0)
+            time_pressure_blunders = round(deep - early, 4)
+        else:
+            tactical_tendency = risk_appetite = time_pressure_blunders = 0.0
+
+        # --- Tilt index ---
+        games_rows = await db.execute_fetchall(
+            "SELECT result, white, black FROM games WHERE (white=? OR black=?) ORDER BY rowid ASC",
+            (resolved, resolved),
         )
-        row = await cur.fetchone()
-        risk_appetite = round(row["avg_loss"] or 0.0, 2)
+        results = []
+        for g in games_rows:
+            if g["white"] == resolved:
+                results.append("W" if g["result"] == "1-0" else "L" if g["result"] == "0-1" else "D")
+            else:
+                results.append("W" if g["result"] == "0-1" else "L" if g["result"] == "1-0" else "D")
+        baseline = results.count("W") / len(results) if results else 0
+        post_loss = [results[i] for i in range(1, len(results)) if results[i-1] == "L"]
+        post_loss_rate = post_loss.count("W") / len(post_loss) if post_loss else baseline
+        tilt_index = round(max(0.0, baseline - post_loss_rate), 4)
 
-        # --- 4. Tilt index ---
-        # Win rate after 0, 1, 2+ consecutive losses within same event/session
-        cur = await db.execute(
-            """
-            WITH player_games AS (
-                SELECT
-                    id,
-                    white,
-                    black,
-                    event,
-                    date,
-                    result,
-                    ROW_NUMBER() OVER (PARTITION BY event ORDER BY date, id) AS game_seq
-                FROM games
-                WHERE (white = ? OR black = ?)
-                  AND result IN ('1-0','0-1','1/2-1/2')
-            ),
-            with_prev AS (
-                SELECT
-                    g.id,
-                    g.event,
-                    g.date,
-                    g.result,
-                    g.game_seq,
-                    CASE
-                        WHEN g.result = '1-0' AND g.white = ? THEN 1
-                        WHEN g.result = '0-1' AND g.black = ? THEN 1
-                        WHEN g.result = '1/2-1/2' THEN 0
-                        ELSE 0
-                    END AS is_win,
-                    CASE
-                        WHEN g.result = '0-1' AND g.white = ? THEN 1
-                        WHEN g.result = '1-0' AND g.black = ? THEN 1
-                        ELSE 0
-                    END AS is_loss
-                FROM player_games g
-            ),
-            loss_streaks AS (
-                SELECT
-                    id,
-                    event,
-                    date,
-                    game_seq,
-                    is_win,
-                    is_loss,
-                    SUM(is_loss) OVER (
-                        PARTITION BY event
-                        ORDER BY game_seq
-                        ROWS BETWEEN 3 PRECEDING AND 1 PRECEDING
-                    ) AS losses_before
-                FROM with_prev
-            )
-            SELECT
-                AVG(CASE WHEN losses_before = 0 THEN is_win END) AS pct_after_0,
-                AVG(CASE WHEN losses_before >= 1 AND losses_before < 3 THEN is_win END) AS pct_after_1_2,
-                AVG(CASE WHEN losses_before >= 3 THEN is_win END) AS pct_after_3plus
-            FROM loss_streaks
-            """,
-            (player, player, player, player, player, player),
+        # --- Opening breadth ---
+        breadth_rows = await db.execute_fetchall(
+            """SELECT COUNT(DISTINCT SUBSTR(po.move_san, 1, 10)) as breadth
+               FROM positions po JOIN games g ON po.game_id = g.id
+               WHERE (g.white=? OR g.black=?) AND po.ply <= 10 AND po.move_san IS NOT NULL""",
+            (resolved, resolved),
         )
-        row = await cur.fetchone()
-        pct_after_0 = row["pct_after_0"] or 0.0
-        pct_after_1_2 = row["pct_after_1_2"] or 0.0
-        pct_after_3plus = row["pct_after_3plus"] or 0.0
-        # tilt_index: positive means player performs worse after losses
-        tilt_index = round(pct_after_0 - pct_after_1_2, 4) if pct_after_0 > 0 else 0.0
+        opening_breadth = breadth_rows[0]["breadth"] if breadth_rows else 0
 
-        # --- 5. Time pressure blunders ---
-        cur = await db.execute(
-            """
-            SELECT
-                SUM(CASE WHEN p.ply > 30 AND ABS(COALESCE(a.cp_delta, 0)) > 150 THEN 1 ELSE 0 END) AS blunders_deep,
-                COUNT(CASE WHEN p.ply > 30 THEN 1 END) AS total_deep,
-                SUM(CASE WHEN p.ply <= 30 AND ABS(COALESCE(a.cp_delta, 0)) > 150 THEN 1 ELSE 0 END) AS blunders_early,
-                COUNT(CASE WHEN p.ply <= 30 THEN 1 END) AS total_early
-            FROM analyses a
-            JOIN positions p ON p.id = a.position_id
-            JOIN games g ON g.id = p.game_id
-            WHERE (g.white = ? OR g.black = ?)
-              AND p.is_mainline = 1
-              AND a.cp_delta IS NOT NULL
-            """,
-            (player, player),
-        )
-        row = await cur.fetchone()
-        blunders_deep = row["blunders_deep"] or 0
-        total_deep = row["total_deep"] or 1
-        blunders_early = row["blunders_early"] or 0
-        total_early = row["total_early"] or 1
-        rate_deep = blunders_deep / total_deep
-        rate_early = blunders_early / total_early
-        # Ratio > 1 means more blunders under time pressure
-        time_pressure_blunders = round(rate_deep / rate_early, 4) if rate_early > 0 else round(rate_deep, 4)
-
-        # --- 6. Opening breadth (ECO-like from first 3 move patterns) ---
-        cur = await db.execute(
-            """
-            WITH opening_keys AS (
-                SELECT
-                    g.id,
-                    GROUP_CONCAT(p.move_san, ' ') AS opening_pattern
-                FROM games g
-                JOIN positions p ON p.game_id = g.id
-                WHERE (g.white = ? OR g.black = ?)
-                  AND p.is_mainline = 1
-                  AND p.ply BETWEEN 1 AND 6
-                GROUP BY g.id
-            )
-            SELECT COUNT(DISTINCT opening_pattern) AS distinct_openings
-            FROM opening_keys
-            """,
-            (player, player),
-        )
-        row = await cur.fetchone()
-        opening_breadth = row["distinct_openings"] or 0
-
-    return ProfileAnalysisResult(
-        player_name=player,
+    return ProfileAnalysisResponse(
+        player_name=resolved,
         total_games=total_games,
         tactical_tendency=tactical_tendency,
         risk_appetite=risk_appetite,
