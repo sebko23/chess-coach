@@ -67,6 +67,18 @@ export default function ProfileDashboard() {
 
   const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
 
+
+  // Psychological profiling state
+  const [psych, setPsych] = useState<{
+    player_name: string;
+    total_games: number;
+    tactical_tendency: number;
+    risk_appetite: number;
+    tilt_index: number;
+    time_pressure_blunders: number;
+    opening_breadth: number;
+  } | null>(null);
+
   const fetchData = useCallback(async () => {
     if (!baseUrl) return;
     setLoading(true);
@@ -100,6 +112,20 @@ export default function ProfileDashboard() {
   }, [baseUrl, headers]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const fetchPsychProfile = useCallback(async () => {
+    if (!baseUrl || !token) return;
+    try {
+      const resp = await fetch(`${baseUrl}/v1/profile/default/analysis`, {
+        method: 'POST',
+        headers: headers as HeadersInit,
+      });
+      if (resp.ok) setPsych(await resp.json());
+    } catch { /* silent */ }
+  }, [baseUrl, token, headers]);
+
+  useEffect(() => { fetchPsychProfile(); }, [fetchPsychProfile]);
+
 
   const blunderRate = metrics?.blunder_rate ?? null;
   const conversionAbility = metrics?.conversion_ability ?? null;
@@ -278,6 +304,44 @@ export default function ProfileDashboard() {
             />
           </Stack>
         </Card>
+
+        {psych && (
+          <Card withBorder shadow="sm" p="lg" radius="md">
+            <Title order={4} mb="md">Player Psychology</Title>
+            <SimpleGrid cols={2} spacing="sm">
+              <Stack gap="xs">
+                <Text size="sm" fw={600} c="dimmed">Tilt Index</Text>
+                <Badge size="lg" color={psych.tilt_index > 0.15 ? 'red' : psych.tilt_index > 0.05 ? 'yellow' : 'teal'} variant="light">
+                  {(psych.tilt_index * 100).toFixed(1)}% win-rate drop after loss
+                </Badge>
+                <Text size="xs" c="dimmed">{psych.tilt_index > 0.15 ? 'High tilt risk — take breaks after losses' : psych.tilt_index > 0.05 ? 'Moderate tilt — monitor after losses' : 'Resilient — performs well after losses'}</Text>
+              </Stack>
+              <Stack gap="xs">
+                <Text size="sm" fw={600} c="dimmed">Tactical Tendency</Text>
+                <Badge size="lg" color={psych.tactical_tendency > 0.6 ? 'teal' : psych.tactical_tendency > 0.3 ? 'yellow' : 'red'} variant="light">
+                  {(psych.tactical_tendency * 100).toFixed(1)}% opportunities taken
+                </Badge>
+                <Text size="xs" c="dimmed">{psych.tactical_tendency > 0.6 ? 'Strong tactical vision' : psych.tactical_tendency > 0.3 ? 'Average tactics — practice puzzles' : 'Tactical blindness — daily puzzle training recommended'}</Text>
+              </Stack>
+              <Stack gap="xs">
+                <Text size="sm" fw={600} c="dimmed">Time Pressure</Text>
+                <Badge size="lg" color={psych.time_pressure_blunders > 0.1 ? 'red' : psych.time_pressure_blunders > 0.05 ? 'yellow' : 'teal'} variant="light">
+                  {(psych.time_pressure_blunders * 100).toFixed(1)}% more blunders in endgame
+                </Badge>
+                <Text size="xs" c="dimmed">{psych.time_pressure_blunders > 0.1 ? 'Struggles under time pressure — practice fast games' : 'Good time management'}</Text>
+              </Stack>
+              <Stack gap="xs">
+                <Text size="sm" fw={600} c="dimmed">Opening Breadth</Text>
+                <Badge size="lg" color={psych.opening_breadth > 80 ? 'blue' : psych.opening_breadth > 40 ? 'yellow' : 'gray'} variant="light">
+                  {psych.opening_breadth} distinct openings
+                </Badge>
+                <Text size="xs" c="dimmed">{psych.opening_breadth > 80 ? 'Broad repertoire — consider specialising' : psych.opening_breadth > 40 ? 'Balanced repertoire' : 'Narrow repertoire — try new openings'}</Text>
+              </Stack>
+            </SimpleGrid>
+            <Text size="xs" c="dimmed" mt="md">Based on {psych.total_games} games · player: {psych.player_name}</Text>
+          </Card>
+        )}
+
       </SimpleGrid>
 
       {/* Key Insight */}
