@@ -17,6 +17,7 @@ from .pdf_ingest import router as pdf_ingest_router
 from .lichess_import import router as lichess_import_router
 from .repertoire_recommendations import router as repertoire_recommendations_router
 from .profile_analysis import router as profile_analysis_router
+from .training_planner import router as training_planner_router
 # system.py uses a builder pattern (build_system_router); kept as-is.
 
 __all__ = [
@@ -33,4 +34,5 @@ __all__ = [
     "lichess_import_router",
     "repertoire_recommendations_router",
     "profile_analysis_router",
+    "training_planner_router",
 ]
