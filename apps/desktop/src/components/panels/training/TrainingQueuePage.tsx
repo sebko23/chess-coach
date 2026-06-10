@@ -40,6 +40,16 @@ interface QueueResponse {
   cards: CardData[];
 }
 
+interface DayPlan {
+  day: number;
+  date: string;
+  estimated_minutes: number;
+  new_cards: number;
+  review_cards: number;
+  card_type_breakdown: Record<string, number>;
+}
+
+
 interface ReviewResponse {
   interval_days: number;
   new_due: string;
@@ -196,6 +206,40 @@ function CardReview({
         ) : (
           <>
             <Divider label="Rating" labelPosition="center" />
+        {schedule && (
+          <Card withBorder shadow="sm" p="md" mb="md">
+            <Group justify="space-between" mb={scheduleExpanded ? "sm" : 0}>
+              <Group gap="xs">
+                <Text fw={600} size="sm">7-Day Study Plan</Text>
+                <Badge size="sm" variant="light" color="blue">
+                  {schedule.reduce((s, d) => s + d.new_cards + d.review_cards, 0)} cards
+                </Badge>
+              </Group>
+              <Button size="xs" variant="subtle"
+                onClick={() => setScheduleExpanded(e => !e)}>
+                {scheduleExpanded ? "Hide" : "Show"}
+              </Button>
+            </Group>
+            {scheduleExpanded && (
+              <SimpleGrid cols={7} spacing="xs" mt="xs">
+                {schedule.map((day) => (
+                  <Stack key={day.day} gap={2} align="center"
+                    style={{ background: "var(--mantine-color-default-hover)", borderRadius: 6, padding: "6px 4px" }}>
+                    <Text size="xs" fw={600}>{day.date.slice(5)}</Text>
+                    <Badge size="xs" color="blue" variant="filled">
+                      {day.new_cards + day.review_cards}
+                    </Badge>
+                    <Text size="xs" c="dimmed">{day.estimated_minutes}m</Text>
+                    {day.new_cards > 0 && (
+                      <Badge size="xs" color="teal" variant="light">{day.new_cards} new</Badge>
+                    )}
+                  </Stack>
+                ))}
+              </SimpleGrid>
+            )}
+          </Card>
+        )}
+
             <SimpleGrid cols={4} spacing="sm">
               {RATING_LABELS.map((r) => (
                 <Button
@@ -246,6 +290,8 @@ export default function TrainingQueuePage() {
   const [loading, setLoading] = useState(true);
   const [rating, setRating] = useState<number | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [schedule, setSchedule] = useState<DayPlan[] | null>(null);
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
@@ -282,6 +328,23 @@ export default function TrainingQueuePage() {
   }, [baseUrl, headers]);
 
   useEffect(() => { fetchQueue(); }, [fetchQueue]);
+
+  const fetchSchedule = useCallback(async () => {
+    if (!baseUrl || !token) return;
+    try {
+      const res = await fetch(
+        `${baseUrl}/v1/training/schedule/default?days=7&daily_minutes=30`,
+        { headers: { Authorization: `Bearer ${token}` } as HeadersInit }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setSchedule(data.schedule ?? null);
+      }
+    } catch { /* silent */ }
+  }, [baseUrl, token]);
+
+  useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
+
 
   const handleRate = async (r: number) => {
     if (!baseUrl || rating !== null || currentIndex >= cards.length) return;
