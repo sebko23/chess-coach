@@ -407,3 +407,21 @@ These are listed as Phase 9 candidates in `10_roadmap/`. The architecture does *
 | External (Claude) review package | `docs/12_claude_review/claude-review-package.md` |
 | en-croissant analysis (raw) | `docs/research/en-croissant-analysis.md` |
 | ChessStalker concepts (raw) | `docs/research/chessstalker-concepts.md` |
+
+---
+
+## Implementation Reality (as of 2026-06-13, commit `7c41b02`)
+
+The architecture above describes the **target vision**. Current reality differs in the following ways:
+
+| Vision | Reality |
+|--------|---------|
+| Redis Streams message bus | Not implemented. Async work uses `asyncio.gather()` within the monolith. |
+| 14 specialized agents as separate services | 1 FastAPI monolith (`gateway/`) with 15 route files. Module boundaries exist as Python packages but are not network-isolated. |
+| WebSocket streaming for real-time analysis | Not implemented. All communication is REST. |
+| Backend port `127.0.0.1:8765` | Runs on `0.0.0.0:18080`. Frontend discovers via `backend.json` descriptor file. |
+| Qdrant vector database | Not deployed. `memory_kb/` module is stubbed. Qdrant spike completed (2026-06-13) — TF-IDF fallback in use pending sentence-transformers embedding format validation. |
+
+**What is built and working:** 15 REST API routes, Stockfish 18 engine pool, SQLite WAL with 88K rows, FSRS spaced repetition, psychological profiling (5 metrics), repertoire gap analysis, grounded LLM narration pipeline, typed OpenAPI TypeScript client.
+
+Redis Streams and microservice extraction are deferred to Phase 6+ when workload demands it.

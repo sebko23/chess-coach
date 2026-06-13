@@ -255,3 +255,25 @@ Added exit criteria:
 - [ ] P2 verification: GUI built from source on a clean Windows VM using only `BUILDING.md`, installed, and run against the Backend without any difference from our signed build.
 - [ ] User-visible documentation of update opt-out and self-hosting paths.
 - [ ] Source-availability obligations for bundled engine binaries (Stockfish) documented and linked in installer notes.
+
+---
+
+## Actual Progress (as of 2026-06-13, commit `7c41b02`)
+
+The phases below completed out of the originally planned order:
+
+| Phase (Original Plan) | Completion | Notes |
+|-----------------------|-----------|-------|
+| Gate 0 — Legal + Planning | ✅ 100% | All ADRs, CLA, licensing, protocol spec committed. |
+| Phase 1 — Foundation | ✅ 100% | Gateway, SQLite, Stockfish, auth, jobs, migration runner. |
+| Phase 2 — Engine + Analysis | ✅ 85% | Stockfish 18 working. Leela/Maia adapters not built. |
+| Phase 3 — Memory + KB + LLM | ⚠️ 50% | LLM router + narration pipeline working. Qdrant/embeddings not deployed. |
+| Phase 4 — Psychological Profiling | ✅ 80% | 5 metrics, UI card. No archetype labels or sequence-based tilt. |
+| Phase 5 — Repertoire + Training | ✅ 85% | All 15 routes working. Typed client. Options A/C/D complete, B in progress. |
+| Phase 6 — PDF/Vision | ❌ 5% | Route stub + DB tables only. No ML models. |
+| Phase 7 — Cloud Sync | ❌ 10% | Lichess import only. No Chess.com, no research agent. |
+| Phase 8 — Packaging | ❌ 0% | Docker-only. No PyInstaller, no MSI. |
+
+**User decisions still open:** U1 (GPL boundary — resolved as "plausibly-NO"), U2 (scope confirmed as coaching not scouting), U8 (Stockfish-only confirmed for Phase 1-5).
+
+**Next priorities:** memory_kb pipeline (Phase 3 gap), architecture doc alignment (this pass), Maia engine adapter, chessboard OCR library investigation (before committing to YOLOv8).

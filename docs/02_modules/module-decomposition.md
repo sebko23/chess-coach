@@ -517,3 +517,26 @@ PDF parsing runs in an **isolated subprocess** with:
 - **Timeout** of 5 minutes per page; exceeding triggers a clean kill + re-route to manual review.
 
 This isolates the attack surface from PDF parser CVEs (PyMuPDF and PaddleOCR are large native-code stacks).
+
+---
+
+## Implementation Reality (as of 2026-06-13, commit `7c41b02`)
+
+Modules below are **co-located in the gateway monolith**, not independently deployed services. Each has an isolated Python package (`__init__.py`) enabling future extraction without interface changes.
+
+| Module (Vision) | Actual State |
+|-----------------|-------------|
+| GUI Agent | ✅ React 19 + Mantine 8 + Tauri. Talks to `127.0.0.1:18080` (not `:8765`). Typed OpenAPI client (`src/services/coach/`). |
+| Engine Orchestrator | ✅ `services/chess_coach/engine_orch/pool.py` — Stockfish 18 subprocess pool, depth-configurable, parallel dispatch via `asyncio.gather`. |
+| Analysis Cache | ✅ `analysis_cache` SQLite table — deterministic keying on fen+engine+depth+settings. |
+| Narration Pipeline | ✅ `services/chess_coach/narration/` — grounded LLM output with validator and deterministic fallback. |
+| LLM Router | ✅ `services/chess_coach/llm_router/` — OpenRouter primary, degraded mode when key absent. |
+| Profile / Psychology | ✅ 5 metrics computed via SQL from game history. `/v1/profile/{player}/analysis`. |
+| Training / FSRS | ✅ Full FSRS implementation — queue, review, seed, 7-day planner with priority scoring. |
+| Repertoire | ✅ Tree, gaps, novelties, recommendations (parallel Stockfish dispatch). |
+| Memory KB | ❌ Stubbed — `memory_kb/` package exists but contains no implementation. Qdrant spike validated pipeline architecture. Awaiting embedding format decision before pipeline code written. |
+| Redis Streams bus | ❌ Not implemented. Deferred to Phase 6+. |
+| Celery workers | ❌ Not implemented. Heavy async handled in-process with `asyncio`. |
+| Remaining 6 modules | ❌ Empty `__init__.py` packages only. |
+
+**Inter-module communication:** Direct Python function calls within the monolith, not Redis events. Tier rules from the multi-agent workflow doc are enforced by code review convention, not by network isolation.
