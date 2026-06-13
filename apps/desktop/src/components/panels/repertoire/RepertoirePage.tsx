@@ -1,7 +1,8 @@
-import { useAtomValue } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
+import { activePlayerAtom } from "@/state/atoms/playerAtom";
 import {
-  Container, Title, Text, Card, Badge, Stack, Group, SegmentedControl,
+  Container, Title, Text, Card, Badge, Stack, Group, SegmentedControl, Select,
   ScrollArea, Paper, Loader, Alert, Divider, SimpleGrid,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -92,7 +93,8 @@ export default function RepertoirePage() {
   const token = useAtomValue(backendTokenAtom);
 
   const [color, setColor] = useState<string>("white");
-  const [playerName, setPlayerName] = useState<string>("ebassti");
+  const [playerName, setPlayerName] = useAtom(activePlayerAtom);
+  const [availablePlayers, setAvailablePlayers] = useState<string[]>([]);
   const [treeData, setTreeData] = useState<TreeResponse | null>(null);
   const [gaps, setGaps] = useState<GapResponse[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
@@ -133,6 +135,27 @@ export default function RepertoirePage() {
   }, [baseUrl, token, color, playerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const fetchPlayers = useCallback(async () => {
+    if (!baseUrl) return;
+    const client = coachClient(baseUrl, token);
+    try {
+      const { data } = await client.GET("/v1/games", {
+        params: { query: { limit: 600 } },
+      });
+      const games = (data as any)?.games ?? [];
+      const names = new Set<string>();
+      for (const g of games) {
+        if (g.white && g.white !== "?") names.add(g.white);
+        if (g.black && g.black !== "?") names.add(g.black);
+      }
+      setAvailablePlayers(Array.from(names).sort());
+    } catch {
+      setAvailablePlayers(["ebassti"]);
+    }
+  }, [baseUrl, token]);
+
+  useEffect(() => { fetchPlayers(); }, [fetchPlayers]);
 
   const fetchRecommendations = useCallback(async () => {
     if (!baseUrl || !token) return;
@@ -188,7 +211,20 @@ export default function RepertoirePage() {
   return (
     <Container size="xl" py="md" style={{ height: "calc(100vh - 60px)", display: "flex", flexDirection: "column" }}>
       <Group justify="space-between" mb="md">
-        <Title order={3}>Repertoire</Title>
+        <Group gap="sm">
+          <Title order={3}>Repertoire</Title>
+          <Select
+            label="Player"
+            value={playerName}
+            onChange={(v) => v && setPlayerName(v)}
+            data={availablePlayers.length > 0
+              ? availablePlayers.map(p => ({ value: p, label: p }))
+              : [{ value: "ebassti", label: "ebassti" }]}
+            searchable
+            size="sm"
+            style={{ minWidth: 180 }}
+          />
+        </Group>
         <SegmentedControl
           value={color}
           onChange={setColor}
@@ -253,6 +289,10 @@ export default function RepertoirePage() {
                       <Paper key={i} withBorder p="sm" radius="sm">
                         <Group gap="xs" mb={4}>
                           <Badge size="sm" variant="outline" color="gray">{gap.ply}.</Badge>
+                          <Badge size="xs" variant="light"
+                            color={gap.fen?.split(" ")[1] === "w" ? "blue" : "gray"}>
+                            {gap.fen?.split(" ")[1] === "w" ? "White" : "Black"}
+                          </Badge>
                           <Text size="sm" ff="monospace" fw={500}>{gap.move_san || "?"}</Text>
                           <Badge size="sm" variant="light" color="orange">×{gap.times_reached} reached</Badge>
                         </Group>

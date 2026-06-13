@@ -1,5 +1,6 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
+import { activePlayerAtom } from "@/state/atoms/playerAtom";
 import { activeTabAtom, tabsAtom } from "@/state/atoms";
 import { createTab } from "@/utils/tabs";
 import {
@@ -262,6 +263,7 @@ export default function TrainingQueuePage() {
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
 const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [playerName] = useAtom(activePlayerAtom);
 
   const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
 const priorityColor = (score: number): string => {
