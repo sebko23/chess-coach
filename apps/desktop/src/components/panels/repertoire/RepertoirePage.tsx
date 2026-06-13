@@ -5,13 +5,14 @@ import {
   ScrollArea, Paper, Loader, Alert, Divider, SimpleGrid,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { coachClient } from "@/services/coach/client";
 
 /* ---------- Backend response types ---------- */
 
 interface OpeningNode {
   fen: string;
-  move_san: string | null;
-  move_uci: string | null;
+  move_san?: string | null;
+  move_uci?: string | null;
   ply: number;
   times_played: number;
   children_count: number;
@@ -27,7 +28,7 @@ interface TreeResponse {
 interface GapResponse {
   fen: string;
   ply: number;
-  move_san: string | null;
+  move_san?: string | null;
   times_reached: number;
   suggested_alternatives: string[];
 }
@@ -35,7 +36,7 @@ interface GapResponse {
 interface NoveltyResponse {
   fen: string;
   ply: number;
-  move_san: string | null;
+  move_san?: string | null;
   game_id: string;
   total_times_played: number;
 }
@@ -100,55 +101,55 @@ export default function RepertoirePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
 
   const fetchData = useCallback(async () => {
     if (!baseUrl) return;
     setLoading(true);
     setError(null);
+    const client = coachClient(baseUrl, token);
     try {
       const [treeRes, gapsRes, noveltiesRes] = await Promise.all([
-        fetch(`${baseUrl}/v1/repertoire/${playerName}/tree?color=${color}`, { headers }),
-        fetch(`${baseUrl}/v1/repertoire/${playerName}/gaps?color=${color}`, { headers }),
-        fetch(`${baseUrl}/v1/repertoire/${playerName}/novelties?color=${color}`, { headers }),
+        client.GET("/v1/repertoire/{player}/tree", {
+          params: { path: { player: playerName }, query: { color } },
+        }),
+        client.GET("/v1/repertoire/{player}/gaps", {
+          params: { path: { player: playerName }, query: { color } },
+        }),
+        client.GET("/v1/repertoire/{player}/novelties", {
+          params: { path: { player: playerName }, query: { color } },
+        }),
       ]);
-      if (!treeRes.ok) throw new Error(`Tree: ${treeRes.status}`);
-      if (!gapsRes.ok) throw new Error(`Gaps: ${gapsRes.status}`);
-      if (!noveltiesRes.ok) throw new Error(`Novelties: ${noveltiesRes.status}`);
-
-      const t: TreeResponse = await treeRes.json();
-      setTreeData(t);
-      const g: GapResponse[] = await gapsRes.json();
-      setGaps(g || []);
-      const n: NoveltyResponse[] = await noveltiesRes.json();
-      setNovelties(n || []);
+      if (treeRes.error) throw new Error(`Tree: ${JSON.stringify(treeRes.error)}`);
+      if (gapsRes.error) throw new Error(`Gaps: ${JSON.stringify(gapsRes.error)}`);
+      if (noveltiesRes.error) throw new Error(`Novelties: ${JSON.stringify(noveltiesRes.error)}`);
+      setTreeData(treeRes.data ?? null);
+      setGaps(gapsRes.data ?? []);
+      setNovelties(noveltiesRes.data ?? []);
     } catch (e: any) {
       setError(e.message || String(e));
     } finally {
       setLoading(false);
     }
-  }, [baseUrl, headers, color]);
+  }, [baseUrl, token, color, playerName]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const fetchRecommendations = useCallback(async () => {
     if (!baseUrl || !token) return;
     setRecsLoading(true);
+    const client = coachClient(baseUrl, token);
     try {
-      const resp = await fetch(
-        `${baseUrl}/v1/repertoire/${playerName}/recommendations?limit=5&color=${color}`,
-        { method: "POST", headers }
-      );
-      if (resp.ok) {
-        const data: RecommendationResponse = await resp.json();
-        setRecommendations(data.recommendations);
-      }
+      const { data, error } = await client.POST("/v1/repertoire/{player}/recommendations", {
+        params: { path: { player: playerName }, query: { limit: 5, color } },
+      });
+      if (error) throw new Error(JSON.stringify(error));
+      setRecommendations(data?.recommendations ?? []);
     } catch {
       setRecommendations([]);
     } finally {
       setRecsLoading(false);
     }
-  }, [baseUrl, token, color, headers]);
+  }, [baseUrl, token, color, playerName]);
 
   useEffect(() => { fetchRecommendations(); }, [fetchRecommendations]);
 

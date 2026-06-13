@@ -29,3 +29,12 @@ for endpoint in \
 done
 
 echo "=== Gateway ready ==="
+cat > /root/.local/share/chess-coach/runtime/backend.json << 'DESCRIPTOR'
+{
+  "backend_version": "0.1.0",
+  "host": "127.0.0.1",
+  "port": 18080,
+  "protocol_version": "1.0.0",
+  "session_token": "devtoken123"
+}
+DESCRIPTOR
