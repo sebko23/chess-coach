@@ -206,41 +206,9 @@ function CardReview({
         ) : (
           <>
             <Divider label="Rating" labelPosition="center" />
-        {schedule && (
-          <Card withBorder shadow="sm" p="md" mb="md">
-            <Group justify="space-between" mb={scheduleExpanded ? "sm" : 0}>
-              <Group gap="xs">
-                <Text fw={600} size="sm">7-Day Study Plan</Text>
-                <Badge size="sm" variant="light" color="blue">
-                  {schedule.reduce((s, d) => s + d.new_cards + d.review_cards, 0)} cards
-                </Badge>
-              </Group>
-              <Button size="xs" variant="subtle"
-                onClick={() => setScheduleExpanded(e => !e)}>
-                {scheduleExpanded ? "Hide" : "Show"}
-              </Button>
-            </Group>
-            {scheduleExpanded && (
-              <SimpleGrid cols={7} spacing="xs" mt="xs">
-                {schedule.map((day) => (
-                  <Stack key={day.day} gap={2} align="center"
-                    style={{ background: "var(--mantine-color-default-hover)", borderRadius: 6, padding: "6px 4px" }}>
-                    <Text size="xs" fw={600}>{day.date.slice(5)}</Text>
-                    <Badge size="xs" color="blue" variant="filled">
-                      {day.new_cards + day.review_cards}
-                    </Badge>
-                    <Text size="xs" c="dimmed">{day.estimated_minutes}m</Text>
-                    {day.new_cards > 0 && (
-                      <Badge size="xs" color="teal" variant="light">{day.new_cards} new</Badge>
-                    )}
-                  </Stack>
-                ))}
-              </SimpleGrid>
-            )}
-          </Card>
-        )}
 
-            <SimpleGrid cols={4} spacing="sm">
+    
+        <SimpleGrid cols={4} spacing="sm">
               {RATING_LABELS.map((r) => (
                 <Button
                   key={r.value}
@@ -292,9 +260,30 @@ export default function TrainingQueuePage() {
   const [seeding, setSeeding] = useState(false);
   const [schedule, setSchedule] = useState<DayPlan[] | null>(null);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
+const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
+const priorityColor = (score: number): string => {
+  if (score >= 0.7) return "var(--mantine-color-red-1)";
+  if (score >= 0.4) return "var(--mantine-color-yellow-1)";
+  return "var(--mantine-color-teal-1)";
+};
+
+const priorityBorder = (score: number): string => {
+  if (score >= 0.7) return "var(--mantine-color-red-4)";
+  if (score >= 0.4) return "var(--mantine-color-yellow-4)";
+  return "var(--mantine-color-teal-4)";
+};
+
+const cardTypeLabel = (type: "position" | "opening_gap" | "concept"): string => {
+  if (type === "opening_gap") return "Opening";
+  if (type === "concept") return "Concept";
+  return "Position";
+};
+
+const today = new Date().toISOString().slice(0, 10);
+
 
   const fetchQueue = useCallback(async () => {
     if (!baseUrl) return;
@@ -433,6 +422,110 @@ export default function TrainingQueuePage() {
           {reviewedCount} reviewed this session
         </Badge>
       </Group>
+
+        {schedule && (
+          <Card withBorder shadow="sm" p="md" mb="md">
+            <Group justify="space-between" mb={scheduleExpanded ? "sm" : 0}>
+              <Group gap="xs">
+                <Text fw={600} size="sm">7-Day Study Plan</Text>
+                <Badge size="sm" variant="light" color="blue">
+                  {schedule.reduce((s, d) => s + d.new_cards + d.review_cards, 0)} cards
+                </Badge>
+              </Group>
+              <Button size="xs" variant="subtle"
+                onClick={() => setScheduleExpanded(e => !e)}>
+                {scheduleExpanded ? "Hide" : "Show"}
+              </Button>
+            </Group>
+            {scheduleExpanded && (
+              <>
+                {schedule.length === 0 ? (
+                  <Text size="sm" c="dimmed" ta="center" mt="sm">
+                    No schedule loaded — click Refresh to generate your 7-day plan.
+                  </Text>
+                ) : (
+                  <SimpleGrid cols={7} spacing="xs" mt="xs">
+                    {schedule.map((day) => {
+                      const isToday = day.date === today;
+                      const avgPriority = day.cards.length > 0
+                        ? day.cards.reduce((s, c) => s + c.priority_score, 0) / day.cards.length
+                        : 0;
+                      const isExpanded = expandedDay === day.day;
+                      return (
+                        <Stack key={day.day} gap={2} align="center"
+                          style={{
+                            background: priorityColor(avgPriority),
+                            border: `${isToday ? "2px" : "1px"} solid ${isToday ? "var(--mantine-color-blue-5)" : priorityBorder(avgPriority)}`,
+                            borderRadius: 6,
+                            padding: "6px 4px",
+                            cursor: "pointer",
+                            transition: "opacity 0.15s",
+                          }}
+                          onClick={() => setExpandedDay(isExpanded ? null : day.day)}
+                        >
+                          <Text size="xs" fw={isToday ? 800 : 600}
+                            c={isToday ? "blue" : undefined}>
+                            {isToday ? "Today" : day.date.slice(5)}
+                          </Text>
+                          <Badge size="xs" color="blue" variant="filled">
+                            {day.new_cards + day.review_cards}
+                          </Badge>
+                          <Text size="xs" c="dimmed">{day.estimated_minutes}m</Text>
+                          {day.new_cards > 0 && (
+                            <Badge size="xs" color="teal" variant="light">
+                              {day.new_cards} new
+                            </Badge>
+                          )}
+                          <Text size="xs" c="dimmed">{isExpanded ? "▲" : "▼"}</Text>
+                        </Stack>
+                      );
+                    })}
+                  </SimpleGrid>
+                )}
+
+                {expandedDay !== null && (() => {
+                  const day = schedule.find(d => d.day === expandedDay);
+                  if (!day) return null;
+                  return (
+                    <Stack gap="xs" mt="sm">
+                      <Text size="xs" fw={600} c="dimmed">
+                        {day.date} — {day.cards.length} cards · {day.estimated_minutes} min
+                      </Text>
+                      {day.cards.map((card) => (
+                        <Group key={card.id} justify="space-between"
+                          style={{
+                            background: priorityColor(card.priority_score),
+                            border: `1px solid ${priorityBorder(card.priority_score)}`,
+                            borderRadius: 4,
+                            padding: "4px 8px",
+                          }}
+                        >
+                          <Group gap="xs">
+                            <Badge size="xs" variant="light"
+                              color={card.card_type === "opening_gap" ? "violet" : card.card_type === "concept" ? "orange" : "blue"}>
+                              {cardTypeLabel(card.card_type)}
+                            </Badge>
+                            <Text size="xs" c="dimmed" style={{ fontFamily: "monospace" }}>
+                              {card.reference_id.split(":").slice(0, 2).join(":")}
+                            </Text>
+                            {card.is_new && (
+                              <Badge size="xs" color="teal" variant="dot">new</Badge>
+                            )}
+                          </Group>
+                          <Group gap="xs">
+                            <Text size="xs" c="dimmed">
+                              d:{Math.round(card.difficulty)} · p:{card.priority_score.toFixed(2)}
+                            </Text>
+                          </Group>
+                        </Group>
+                      ))}
+                    </Stack>
+                  );
+                })()}
+              </>
+            )}
+          </Card>
+        )}
 
       <SimpleGrid cols={4} spacing="sm" mb="md">
         <Paper withBorder p="sm" ta="center">
