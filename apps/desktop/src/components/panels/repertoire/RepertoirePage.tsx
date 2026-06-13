@@ -91,6 +91,7 @@ export default function RepertoirePage() {
   const token = useAtomValue(backendTokenAtom);
 
   const [color, setColor] = useState<string>("white");
+  const [playerName, setPlayerName] = useState<string>("ebassti");
   const [treeData, setTreeData] = useState<TreeResponse | null>(null);
   const [gaps, setGaps] = useState<GapResponse[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
@@ -107,9 +108,9 @@ export default function RepertoirePage() {
     setError(null);
     try {
       const [treeRes, gapsRes, noveltiesRes] = await Promise.all([
-        fetch(`${baseUrl}/v1/repertoire/default/tree?color=${color}`, { headers }),
-        fetch(`${baseUrl}/v1/repertoire/default/gaps?color=${color}`, { headers }),
-        fetch(`${baseUrl}/v1/repertoire/default/novelties?color=${color}`, { headers }),
+        fetch(`${baseUrl}/v1/repertoire/${playerName}/tree?color=${color}`, { headers }),
+        fetch(`${baseUrl}/v1/repertoire/${playerName}/gaps?color=${color}`, { headers }),
+        fetch(`${baseUrl}/v1/repertoire/${playerName}/novelties?color=${color}`, { headers }),
       ]);
       if (!treeRes.ok) throw new Error(`Tree: ${treeRes.status}`);
       if (!gapsRes.ok) throw new Error(`Gaps: ${gapsRes.status}`);
@@ -135,7 +136,7 @@ export default function RepertoirePage() {
     setRecsLoading(true);
     try {
       const resp = await fetch(
-        `${baseUrl}/v1/repertoire/default/recommendations?limit=5&color=${color}`,
+        `${baseUrl}/v1/repertoire/${playerName}/recommendations?limit=5&color=${color}`,
         { method: "POST", headers }
       );
       if (resp.ok) {

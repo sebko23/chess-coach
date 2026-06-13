@@ -7,6 +7,7 @@ to suggest the best move for each. Returns ranked by urgency.
 from __future__ import annotations
 
 import logging
+import asyncio
 from typing import Literal
 
 import aiosqlite
@@ -95,43 +96,30 @@ async def get_recommendations(
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        if player == "default":
-            rows = await db.execute_fetchall(
-                """
-                SELECT p.fen, p.ply, COUNT(*) as cnt
-                FROM positions p
-                WHERE p.ply BETWEEN 6 AND 16
-                GROUP BY p.fen, p.ply
-                HAVING cnt < 3
-                ORDER BY p.ply ASC
-                LIMIT ?
-                """,
-                (limit,),
-            )
-        else:
-            rows = await db.execute_fetchall(
-                """
-                SELECT p.fen, p.ply, COUNT(*) as cnt
-                FROM positions p
-                WHERE p.ply BETWEEN 6 AND 16
-                GROUP BY p.fen, p.ply
-                HAVING cnt < 3
-                ORDER BY p.ply ASC
-                LIMIT ?
-                """,
-                (player, limit),
-            )
+        resolved = "ebassti" if player == "default" else player
+        side = "w" if color == "white" else "b"
+        rows = await db.execute_fetchall(
+                """SELECT p.fen, p.ply, COUNT(*) as cnt
+                   FROM positions p
+                   JOIN games g ON p.game_id = g.id
+                   WHERE p.ply BETWEEN 6 AND 16
+                     AND (g.white = ? OR g.black = ?)
+                     AND SUBSTR(p.fen, INSTR(p.fen, " ") + 1, 1) = ?
+                   GROUP BY p.fen, p.ply
+                   HAVING cnt < 3
+                   ORDER BY p.ply ASC
+                   LIMIT ?""",
+            (resolved, resolved, side, limit),
+        )
 
     total_gaps = len(rows)
-    recommendations: list[RecommendationItem] = []
 
-    # rows now include cnt column (times_reached), but we treat as gaps anyway
-    for row in rows:
+    async def _analyze_row(row: aiosqlite.Row) -> RecommendationItem:
         fen = row["fen"]
         ply = row["ply"]
         try:
             result = await pool.analyze(
-                AnalysisRequest(fen=fen, depth=14, multipv=3),
+                AnalysisRequest(fen=fen, depth=10, multipv=3),
                 engine_id=engine_id,
             )
             best_pv = result.pvs[0] if result.pvs else None
@@ -142,8 +130,7 @@ async def get_recommendations(
             best_move_san = (
                 _uci_to_san(fen, best_move_uci) if best_move_uci else None
             )
-            depth_reached = best_pv.depth if best_pv else 14
-
+            depth_reached = best_pv.depth if best_pv else 10
             alternatives_uci = []
             alternatives_san = []
             for pv in result.pvs[1:]:
@@ -151,8 +138,7 @@ async def get_recommendations(
                     alt = pv.moves[0]
                     alternatives_uci.append(alt)
                     alternatives_san.append(_uci_to_san(fen, alt))
-
-            recommendations.append(RecommendationItem(
+            return RecommendationItem(
                 fen=fen,
                 ply=ply,
                 priority=_priority(score_cp),
@@ -162,10 +148,10 @@ async def get_recommendations(
                 depth_reached=depth_reached,
                 alternatives_uci=alternatives_uci,
                 alternatives_san=alternatives_san,
-            ))
+            )
         except Exception as exc:
             logger.warning("recommendations: analysis failed for fen=%s: %s", fen, exc)
-            recommendations.append(RecommendationItem(
+            return RecommendationItem(
                 fen=fen,
                 ply=ply,
                 priority="normal",
@@ -175,8 +161,10 @@ async def get_recommendations(
                 depth_reached=0,
                 alternatives_uci=[],
                 alternatives_san=[],
-            ))
+            )
 
+    recommendations = await asyncio.gather(*[_analyze_row(row) for row in rows])
+    recommendations = list(recommendations)
     priority_order = {"critical": 0, "important": 1, "normal": 2}
     recommendations.sort(key=lambda r: priority_order[r.priority])
 

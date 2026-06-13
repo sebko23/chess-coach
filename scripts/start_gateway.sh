@@ -7,6 +7,11 @@ echo "1. Reinstalling package from source..."
 /opt/venv/bin/pip install --force-reinstall --no-deps -e . --quiet
 echo "   Done."
 
+echo "1.5. Running database migrations..."
+cd /a0/usr/projects/chess_coach && /opt/venv/bin/python3 -c "from pathlib import Path; from chess_coach.storage.migrate import migrate; migrate(Path('/root/.local/share/chess-coach/sqlite/chess_coach.db'))"
+echo "   Done."
+
+
 echo "2. Starting gateway..."
 fuser -k 18080/tcp 2>/dev/null || true
 sleep 1
