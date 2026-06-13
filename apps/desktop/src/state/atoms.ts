@@ -91,6 +91,7 @@ export const currentTabAtom = atom(
             return tab;
         });
         set(tabsAtom, newTabs);
+        sessionStorage.setItem("activeTab", activeTab ?? "");
     },
 );
 

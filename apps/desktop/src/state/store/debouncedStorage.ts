@@ -1,12 +1,12 @@
 import { type PersistStorage, type StorageValue } from "zustand/middleware";
 
 const DEBOUNCE_MS = 300;
-const pendingWrites = new Map<string, StorageValue<unknown>>();
+export const pendingWrites = new Map<string, StorageValue<unknown>>();
 
 let flushTimeout: ReturnType<typeof setTimeout> | null = null;
 let flushHandlersBound = false;
 
-function flush() {
+export function flush() {
     if (pendingWrites.size === 0) {
         return;
     }

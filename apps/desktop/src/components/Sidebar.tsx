@@ -6,8 +6,10 @@ import {
   IconChess,
   IconCpu,
   IconDatabase,
-  IconFiles,
-  IconSettings,
+  IconFiles, IconList,
+  IconBinaryTree,
+  IconBooks,
+  IconCloudDownload, IconSettings,
   IconUser,
 } from "@tabler/icons-react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
@@ -41,7 +43,12 @@ function NavbarLink({ url, icon: Icon, label }: NavbarLinkProps) {
 const linksdata = [
   { icon: IconChess, label: "Board", url: "/" },
   { icon: IconBrain, label: "Coach", url: "/coach" },
-  { icon: IconUser, label: "User", url: "/accounts" },
+  { icon: IconUser, label: "Profile", url: "/profile" },
+  { icon: IconList, label: "Games", url: "/games" },
+  { icon: IconBinaryTree, label: "Repertoire", url: "/repertoire" },
+    { icon: IconBooks, label: "Training", url: "/training" },
+    { icon: IconFiles, label: "PDF", url: "/pdf" },
+    { icon: IconCloudDownload, label: "Lichess", url: "/lichess" },
   { icon: IconFiles, label: "Files", url: "/files" },
   {
     icon: IconDatabase,

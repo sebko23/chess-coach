@@ -22,6 +22,7 @@ import { Route as CoachRouteImport } from './routes/coach'
 import { Route as AccountsRouteImport } from './routes/accounts'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DatabasesIndexRouteImport } from './routes/databases/index'
+import { Route as GamesGameIdRouteImport } from './routes/games.$gameId'
 import { Route as DatabasesDatabaseIdRouteImport } from './routes/databases/$databaseId'
 
 const TrainingRoute = TrainingRouteImport.update({
@@ -89,6 +90,11 @@ const DatabasesIndexRoute = DatabasesIndexRouteImport.update({
   path: '/databases/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GamesGameIdRoute = GamesGameIdRouteImport.update({
+  id: '/$gameId',
+  path: '/$gameId',
+  getParentRoute: () => GamesRoute,
+} as any)
 const DatabasesDatabaseIdRoute = DatabasesDatabaseIdRouteImport.update({
   id: '/databases/$databaseId',
   path: '/databases/$databaseId',
@@ -101,7 +107,7 @@ export interface FileRoutesByFullPath {
   '/coach': typeof CoachRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
-  '/games': typeof GamesRoute
+  '/games': typeof GamesRouteWithChildren
   '/lichess': typeof LichessRoute
   '/pdf': typeof PdfRoute
   '/profile': typeof ProfileRoute
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/training': typeof TrainingRoute
   '/databases/$databaseId': typeof DatabasesDatabaseIdRoute
+  '/games/$gameId': typeof GamesGameIdRoute
   '/databases/': typeof DatabasesIndexRoute
 }
 export interface FileRoutesByTo {
@@ -117,7 +124,7 @@ export interface FileRoutesByTo {
   '/coach': typeof CoachRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
-  '/games': typeof GamesRoute
+  '/games': typeof GamesRouteWithChildren
   '/lichess': typeof LichessRoute
   '/pdf': typeof PdfRoute
   '/profile': typeof ProfileRoute
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/training': typeof TrainingRoute
   '/databases/$databaseId': typeof DatabasesDatabaseIdRoute
+  '/games/$gameId': typeof GamesGameIdRoute
   '/databases': typeof DatabasesIndexRoute
 }
 export interface FileRoutesById {
@@ -134,7 +142,7 @@ export interface FileRoutesById {
   '/coach': typeof CoachRoute
   '/engines': typeof EnginesRoute
   '/files': typeof FilesRoute
-  '/games': typeof GamesRoute
+  '/games': typeof GamesRouteWithChildren
   '/lichess': typeof LichessRoute
   '/pdf': typeof PdfRoute
   '/profile': typeof ProfileRoute
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/training': typeof TrainingRoute
   '/databases/$databaseId': typeof DatabasesDatabaseIdRoute
+  '/games/$gameId': typeof GamesGameIdRoute
   '/databases/': typeof DatabasesIndexRoute
 }
 export interface FileRouteTypes {
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/training'
     | '/databases/$databaseId'
+    | '/games/$gameId'
     | '/databases/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/training'
     | '/databases/$databaseId'
+    | '/games/$gameId'
     | '/databases'
   id:
     | '__root__'
@@ -192,6 +203,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/training'
     | '/databases/$databaseId'
+    | '/games/$gameId'
     | '/databases/'
   fileRoutesById: FileRoutesById
 }
@@ -201,7 +213,7 @@ export interface RootRouteChildren {
   CoachRoute: typeof CoachRoute
   EnginesRoute: typeof EnginesRoute
   FilesRoute: typeof FilesRoute
-  GamesRoute: typeof GamesRoute
+  GamesRoute: typeof GamesRouteWithChildren
   LichessRoute: typeof LichessRoute
   PdfRoute: typeof PdfRoute
   ProfileRoute: typeof ProfileRoute
@@ -305,6 +317,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DatabasesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/games/$gameId': {
+      id: '/games/$gameId'
+      path: '/$gameId'
+      fullPath: '/games/$gameId'
+      preLoaderRoute: typeof GamesGameIdRouteImport
+      parentRoute: typeof GamesRoute
+    }
     '/databases/$databaseId': {
       id: '/databases/$databaseId'
       path: '/databases/$databaseId'
@@ -315,13 +334,23 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface GamesRouteChildren {
+  GamesGameIdRoute: typeof GamesGameIdRoute
+}
+
+const GamesRouteChildren: GamesRouteChildren = {
+  GamesGameIdRoute: GamesGameIdRoute,
+}
+
+const GamesRouteWithChildren = GamesRoute._addFileChildren(GamesRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountsRoute: AccountsRoute,
   CoachRoute: CoachRoute,
   EnginesRoute: EnginesRoute,
   FilesRoute: FilesRoute,
-  GamesRoute: GamesRoute,
+  GamesRoute: GamesRouteWithChildren,
   LichessRoute: LichessRoute,
   PdfRoute: PdfRoute,
   ProfileRoute: ProfileRoute,

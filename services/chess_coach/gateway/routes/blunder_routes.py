@@ -25,6 +25,35 @@ class BlunderOut(BaseModel):
 class BlunderEnvelope(BaseModel):
     blunders: list[BlunderOut]
 
+
+
+
+class BatchBlunderRequest(BaseModel):
+    fens: list[str]
+
+
+@router.post("/v1/blunders/batch-by-fen", response_model=dict)
+async def get_blunders_batch(body: BatchBlunderRequest, request: Request):
+    """Return blunder classifications for multiple FENs in one round trip."""
+    settings = request.app.state.gateway.settings
+    results: dict[str, str | None] = {}
+    async with aiosqlite.connect(str(settings.sqlite_path)) as db:
+        db.row_factory = aiosqlite.Row
+        for fen in body.fens:
+            cur = await db.execute(
+                "SELECT a.classification "
+                "FROM positions p "
+                "JOIN analyses a ON a.position_id = p.id "
+                "WHERE p.fen = ? "
+                "AND a.classification IS NOT NULL "
+                "ORDER BY ABS(COALESCE(a.cp_delta,0)) DESC LIMIT 1",
+                (fen,),
+            )
+            row = await cur.fetchone()
+            results[fen] = row["classification"] if row else None
+    return {"results": results}
+
+
 @router.get("/v1/blunders/by-fen", response_model=BlunderEnvelope)
 async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50):
     """Return blunders matching a specific FEN."""
@@ -41,4 +70,4 @@ async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50):
             (fen, limit),
         )
         rows = await cur.fetchall()
-    return BlunderEnvelope(blunders=[dict(r) for r in rows]
+    return BlunderEnvelope(blunders=[dict(r) for r in rows])

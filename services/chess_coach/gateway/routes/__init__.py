@@ -9,6 +9,7 @@ from .engines import router as engines_router
 from .eval_graph import router as eval_graph_router
 from .game_routes import router as game_router
 from .narration import router as narration_router
+from .players import router as players_router
 from .profile import router as profile_router
 from .repertoire import router as repertoire_router
 from .training import router as training_router
@@ -27,6 +28,7 @@ __all__ = [
     "eval_graph_router",
     "game_router",
     "narration_router",
+    "players_router",
     "profile_router",
     "repertoire_router",
     "training_router",
