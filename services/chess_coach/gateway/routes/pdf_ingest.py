@@ -1,135 +1,189 @@
-"""PDF ingest route.
+"""PDF ingestion route — extracts chess diagrams from PDF pages via chessvision.ai.
 
-Protocol §4.x:
-  POST /v1/import/pdf  — upload a PDF, extract text, attempt chess diagram detection
+POST /v1/import/pdf
+Accepts a PDF file upload, extracts pages as images, submits each to the
+chessvision.ai /predict endpoint, and stores valid FEN positions in the DB.
 
-Returns a PdfIngestResponse envelope immediately (synchronous processing for
-Phase 1; async job-based processing may replace this in a later iteration).
+chessvision.ai API: POST http://app.chessvision.ai/predict
+- No API key required (public endpoint)
+- Accepts base64-encoded PNG images
+- Returns FEN string with underscores instead of spaces
 """
 from __future__ import annotations
 
+import base64
+import io
+import json
 import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, UploadFile
+import aiosqlite
+import httpx
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from pdf2image import convert_from_bytes
+from pydantic import BaseModel
 
-from chess_coach.gateway.auth import require_bearer
+from ..auth import require_bearer
 
-_log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/v1/import", tags=["import"])
 
-router = APIRouter(tags=["pdf"], dependencies=[Depends(require_bearer)])
-
-# ── minimal FEN-like pattern (light detection) ──────────────────────────
-_FEN_PATTERN = (
-    r"[rnbqkpRNBQKP1-8]{1,8}/[rnbqkpRNBQKP1-8]{1,8}/"
-    r"[rnbqkpRNBQKP1-8]{1,8}/[rnbqkpRNBQKP1-8]{1,8}/"
-    r"[rnbqkpRNBQKP1-8]{1,8}/[rnbqkpRNBQKP1-8]{1,8}/"
-    r"[rnbqkpRNBQKP1-8]{1,8}/[rnbqkpRNBQKP1-8]{1,8}"
-)
+CHESSVISION_URL = "http://app.chessvision.ai/predict"
+DPI = 200
+MAX_PAGES = 50
+TIMEOUT = 30
 
 
-async def _parse_pdf(content: bytes) -> dict:
-    """Parse a PDF, extract text and attempt diagram/position detection.
+def _db_path(request: Request) -> str:
+    return str(request.app.state.gateway.settings.sqlite_path)
 
-    Returns a dict with keys:
-        page_count, diagrams_detected, diagrams_valid, diagrams, errors
-    """
-    import re
-    import fitz  # PyMuPDF
 
-    doc = fitz.Document(stream=content, filetype="pdf")
-    page_count = len(doc)
-    diagrams: list[dict] = []
-    errors: list[str] = []
+class DiagramResult(BaseModel):
+    page: int
+    fen: str | None
+    valid: bool
+    confidence: float
+    issue: str | None = None
 
-    for page_num in range(page_count):
-        page = doc[page_num]
-        try:
-            text = page.get_text(sort=True)
-        except Exception as exc:
-            errors.append(f"Page {page_num + 1}: text extraction failed — {exc}")
-            continue
 
-        # Look for FEN-like strings in extracted text
-        for match in re.finditer(_FEN_PATTERN, text):
-            candidate = match.group()
-            # Very basic validation: must have exactly 7 slashes, no invalid chars
-            if candidate.count("/") != 7:
-                continue
-            diagrams.append({
-                "page_number": page_num + 1,
-                "diagram_index": len(diagrams),
-                "fen": candidate,
-                "valid": True,
-                "confidence": 0.8,
-                "issues": [],
-                "game_id": None,
-                "job_id": None,
-            })
+class PdfImportResponse(BaseModel):
+    import_id: str
+    filename: str
+    pages_processed: int
+    diagrams_found: int
+    diagrams_valid: int
+    results: list[DiagramResult]
 
-        # Check for images that might be chess diagrams (future enhancement)
-        # For now, we tag pages with images as potential diagram candidates
-        try:
-            images = page.get_images(full=True)
-            if images and not any(d["page_number"] == page_num + 1 for d in diagrams):
-                # Page has images but no FEN detected — could be scanned diagram
-                diagrams.append({
-                    "page_number": page_num + 1,
-                    "diagram_index": len(diagrams),
-                    "fen": "",
-                    "valid": False,
-                    "confidence": 0.1,
-                    "issues": ["Image detected but no FEN could be extracted; OCR not yet implemented"],
-                    "game_id": None,
-                    "job_id": None,
-                })
-        except Exception:
-            pass
 
-    doc.close()
-
-    valid_count = sum(1 for d in diagrams if d["valid"])
-    return {
-        "page_count": page_count,
-        "diagrams_detected": len(diagrams),
-        "diagrams_valid": valid_count,
-        "diagrams": diagrams,
-        "errors": errors,
+async def _predict_fen(image_png_bytes: bytes) -> tuple[str | None, float, str | None]:
+    """Submit PNG to chessvision.ai, return (fen, confidence, error)."""
+    b64 = base64.b64encode(image_png_bytes).decode()
+    payload = {
+        "board_orientation": "predict",
+        "cropped": False,
+        "current_player": "white",
+        "image": f"data:image/png;base64,{b64}",
+        "predict_turn": False,
     }
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+            resp = await client.post(CHESSVISION_URL, json=payload)
+        if resp.status_code != 200:
+            return None, 0.0, f"HTTP {resp.status_code}"
+        data = resp.json()
+        if not data.get("success"):
+            return None, 0.0, "chessvision returned success=false"
+        fen = data.get("result", "").replace("_", " ").strip()
+        return (fen or None), 0.9, None
+    except Exception as exc:
+        return None, 0.0, str(exc)
 
 
-@router.post("/v1/import/pdf")
-async def ingest_pdf(file: UploadFile) -> dict:
-    """Ingest a PDF file, detect chess diagrams, and return a summary."""
-    ingest_id = str(uuid.uuid4())
-    started_at = datetime.now(timezone.utc)
+def _validate_fen(fen: str | None) -> bool:
+    if not fen:
+        return False
+    try:
+        import chess
+        board = chess.Board(fen)
+        return 2 <= len(board.piece_map()) <= 32
+    except Exception:
+        return False
 
-    content = await file.read()
+
+@router.post(
+    "/pdf",
+    response_model=PdfImportResponse,
+    dependencies=[Depends(require_bearer)],
+)
+async def import_pdf(
+    file: UploadFile = File(...),
+    max_pages: int = Query(MAX_PAGES, ge=1, le=200),
+    db_path: str = Depends(_db_path),
+) -> PdfImportResponse:
+    """Extract chess diagrams from a PDF via chessvision.ai."""
+    import_id = str(uuid.uuid4())
+    filename = file.filename or "unknown.pdf"
+
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=400, detail="Empty file")
 
     try:
-        result = await _parse_pdf(content)
+        pages = convert_from_bytes(
+            pdf_bytes, dpi=DPI, first_page=1, last_page=max_pages
+        )
     except Exception as exc:
-        _log.exception("PDF ingest %s failed", ingest_id)
-        return {
-            "ingest_id": ingest_id,
-            "filename": file.filename or "unknown.pdf",
-            "page_count": 0,
-            "diagrams_detected": 0,
-            "diagrams_valid": 0,
-            "diagrams": [],
-            "errors": [f"Parsing failed: {exc}"],
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        }
+        raise HTTPException(status_code=422, detail=f"PDF conversion failed: {exc}")
 
-    completed_at = datetime.now(timezone.utc)
-    return {
-        "ingest_id": ingest_id,
-        "filename": file.filename or "unknown.pdf",
-        "page_count": result["page_count"],
-        "diagrams_detected": result["diagrams_detected"],
-        "diagrams_valid": result["diagrams_valid"],
-        "diagrams": result["diagrams"],
-        "errors": result["errors"],
-        "completed_at": completed_at.isoformat(),
-    }
+    logger.info("pdf_import %s: %d pages from %s", import_id, len(pages), filename)
+
+    results: list[DiagramResult] = []
+    valid_diagrams: list[tuple[int, str]] = []
+
+    for page_num, page_img in enumerate(pages, 1):
+        buf = io.BytesIO()
+        page_img.save(buf, format="PNG")
+
+        fen, confidence, error = await _predict_fen(buf.getvalue())
+        valid = _validate_fen(fen)
+
+        results.append(DiagramResult(
+            page=page_num,
+            fen=fen,
+            valid=valid,
+            confidence=confidence if valid else 0.0,
+            issue=error if not valid else None,
+        ))
+
+        if valid and fen:
+            valid_diagrams.append((page_num, fen))
+            logger.info("page %d: valid FEN %s", page_num, fen[:50])
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """INSERT INTO pdf_imports
+               (id, filename, page_count, diagrams_found, diagrams_valid,
+                errors_json, completed_at, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                import_id,
+                filename,
+                len(pages),
+                len(valid_diagrams),
+                len(valid_diagrams),
+                json.dumps([r.issue for r in results if r.issue]),
+                now,
+                now,
+            ),
+        )
+        for page_num, fen in valid_diagrams:
+            await db.execute(
+                """INSERT INTO pdf_import_diagrams
+                   (id, ingest_id, page_number, diagram_index, fen,
+                    valid, confidence, issues_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()),
+                    import_id,
+                    page_num,
+                    0,
+                    fen,
+                    1,
+                    0.9,
+                    json.dumps([]),
+                    now,
+                ),
+            )
+        await db.commit()
+
+    return PdfImportResponse(
+        import_id=import_id,
+        filename=filename,
+        pages_processed=len(pages),
+        diagrams_found=len(valid_diagrams),
+        diagrams_valid=len(valid_diagrams),
+        results=results,
+    )
