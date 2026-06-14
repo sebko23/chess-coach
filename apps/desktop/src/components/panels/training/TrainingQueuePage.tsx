@@ -41,6 +41,18 @@ interface QueueResponse {
   cards: CardData[];
 }
 
+interface DayPlanCard {
+  id: string;
+  card_type: "position" | "opening_gap" | "concept";
+  reference_id: string;
+  priority_score: number;
+  difficulty: number;
+  stability: number;
+  reviews: number;
+  is_new: boolean;
+  due: string;
+}
+
 interface DayPlan {
   day: number;
   date: string;
@@ -48,6 +60,7 @@ interface DayPlan {
   new_cards: number;
   review_cards: number;
   card_type_breakdown: Record<string, number>;
+  cards: DayPlanCard[];
 }
 
 
