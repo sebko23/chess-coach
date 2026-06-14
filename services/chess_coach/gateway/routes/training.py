@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Request
+from ..route_guard import route_guard
 from pydantic import BaseModel, Field
 
 from chess_coach.errors.codes import ErrorCode
@@ -96,6 +97,7 @@ def _fsrs_next(
 # ── Routes ─────────────────────────────────────────────────────────────
 
 @router.get("/v1/training/queue/{player}", response_model=QueueResponse)
+@route_guard
 async def get_queue(player: str, request: Request, limit: int = 20):
     """Return up to limit due training cards for player.
     When player='default' (no specific player on the Windows host),
@@ -183,6 +185,7 @@ async def review_card(card_id: str, body: ReviewRequest, request: Request):
 
 
 @router.post("/v1/training/seed-from-blunders")
+@route_guard
 async def seed_from_blunders(body: SeedRequest, request: Request):
     """Create training cards from blunder positions."""
     settings = request.app.state.gateway.settings

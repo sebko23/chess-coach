@@ -64,9 +64,9 @@ async def get_repertoire_gaps(player: str, request: Request, color: str = "white
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
-        cur = await db.execute("SELECT fen, ply FROM positions WHERE ply BETWEEN 8 AND 12 LIMIT 20")
+        cur = await db.execute("SELECT fen, ply, move_san FROM positions WHERE ply BETWEEN 8 AND 12 LIMIT 20")
         rows = await cur.fetchall()
-    return [GapItem(fen=r["fen"], ply=r["ply"]) for r in rows]
+    return [GapItem(fen=r["fen"], ply=r["ply"], move_san=r["move_san"]) for r in rows]
 
 
 @router.get("/v1/repertoire/{player}/novelties", response_model=list[NoveltyItem])
