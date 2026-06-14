@@ -62,7 +62,7 @@ export function SideBar() {
   const { t } = useTranslation();
 
   const links = linksdata.map((link) => (
-    <NavbarLink {...link} label={t(`SideBar.${link.label}`)} key={link.label} />
+    <NavbarLink {...link} label={link.label === 'Coach' ? 'Coach' : t(`SideBar.${link.label}`)} key={link.label} />
   ));
 
   return (
