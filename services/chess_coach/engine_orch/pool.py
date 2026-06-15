@@ -24,6 +24,8 @@ class EngineSpec:
     engine_id: str
     path: str  # absolute path on the backend host
     extra_args: list[str] = field(default_factory=list)
+    skip_options: set[str] = field(default_factory=set)
+    skip_options: set[str] = field(default_factory=set)
 
 
 class EnginePool:
@@ -166,7 +168,12 @@ class EnginePool:
                 await engine.start(options=options)
                 self._engines[spec.engine_id] = engine
             else:
-                await engine.set_options(options)
+                # Filter out options that the engine doesn't support
+                filtered_options = {k: v for k, v in options.items() if k not in spec.skip_options}
+                try:
+                    await engine.set_options(filtered_options)
+                except Exception as e:
+                    logger.warning(f"set_options failed for {spec.engine_id}: {e}")
             return engine
 
     async def _release(self, engine: UCIEngine, engine_id: str) -> None:

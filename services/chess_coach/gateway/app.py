@@ -124,9 +124,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 engine_id="maia",
                 path=maia_path,
                 extra_args=[
+                    "classic",
                     f"--weights={maia_weights}",
                     "--backend=blas",
                 ],
+                skip_options={"Hash", "Threads"},
             ))
 
         engine_pool = EnginePool(specs, max_workers=1)

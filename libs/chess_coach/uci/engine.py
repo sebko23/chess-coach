@@ -31,7 +31,7 @@ _RE_INFO = re.compile(
     depth\s+(?P<depth>\d+)
     (?:\s+seldepth\s+(?P<seldepth>\d+))?
     (?:\s+multipv\s+(?P<multipv>\d+))?
-    (?:\s+score\s+(?P<score_kind>cp|mate)\s+(?P<score_value>-?\d+))?
+    (?:\s+score\s+(?P<score_kind>cp|mate|q)\s+(?P<score_value>-?\d+))?
     (?:\s+nodes\s+(?P<nodes>\d+))?
     (?:\s+nps\s+(?P<nps>\d+))?
     (?:\s+hashfull\s+\d+)?
@@ -102,7 +102,11 @@ class UCIEngine:
                 break
         self._version = self._name  # we can refine later
         logger.info("uci: engine %s ready (uciok)", self.engine_id)
-        await self.set_options(options or {})
+        # Set options, ignoring errors for engines that don't recognize them
+        try:
+            await self.set_options(options or {})
+        except Exception:
+            pass
         await self._send("isready")
         await self._expect("readyok")
 
@@ -126,7 +130,10 @@ class UCIEngine:
         for name, value in options.items():
             if isinstance(value, bool):
                 value = "true" if value else "false"
-            await self._send(f"setoption name {name} value {value}")
+            try:
+                await self._send(f"setoption name {name} value {value}")
+            except Exception:
+                pass  # ignore option errors (e.g., lc0 may not recognize all options)
 
     async def position(
         self, *, fen: str | None = None, moves: list[str] | None = None
@@ -218,6 +225,8 @@ class UCIEngine:
                 return
             if line.startswith("info "):
                 continue  # skip info lines (e.g. "info string Using 1 thread")
+            if line.startswith("error "):
+                continue  # skip error lines (e.g. "error Unknown option: Hash")
             logger.warning("uci: expected %r, got unexpected %r", expected, line)
 
 
