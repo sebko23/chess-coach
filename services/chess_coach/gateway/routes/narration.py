@@ -86,7 +86,8 @@ async def explain_position(
             game_phase=body.game_phase,
             context=prompt_context,
         )
-        grounded = True
+        # Template fallback prefix from pipeline._template_fallback()
+        grounded = not text.startswith("Stockfish evaluates this position as")
     except Exception as exc:
         logger.warning("narration pipeline failed for fen=%s: %s", body.fen[:20], exc)
         text = f"Position after {body.move_san or 'the last move'}. Evaluation: {body.eval_cp or 0} centipawns."
