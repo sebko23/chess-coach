@@ -156,7 +156,8 @@ function PVLine({
   );
 }
 /** Strip citation tags from narration text for clean display. */
-function renderNarration(text: string): string {
+function renderNarration(text: string | undefined): string {
+  if (!text) return "";
   return text
     .replace(/<move>([^<]+)<\/move>/g, '$1')
     .replace(/<eval>([^<]+)<\/eval>/g, '$1')

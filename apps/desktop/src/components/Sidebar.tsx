@@ -10,6 +10,7 @@ import {
   IconBinaryTree,
   IconBooks,
   IconCloudDownload, IconSettings,
+  IconTarget,
   IconUser,
 } from "@tabler/icons-react";
 import { Link, useMatchRoute } from "@tanstack/react-router";
@@ -43,6 +44,7 @@ function NavbarLink({ url, icon: Icon, label }: NavbarLinkProps) {
 const linksdata = [
   { icon: IconChess, label: "Board", url: "/" },
   { icon: IconBrain, label: "Coach", url: "/coach" },
+  { icon: IconTarget, label: "Practice", url: "/practice" },
   { icon: IconUser, label: "Profile", url: "/profile" },
   { icon: IconList, label: "Games", url: "/games" },
   { icon: IconBinaryTree, label: "Repertoire", url: "/repertoire" },

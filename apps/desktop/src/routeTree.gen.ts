@@ -13,6 +13,7 @@ import { Route as TrainingRouteImport } from './routes/training'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RepertoireRouteImport } from './routes/repertoire'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as PdfRouteImport } from './routes/pdf'
 import { Route as LichessRouteImport } from './routes/lichess'
 import { Route as GamesRouteImport } from './routes/games'
@@ -43,6 +44,11 @@ const RepertoireRoute = RepertoireRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PracticeRoute = PracticeRouteImport.update({
+  id: '/practice',
+  path: '/practice',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PdfRoute = PdfRouteImport.update({
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/games': typeof GamesRouteWithChildren
   '/lichess': typeof LichessRoute
   '/pdf': typeof PdfRoute
+  '/practice': typeof PracticeRoute
   '/profile': typeof ProfileRoute
   '/repertoire': typeof RepertoireRoute
   '/settings': typeof SettingsRoute
@@ -127,6 +134,7 @@ export interface FileRoutesByTo {
   '/games': typeof GamesRouteWithChildren
   '/lichess': typeof LichessRoute
   '/pdf': typeof PdfRoute
+  '/practice': typeof PracticeRoute
   '/profile': typeof ProfileRoute
   '/repertoire': typeof RepertoireRoute
   '/settings': typeof SettingsRoute
@@ -145,6 +153,7 @@ export interface FileRoutesById {
   '/games': typeof GamesRouteWithChildren
   '/lichess': typeof LichessRoute
   '/pdf': typeof PdfRoute
+  '/practice': typeof PracticeRoute
   '/profile': typeof ProfileRoute
   '/repertoire': typeof RepertoireRoute
   '/settings': typeof SettingsRoute
@@ -164,6 +173,7 @@ export interface FileRouteTypes {
     | '/games'
     | '/lichess'
     | '/pdf'
+    | '/practice'
     | '/profile'
     | '/repertoire'
     | '/settings'
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/games'
     | '/lichess'
     | '/pdf'
+    | '/practice'
     | '/profile'
     | '/repertoire'
     | '/settings'
@@ -198,6 +209,7 @@ export interface FileRouteTypes {
     | '/games'
     | '/lichess'
     | '/pdf'
+    | '/practice'
     | '/profile'
     | '/repertoire'
     | '/settings'
@@ -216,6 +228,7 @@ export interface RootRouteChildren {
   GamesRoute: typeof GamesRouteWithChildren
   LichessRoute: typeof LichessRoute
   PdfRoute: typeof PdfRoute
+  PracticeRoute: typeof PracticeRoute
   ProfileRoute: typeof ProfileRoute
   RepertoireRoute: typeof RepertoireRoute
   SettingsRoute: typeof SettingsRoute
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/practice': {
+      id: '/practice'
+      path: '/practice'
+      fullPath: '/practice'
+      preLoaderRoute: typeof PracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pdf': {
@@ -353,6 +373,7 @@ const rootRouteChildren: RootRouteChildren = {
   GamesRoute: GamesRouteWithChildren,
   LichessRoute: LichessRoute,
   PdfRoute: PdfRoute,
+  PracticeRoute: PracticeRoute,
   ProfileRoute: ProfileRoute,
   RepertoireRoute: RepertoireRoute,
   SettingsRoute: SettingsRoute,
