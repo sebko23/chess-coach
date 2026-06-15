@@ -233,25 +233,54 @@ class UCIEngine:
 # ── private helpers ────────────────────────────────────────────────────────
 
 
-def _parse_info(line: str) -> InfoEvent | None:
-    """Parse a single ``info ...`` line into an ``InfoEvent``."""
-    m = _RE_INFO.search(line)
-    if not m:
+def _parse_info(text: str) -> "InfoEvent | None":
+    """Parse one ``info ...`` line into an InfoEvent.
+
+    Uses a token-based parser that handles fields in any order.
+    Stockfish and lc0 emit fields in different sequences; the old
+    regex was order-dependent and missed lc0's score/pv fields.
+    """
+    parts = text.split()
+    if not parts or parts[0] != "info":
         return None
-    score = None
-    if m.group("score_kind") and m.group("score_value") is not None:
-        score = Score(kind=m.group("score_kind"), value=int(m.group("score_value")))
-    pv_str = m.group("pv")
-    pv = pv_str.split() if pv_str else []
+    fields: dict = {}
+    i = 1
+    while i < len(parts):
+        tok = parts[i]
+        if tok == "depth" and i + 1 < len(parts):
+            fields["depth"] = int(parts[i + 1]); i += 2
+        elif tok == "seldepth" and i + 1 < len(parts):
+            fields["seldepth"] = int(parts[i + 1]); i += 2
+        elif tok == "multipv" and i + 1 < len(parts):
+            fields["multipv"] = int(parts[i + 1]); i += 2
+        elif tok == "score" and i + 2 < len(parts):
+            fields["score"] = Score(kind=parts[i + 1], value=int(parts[i + 2])); i += 3
+        elif tok == "nodes" and i + 1 < len(parts):
+            fields["nodes"] = int(parts[i + 1]); i += 2
+        elif tok == "nps" and i + 1 < len(parts):
+            fields["nps"] = int(parts[i + 1]); i += 2
+        elif tok == "time" and i + 1 < len(parts):
+            fields["time_ms"] = int(parts[i + 1]); i += 2
+        elif tok in ("hashfull", "tbhits", "currmove", "currmovenumber",
+                     "cpuload", "refutation", "currline") and i + 1 < len(parts):
+            i += 2  # consume and ignore
+        elif tok == "pv":
+            fields["pv"] = parts[i + 1:]; i = len(parts)
+        elif tok == "string":
+            i = len(parts)  # rest is a display string, ignore
+        else:
+            i += 1
+    if "depth" not in fields:
+        return None
     return InfoEvent(
-        depth=int(m.group("depth")),
-        multipv=int(m.group("multipv")) if m.group("multipv") else 1,
-        seldepth=int(m.group("seldepth")) if m.group("seldepth") else None,
-        score=score,
-        nodes=int(m.group("nodes")) if m.group("nodes") else None,
-        nps=int(m.group("nps")) if m.group("nps") else None,
-        time_ms=int(m.group("time")) if m.group("time") else None,
-        pv=pv,
+        depth=fields["depth"],
+        multipv=fields.get("multipv", 1),
+        seldepth=fields.get("seldepth"),
+        score=fields.get("score"),
+        nodes=fields.get("nodes"),
+        nps=fields.get("nps"),
+        time_ms=fields.get("time_ms"),
+        pv=fields.get("pv", []),
     )
 
 

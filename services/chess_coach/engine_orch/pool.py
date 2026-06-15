@@ -24,6 +24,7 @@ class EngineSpec:
     engine_id: str
     path: str  # absolute path on the backend host
     extra_args: list[str] = field(default_factory=list)
+    skip_options: frozenset[str] = frozenset()
     skip_options: set[str] = field(default_factory=set)
     skip_options: set[str] = field(default_factory=set)
 
@@ -77,8 +78,11 @@ class EnginePool:
         multipv = req.multipv
         options = dict(req.options)
         # ensure sensible defaults
-        options.setdefault("Threads", self._default_threads)
-        options.setdefault("Hash", self._default_hash_mb)
+        skip = getattr(spec, "skip_options", frozenset())
+        if "Threads" not in skip:
+            options.setdefault("Threads", self._default_threads)
+        if "Hash" not in skip:
+            options.setdefault("Hash", self._default_hash_mb)
         if multipv > 1:
             options["MultiPV"] = multipv
 
@@ -87,7 +91,8 @@ class EnginePool:
             try:
                 await engine.position(fen=req.fen)
                 pvs_dict: dict[int, PVLine] = {}
-                async for ev in engine.go(depth=depth):
+                use_nodes = spec.path.endswith("lc0") or any("lc0" in a for a in spec.extra_args)
+                async for ev in engine.go(depth=None if use_nodes else depth, nodes=1 if use_nodes else None):
                     if ev.score is not None and ev.pv:
                         pv = PVLine(
                             multipv=ev.multipv,
@@ -119,7 +124,7 @@ class EnginePool:
                     multipv=multipv,
                     settings_hash=settings_hash,
                     cpu_arch=self._cpu_arch,
-                    thread_count=options["Threads"],
+                    thread_count=options.get("Threads", self._default_threads),
                     pvs=pvs,
                 )
             finally:
