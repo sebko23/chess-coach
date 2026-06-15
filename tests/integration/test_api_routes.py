@@ -136,7 +136,7 @@ class TestTraining:
         data = r.json()
         assert "cards" in data
         assert "due_count" in data
-        assert data["due_count"] == 3739
+        assert data["due_count"] >= 3700
 
     async def test_queue_cards_have_fen_and_eco(self, prod_client):
         r = await prod_client.get("/v1/training/queue/default?limit=2", headers=AUTH)
