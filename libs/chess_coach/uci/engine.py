@@ -62,10 +62,11 @@ class InfoEvent:
 class UCIEngine:
     """Asynchronous UCI protocol client wrapping a single subprocess."""
 
-    def __init__(self, binary: str, engine_id: str | None = None) -> None:
+    def __init__(self, binary: str, engine_id: str | None = None, extra_args: list[str] | None = None) -> None:
         self.binary: str = binary
         self.engine_id: str = engine_id or binary
         self._proc: asyncio.subprocess.Process | None = None
+        self.extra_args: list[str] = extra_args or []
         self._name: str = ""
         self._author: str = ""
         self._version: str = ""
@@ -81,6 +82,7 @@ class UCIEngine:
             return
         self._proc = await asyncio.create_subprocess_exec(
             self.binary,
+            *self.extra_args,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

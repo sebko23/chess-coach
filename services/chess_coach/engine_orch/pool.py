@@ -9,7 +9,7 @@ import asyncio
 import hashlib
 import logging
 import platform
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from chess_coach.protocol_types.analysis import AnalysisRequest, AnalysisResult, PVLine
 from chess_coach.uci.engine import UCIEngine, InfoEvent
@@ -23,6 +23,7 @@ class EngineSpec:
 
     engine_id: str
     path: str  # absolute path on the backend host
+    extra_args: list[str] = field(default_factory=list)
 
 
 class EnginePool:
@@ -161,7 +162,7 @@ class EnginePool:
         async with self._locks[spec.engine_id]:
             engine = self._engines.get(spec.engine_id)
             if engine is None or engine._proc is None:
-                engine = UCIEngine(spec.path, engine_id=spec.engine_id)
+                engine = UCIEngine(spec.path, engine_id=spec.engine_id, extra_args=spec.extra_args)
                 await engine.start(options=options)
                 self._engines[spec.engine_id] = engine
             else:

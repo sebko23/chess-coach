@@ -113,15 +113,32 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         stockfish_path = '/usr/local/bin/stockfish'
         if not pathlib.Path(stockfish_path).exists():
             stockfish_path = 'stockfish'  # fallback to PATH
-        engine_pool = EnginePool(
-            [EngineSpec(engine_id="stockfish", path=stockfish_path)],
-            max_workers=1,
-        )
+        maia_path = '/a0/usr/projects/chess_coach/data/engines/lc0'
+        maia_weights = '/a0/usr/projects/chess_coach/data/engines/maia-1500.pb'
+        import pathlib as _pathlib
+        maia_available = _pathlib.Path(maia_path).exists() and _pathlib.Path(maia_weights).exists()
+
+        specs = [EngineSpec(engine_id="stockfish", path=stockfish_path)]
+        if maia_available:
+            specs.append(EngineSpec(
+                engine_id="maia",
+                path=maia_path,
+                extra_args=[
+                    f"--weights={maia_weights}",
+                    "--backend=blas",
+                ],
+            ))
+
+        engine_pool = EnginePool(specs, max_workers=1)
         app.state.engine_pool = engine_pool  # type: ignore[attr-defined]
         await engine_pool._acquire(  # type: ignore[attr-defined]
             EngineSpec(engine_id="stockfish", path=stockfish_path), {}
         )
-        logger.info("gateway.startup: engine pool ready (stockfish=%s)", stockfish_path)
+        logger.info(
+            "gateway.startup: engine pool ready (stockfish=%s, maia=%s)",
+            stockfish_path,
+            "yes" if maia_available else "no",
+        )
     else:
         engine_pool = app.state.engine_pool  # type: ignore[attr-defined]
         logger.info("gateway.startup: engine pool pre-injected, skipping auto-init")
