@@ -15,7 +15,6 @@ from .validator import validate_citations
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
 
-
 def _template_fallback(result: AnalysisResult) -> str:
     if not result.pvs:
         return "No analysis lines available."
@@ -110,3 +109,44 @@ class NarrationPipeline:
 
         logger.warning("%d attempts exhausted — returning template fallback", MAX_ATTEMPTS)
         return _template_fallback(result)
+
+    async def explain_simple(
+        self,
+        fen: str,
+        move_san: str | None = None,
+        eval_cp: int | None = None,
+        game_phase: str | None = None,
+        context: str | None = None,
+    ) -> str:
+        """Convenience wrapper for the route handler.
+
+        Builds a minimal AnalysisResult from simple user inputs and
+        delegates to the full explain() pipeline with LLM + validation.
+        """
+        from chess_coach.protocol_types.analysis import PVLine, Score
+
+        pvs = []
+        if eval_cp is not None:
+            pvs.append(PVLine(
+                multipv=1,
+                score=Score(kind="cp", value=eval_cp),
+                depth=1,
+                moves=[],
+                nodes=0,
+                time_ms=0,
+                nps=None,
+            ))
+
+        result = AnalysisResult(
+            engine_id="user-request",
+            engine_version="n/a",
+            fen=fen,
+            depth_reached=1,
+            multipv=1,
+            settings_hash="",
+            cpu_arch="unknown",
+            thread_count=1,
+            pvs=pvs,
+        )
+        return await self.explain(result)
+

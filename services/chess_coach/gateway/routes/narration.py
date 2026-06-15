@@ -79,8 +79,11 @@ async def explain_position(
 
     # Call narration pipeline
     try:
-        text = await pipeline.explain(
+        text = await pipeline.explain_simple(
             fen=body.fen,
+            move_san=body.move_san,
+            eval_cp=body.eval_cp,
+            game_phase=body.game_phase,
             context=prompt_context,
         )
         grounded = True
