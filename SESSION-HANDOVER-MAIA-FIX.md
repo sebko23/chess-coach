@@ -124,3 +124,4 @@ fix(maia): skip Hash/Threads for lc0 + go nodes 1 for policy nets
 - Use 'go nodes 1' for lc0/Maia engines (fixed policy network)
 - Resolves lc0 'error Unknown option' and readyok hang
 ```
+RESOLVED — HTTP 200, commit 5c05764
