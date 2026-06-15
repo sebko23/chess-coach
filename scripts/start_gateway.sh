@@ -13,7 +13,7 @@ echo "   Done."
 
 
 echo "2. Starting gateway..."
-fuser -k 18080/tcp 2>/dev/null || true
+command -v fuser && fuser -k 18080/tcp || pkill -f "uvicorn.*18080" 2>/dev/null 2>/dev/null || true
 sleep 1
 nohup /opt/venv/bin/chess-coach-gateway >> /tmp/gateway.log 2>&1 &
 sleep 4
