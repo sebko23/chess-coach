@@ -13,6 +13,9 @@ ADR-0001: one event loop. ADR-0002: typed exceptions only.
 """
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import contextlib
 import logging
 import pathlib

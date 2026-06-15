@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 from openai import AsyncOpenAI
 from .config import (
-    OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     PRIMARY_MODEL,
     FALLBACK_MODEL,
     PRIMARY_TIMEOUT,
     FALLBACK_TIMEOUT,
+    get_api_key,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,13 +35,13 @@ class LLMRouter:
     async def _get_client(self) -> AsyncOpenAI:
         if self._client is not None:
             return self._client
-        if not OPENROUTER_API_KEY:
+        if not get_api_key():
             raise LLMUnavailableError(
                 "OPENROUTER_API_KEY is not set. Set the environment variable "
                 "or add it to .env at the project root."
             )
         self._client = AsyncOpenAI(
-            api_key=OPENROUTER_API_KEY,
+            api_key=get_api_key(),
             base_url=OPENROUTER_BASE_URL,
             timeout=PRIMARY_TIMEOUT,
         )
