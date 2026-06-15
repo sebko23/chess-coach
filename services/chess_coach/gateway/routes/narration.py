@@ -1,74 +1,115 @@
-"""Route — POST /v1/narration/explain.
+"""Narration route — LLM-grounded coaching commentary.
 
-Uses FastAPI dependency injection for the engine pool and narration pipeline
-so that route handlers are testable without module-level patching.
+POST /v1/narration/explain
+Accepts a FEN + optional context (move, eval, game phase) and returns
+grounded coaching prose via the narration pipeline.
+Stores each narration in the narrations table for audit/replay.
 """
 from __future__ import annotations
+
+import logging
+import uuid
+from datetime import datetime, timezone
+
+import aiosqlite
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel
 
-from chess_coach.protocol_types.narration import NarrationRequest, NarrationResponse
-from chess_coach.narration import NarrationPipeline
-from chess_coach.engine_orch.pool import EnginePool, AnalysisRequest
-from chess_coach.gateway.auth import require_bearer
+from ..auth import require_bearer
+from ..route_guard import route_guard
 
-router = APIRouter(tags=["narration"], dependencies=[Depends(require_bearer)])
-
-
-async def _get_engine_pool(request: Request) -> EnginePool:
-    """Dependency: retrieve the engine pool from app state."""
-    pool = request.app.state.engine_pool  # type: ignore[attr-defined]
-    if pool is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="Engine pool not ready")
-    return pool
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/v1/narration", tags=["narration"])
 
 
-async def _get_narration_pipeline(request: Request) -> NarrationPipeline:
-    """Dependency: retrieve the narration pipeline from app state."""
-    pipeline = getattr(request.app.state, "narration_pipeline", None)
-    if pipeline is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=503, detail="Narration pipeline not ready")
-    return pipeline
+def _db_path(request: Request) -> str:
+    return str(request.app.state.gateway.settings.sqlite_path)
 
 
-@router.post("/v1/narration/explain", response_model=NarrationResponse)
+def _pipeline(request: Request):
+    return request.app.state.narration_pipeline
+
+
+class NarrationRequest(BaseModel):
+    fen: str
+    move_san: str | None = None
+    move_uci: str | None = None
+    eval_cp: int | None = None
+    game_phase: str | None = None  # "opening" | "middlegame" | "endgame"
+    player_name: str | None = None
+    context: str | None = None  # free-form extra context
+
+
+class NarrationResponse(BaseModel):
+    narration_id: str
+    fen: str
+    text: str
+    grounded: bool
+    created_at: str
+
+
+@router.post(
+    "/explain",
+    response_model=NarrationResponse,
+    dependencies=[Depends(require_bearer)],
+)
+@route_guard
 async def explain_position(
     body: NarrationRequest,
-    engine_pool: EnginePool = Depends(_get_engine_pool),
-    narration_pipeline: NarrationPipeline = Depends(_get_narration_pipeline),
+    db_path: str = Depends(_db_path),
+    pipeline=Depends(_pipeline),
 ) -> NarrationResponse:
-    """Analyse a position and return grounded coaching narration."""
-    result = await engine_pool.analyze(
-        AnalysisRequest(
-            fen=body.fen,
-            depth=body.depth,
-            multipv=body.multipv,
-        ),
-        engine_id=body.engine_id,
-    )
-    narration = await narration_pipeline.explain(result)
+    """Generate grounded coaching commentary for a chess position."""
+    narration_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
 
-    # Build compact response for the frontend
-    best_pv = result.pvs[0]
-    if best_pv.score.kind == "mate":
-        score_display = f"mate in {best_pv.score.value}"
-    else:
-        score_display = f"{best_pv.score.value / 100:+.2f}"
+    # Build prompt context
+    context_parts = []
+    if body.move_san:
+        context_parts.append(f"Move played: {body.move_san}")
+    if body.eval_cp is not None:
+        side = "+" if body.eval_cp >= 0 else ""
+        context_parts.append(f"Evaluation: {side}{body.eval_cp/100:.2f}")
+    if body.game_phase:
+        context_parts.append(f"Phase: {body.game_phase}")
+    if body.context:
+        context_parts.append(body.context)
 
-    # Convert best move to SAN for display
+    prompt_context = " | ".join(context_parts) if context_parts else "No additional context."
+
+    # Call narration pipeline
     try:
-        import chess
-        board = chess.Board(result.fen)
-        best_move_san = board.san(chess.Move.from_uci(best_pv.moves[0]))
-    except Exception:
-        best_move_san = best_pv.moves[0]  # fallback to UCI
+        text = await pipeline.explain(
+            fen=body.fen,
+            context=prompt_context,
+        )
+        grounded = True
+    except Exception as exc:
+        logger.warning("narration pipeline failed for fen=%s: %s", body.fen[:20], exc)
+        text = f"Position after {body.move_san or 'the last move'}. Evaluation: {body.eval_cp or 0} centipawns."
+        grounded = False
+
+    # Store in narrations table
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """INSERT INTO narrations
+               (id, position_id, model, narration, validated, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                narration_id,
+                body.fen,
+                "narration-r1",  # model identifier, configurable later
+                text,
+                1 if grounded else 0,
+                now,
+            ),
+        )
+        await db.commit()
 
     return NarrationResponse(
-        fen=result.fen,
-        narration=narration,
-        depth_reached=result.depth_reached,
-        best_move=best_move_san,
-        score_display=score_display,
-        pv_moves=best_pv.moves,
+        narration_id=narration_id,
+        fen=body.fen,
+        text=text,
+        grounded=grounded,
+        created_at=now,
     )
