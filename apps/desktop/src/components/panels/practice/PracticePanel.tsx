@@ -6,6 +6,7 @@ import {
   Card,
   Divider,
   Group,
+  Loader,
   Modal,
   Paper,
   Progress,
@@ -131,6 +132,64 @@ function PracticePanel() {
   const [sessionStats, setSessionStats] = useAtom(practiceSessionStatsAtom);
   const setCardStartTime = useSetAtom(practiceCardStartTimeAtom);
   const practiceAutoDifficulty = useAtomValue(practiceAutoDifficultyAtom);
+
+  // Local narration state for blunder review (transient per-card)
+  const [blunderNarration, setBlunderNarration] = useState<string | null>(null);
+  const [blunderNarrationLoading, setBlunderNarrationLoading] = useState(false);
+  const [blunderNarrationError, setBlunderNarrationError] = useState<string | null>(null);
+
+  // Narration fetch effect: fires when user makes a wrong move
+  useEffect(() => {
+    if (practiceState.phase !== "incorrect") {
+      setBlunderNarration(null);
+      setBlunderNarrationError(null);
+      return;
+    }
+    if (!practiceState.currentFen || !practiceState.playedMove || !practiceState.answer) {
+      return;
+    }
+
+    // Read backend URL + token from localStorage (descriptor set by start_gateway.sh)
+    const descriptorRaw = localStorage.getItem("backend-descriptor");
+    if (!descriptorRaw) {
+      // Fallback: read individual atoms via default backend
+      setBlunderNarrationError("Backend descriptor not loaded");
+      return;
+    }
+    let descriptor;
+    try {
+      descriptor = JSON.parse(descriptorRaw);
+    } catch {
+      setBlunderNarrationError("Invalid backend descriptor");
+      return;
+    }
+    const baseUrl = `http://${descriptor.host}:${descriptor.port}`;
+    const token = descriptor.session_token;
+
+    setBlunderNarrationLoading(true);
+    setBlunderNarrationError(null);
+
+    fetch(`${baseUrl}/v1/narration/explain`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        fen: practiceState.currentFen,
+        move_san: practiceState.playedMove,
+        game_phase: "opening",
+        context: `Blunder review: the user played ${practiceState.playedMove} but the correct move was ${practiceState.answer}. Explain why the played move was a mistake.`,
+      }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.text) setBlunderNarration(d.text);
+        else setBlunderNarrationError("No narration in response");
+      })
+      .catch((e) => setBlunderNarrationError(String(e)))
+      .finally(() => setBlunderNarrationLoading(false));
+  }, [practiceState.phase, practiceState.currentFen, practiceState.playedMove, practiceState.answer]);
 
   const newPractice = useCallback(
     (stats?: Partial<PracticeSessionStats>) => {
@@ -599,6 +658,20 @@ function PracticePanel() {
                           move: practiceState.answer,
                         })}
                       </Text>
+                      {blunderNarrationLoading && <Loader size="sm" />}
+                      {blunderNarrationError && (
+                        <Text fz="xs" c="red">
+                          {blunderNarrationError}
+                        </Text>
+                      )}
+                      {blunderNarration && (
+                        <Text
+                          fz="sm"
+                          style={{ lineHeight: 1.6, whiteSpace: "pre-wrap", textAlign: "left" }}
+                        >
+                          {blunderNarration}
+                        </Text>
+                      )}
                       <Button variant="light" size="sm" onClick={skipCard}>
                         {t("Board.Practice.NextPosition")}
                       </Button>
