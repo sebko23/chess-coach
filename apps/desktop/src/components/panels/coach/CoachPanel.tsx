@@ -136,7 +136,7 @@ function PVLine({
   isBest = false,
 }: {
   score: string;
-  moves: string[];
+  moves: string[] | undefined;
   isBest?: boolean;
 }) {
   const theme = useMantineTheme();
@@ -150,7 +150,7 @@ function PVLine({
         {score}
       </Badge>
       <Text component="span" ff="monospace" size="sm">
-        {moves.slice(0, 8).join(" ")}
+        {(moves ?? []).slice(0, 8).join(" ")}
       </Text>
     </Group>
   );
