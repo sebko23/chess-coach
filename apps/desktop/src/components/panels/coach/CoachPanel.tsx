@@ -61,15 +61,36 @@ const ANALYSIS_DEPTH = 10;
 
 
 /**
+ * Derive the game phase from the current ply number.
+ * Matches the backend's `game_phase` enum in services/chess_coach/gateway/routes/narration.py:
+ *   "opening"   -> ply <= 20 (first 10 full moves)
+ *   "middlegame" -> ply <= 60 (moves 11..30)
+ *   "endgame"    -> ply > 60
+ */
+function deriveGamePhase(
+  ply: number,
+): "opening" | "middlegame" | "endgame" {
+  if (ply <= 20) return "opening";
+  if (ply <= 60) return "middlegame";
+  return "endgame";
+}
+
+/**
  * Fetch a grounded narration from the backend for the given position.
+ *
+ * The backend's /v1/narration/explain endpoint accepts only the position
+ * context (fen + move_san + eval_cp + game_phase) — it does NOT take engine
+ * config (depth/engine_id/multipv). Those fields are silently ignored by
+ * the Pydantic model and result in a generic fallback narration. See
+ * services/chess_coach/gateway/routes/narration.py for the contract.
  */
 async function fetchNarration(
   baseUrl: string,
   token: string,
   fen: string,
-  depth: number,
-  engineId: string,
-  multipv: number,
+  moveSan: string | null,
+  evalCp: number | null,
+  gamePhase: "opening" | "middlegame" | "endgame" | null,
 ): Promise<NarrationResult> {
   const resp = await fetch(`${baseUrl}/v1/narration/explain`, {
     method: "POST",
@@ -79,9 +100,9 @@ async function fetchNarration(
     },
     body: JSON.stringify({
       fen,
-      depth,
-      engine_id: engineId,
-      multipv,
+      move_san: moveSan,
+      eval_cp: evalCp,
+      game_phase: gamePhase,
     }),
   });
 
@@ -412,13 +433,22 @@ export default function CoachPanel() {
       setResult(null);
 
       const attemptFetch = async () => {
+        // Build grounded context from currently loaded eval-graph points.
+        // evalPoints / currentPly are in scope from the parent component;
+        // either may be absent if the eval fetch is still in flight, in
+        // which case we send nulls and the backend falls back to a generic
+        // narration for the FEN alone.
+        const pointAtPly = evalPoints.find((p) => p.ply === currentPly);
+        const moveSan = pointAtPly?.move_san ?? null;
+        const evalCp = pointAtPly ? pointAtPly.score_cp_white : null;
+        const gamePhase = currentPly > 0 ? deriveGamePhase(currentPly) : null;
         return fetchNarration(
           baseUrl,
           token,
           debouncedFen!,
-          ANALYSIS_DEPTH,
-          "stockfish",
-          1,
+          moveSan,
+          evalCp,
+          gamePhase,
         );
       };
       try {
