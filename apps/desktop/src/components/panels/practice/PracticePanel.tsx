@@ -1,3 +1,15 @@
+/**
+ * PracticePanel — card review UI for training
+ *
+ * IMPORTANT: The card deck is built from the CURRENTLY LOADED PGN TREE in the
+ * active tab, NOT from the SQLite `training_cards` table. If no PGN is loaded
+ * in the Practice tab, the deck is empty and the panel will show "UNSEEN: 1"
+ * with no progress — this is correct behavior, not a bug.
+ *
+ * Data flow: currentTab → getTabFile → deckAtomFamily → buildFromTree → positions
+ * See SESSION-HANDOVER-PRACTICE-DECK-SOURCE.md for full architecture details.
+ */
+
 import {
   ActionIcon,
   Alert,

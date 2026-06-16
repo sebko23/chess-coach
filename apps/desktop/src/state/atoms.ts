@@ -475,6 +475,15 @@ export type PracticeData = {
     logs: (ReviewLog & { fen: string })[];
 };
 
+/**
+ * deckAtomFamily — per-tab (file, game) deck storage backed by localStorage
+ *
+ * The Practice panel builds its deck from the PGN tree in the active tab,
+ * NOT from the SQLite `training_cards` table. Each (file, game) pair has its
+ * own deck, keyed by sessionStorage via the persist middleware.
+ *
+ * See SESSION-HANDOVER-PRACTICE-DECK-SOURCE.md for the full data flow.
+ */
 export const deckAtomFamily = atomFamily(
     ({ file, game }: { file: string; game: number }) =>
         atomWithStorage<PracticeData>(
