@@ -130,9 +130,11 @@ async function getEnginesStoragePath(key: string): Promise<string> {
 
 const enginesFileStorage: AsyncStringStorage = {
     async getItem(key) {
+        const path = await getEnginesStoragePath(key);
         try {
-            return await readTextFile(await getEnginesStoragePath(key));
-        } catch {
+            return await readTextFile(path);
+        } catch (e) {
+            console.error("[enginesFileStorage] getItem failed:", { key, path, error: e });
             return null;
         }
     },
