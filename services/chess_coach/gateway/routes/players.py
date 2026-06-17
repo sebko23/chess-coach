@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from chess_coach.gateway.auth import require_bearer
+from chess_coach.gateway.route_guard import route_guard
 
 router = APIRouter(tags=["players"], dependencies=[Depends(require_bearer)])
 
@@ -15,6 +16,7 @@ class PlayerListResponse(BaseModel):
 
 
 @router.get("/v1/players", response_model=PlayerListResponse)
+@route_guard
 async def list_players(request: Request):
     """Return all distinct player names from the games table."""
     settings = request.app.state.gateway.settings
