@@ -11,11 +11,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import aiosqlite
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from ..route_guard import route_guard
 from pydantic import BaseModel, Field
 
-from chess_coach.errors.codes import ErrorCode
+from chess_coach.errors.exceptions import NotFoundError
 from chess_coach.gateway.auth import require_bearer
 
 router = APIRouter(tags=["training"], dependencies=[Depends(require_bearer)])
@@ -167,9 +167,9 @@ async def review_card(card_id: str, body: ReviewRequest, request: Request):
         )
         row = await cur.fetchone()
         if not row:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": ErrorCode.NOT_FOUND.value, "message": f"Card {card_id} not found"},
+            raise NotFoundError(
+                message=f"Card {card_id} not found",
+                details={"card_id": card_id},
             )
         s, d, r, revs, _ = row["stability"], row["difficulty"], row["retrievability"], row["reviews"], row["lapses"]
         ns, nd, nr, ndue = _fsrs_next(body.rating, s, d, r, revs)
