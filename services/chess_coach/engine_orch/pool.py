@@ -24,8 +24,6 @@ class EngineSpec:
     engine_id: str
     path: str  # absolute path on the backend host
     extra_args: list[str] = field(default_factory=list)
-    skip_options: frozenset[str] = frozenset()
-    skip_options: set[str] = field(default_factory=set)
     skip_options: set[str] = field(default_factory=set)
 
 
