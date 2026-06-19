@@ -6,6 +6,7 @@ preserves system-prompt authority while giving the model direct recency-weight.
 """
 from __future__ import annotations
 import logging
+from dataclasses import dataclass
 
 from chess_coach.protocol_types.analysis import AnalysisResult
 from chess_coach.llm_router.router import LLMRouter, LLMUnavailableError
@@ -15,19 +16,40 @@ from .validator import validate_citations
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
 
-def _template_fallback(result: AnalysisResult) -> str:
+def _format_pv_fields(result: AnalysisResult) -> tuple[list[str], str]:
+    """Return (pv_moves, score_display) extracted from the first PV line."""
     if not result.pvs:
-        return "No analysis lines available."
+        return [], ""
     pv = result.pvs[0]
     if pv.score.kind == "mate":
         score_str = f"mate in {pv.score.value}"
     else:
         score_str = f"{pv.score.value / 100:+.2f}"
-    moves_str = " ".join(pv.moves[:6])
+    return list(pv.moves[:6]), score_str
+
+
+def _template_fallback(result: AnalysisResult) -> str:
+    if not result.pvs:
+        return "No analysis lines available."
+    moves, score = _format_pv_fields(result)
+    moves_str = " ".join(moves)
     return (
-        f"Stockfish evaluates this position as {score_str}."
+        f"Stockfish evaluates this position as {score}."
         f" The best continuation is {moves_str}."
     )
+
+
+@dataclass(frozen=True)
+class NarrationOutput:
+    """Structured result of a grounded narration.
+
+    text: LLM narration string (or template fallback if LLM failed).
+    pv_moves: principal variation moves in SAN, up to 6 plies.
+    score_display: formatted score ("+0.30", "mate in 3", or "").
+    """
+    text: str
+    pv_moves: list[str]
+    score_display: str
 
 
 def _build_correction_prompt(last_error: str) -> str:
@@ -117,7 +139,7 @@ class NarrationPipeline:
         eval_cp: int | None = None,
         game_phase: str | None = None,
         context: str | None = None,
-    ) -> str:
+    ) -> NarrationOutput:
         """Convenience wrapper for the route handler.
 
         Builds a minimal AnalysisResult from simple user inputs and
@@ -148,5 +170,7 @@ class NarrationPipeline:
             thread_count=1,
             pvs=pvs,
         )
-        return await self.explain(result)
+        text = await self.explain(result)
+        pv_moves, score_display = _format_pv_fields(result)
+        return NarrationOutput(text=text, pv_moves=pv_moves, score_display=score_display)
 

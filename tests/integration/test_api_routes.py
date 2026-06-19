@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 import pytest_asyncio
-from chess_coach.narration.pipeline import NarrationPipeline
+from chess_coach.narration.pipeline import NarrationPipeline, NarrationOutput
 from fastapi import FastAPI
 
 from chess_coach.gateway.auth import set_active_token
@@ -70,7 +70,13 @@ async def engine_client() -> httpx.AsyncClient:
     app.state.engine_pool = mock_pool
     from chess_coach.narration.pipeline import NarrationPipeline
     mock_pipeline = MagicMock(spec=NarrationPipeline)
-    mock_pipeline.explain_simple = AsyncMock(return_value="The position is equal. Standard opening principles apply.")
+    mock_pipeline.explain_simple = AsyncMock(
+        return_value=NarrationOutput(
+            text="The position is equal. Standard opening principles apply.",
+            pv_moves=[],
+            score_display="",
+        )
+    )
     app.state.narration_pipeline = mock_pipeline
     
     transport = httpx.ASGITransport(app=app)
@@ -90,6 +96,21 @@ class TestNarration:
             headers=AUTH,
         )
         assert r.status_code == 200
+
+    async def test_explain_includes_pv_and_score_fields(self, engine_client):
+        """Narration response includes pv_moves + score_display fields."""
+        r = await engine_client.post(
+            "/v1/narration/explain",
+            json={"fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                  "depth": 10, "engine_id": "stockfish", "multipv": 1},
+            headers=AUTH,
+        )
+        body = r.json()
+        assert r.status_code == 200
+        assert "pv_moves" in body
+        assert "score_display" in body
+        assert body["pv_moves"] == []
+        assert body["score_display"] == ""
 
     async def test_no_auth_returns_401(self, engine_client):
         r = await engine_client.post(

@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from ..auth import require_bearer
 from ..route_guard import route_guard
+from chess_coach.narration.pipeline import NarrationOutput
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/narration", tags=["narration"])
@@ -46,6 +47,8 @@ class NarrationResponse(BaseModel):
     text: str
     grounded: bool
     created_at: str
+    pv_moves: list[str] | None = None
+    score_display: str | None = None
 
 
 @router.post(
@@ -79,7 +82,7 @@ async def explain_position(
 
     # Call narration pipeline
     try:
-        text = await pipeline.explain_simple(
+        output = await pipeline.explain_simple(
             fen=body.fen,
             move_san=body.move_san,
             eval_cp=body.eval_cp,
@@ -87,10 +90,15 @@ async def explain_position(
             context=prompt_context,
         )
         # Template fallback prefix from pipeline._template_fallback()
-        grounded = not text.startswith("Stockfish evaluates this position as")
+        grounded = not output.text.startswith("Stockfish evaluates this position as")
     except Exception as exc:
         logger.warning("narration pipeline failed for fen=%s: %s", body.fen[:20], exc)
-        text = f"Position after {body.move_san or 'the last move'}. Evaluation: {body.eval_cp or 0} centipawns."
+        output = NarrationOutput(
+            text=f"Position after {body.move_san or 'the last move'}. "
+                 f"Evaluation: {body.eval_cp or 0} centipawns.",
+            pv_moves=[],
+            score_display="",
+        )
         grounded = False
 
     # Store in narrations table
@@ -103,7 +111,7 @@ async def explain_position(
                 narration_id,
                 body.fen,
                 "narration-r1",  # model identifier, configurable later
-                text,
+                output.text,
                 1 if grounded else 0,
                 now,
             ),
@@ -113,7 +121,9 @@ async def explain_position(
     return NarrationResponse(
         narration_id=narration_id,
         fen=body.fen,
-        text=text,
+        text=output.text,
         grounded=grounded,
         created_at=now,
+        pv_moves=output.pv_moves,
+        score_display=output.score_display,
     )
