@@ -70,7 +70,7 @@ async def engine_client() -> httpx.AsyncClient:
     app.state.engine_pool = mock_pool
     from chess_coach.narration.pipeline import NarrationPipeline
     mock_pipeline = MagicMock(spec=NarrationPipeline)
-    mock_pipeline.explain = AsyncMock(return_value="The position is equal. Standard opening principles apply.")
+    mock_pipeline.explain_simple = AsyncMock(return_value="The position is equal. Standard opening principles apply.")
     app.state.narration_pipeline = mock_pipeline
     
     transport = httpx.ASGITransport(app=app)
