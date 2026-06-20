@@ -247,6 +247,8 @@ Implemented as a P5 Saga (see `06_multi_agent/`):
   events.book.ingested (saga done)
 ```
 
+**Production path note (since 2026-06-14, `6635ffa`):** the diagram-extraction stage uses the chessvision.ai API as the production path (150 diagrams extracted at audit time per `docs/16_audit/project-audit-2026-06-14.md`). Local YOLOv8 + PaddleOCR retained as offline fallback and for `ocr_nearby_text` (move sequences, annotations).
+
 Feedback loop: user corrections in the manual-review queue are stored as labeled training data under `data/models/piece_classifier/training/`, enabling periodic re-training. Detailed in `02_modules/` § 6.
 
 ---
@@ -346,7 +348,7 @@ Full details in `08_security/`. Key points:
 
 - The Tauri shell (forked from en-croissant) is **GPL-3.0-only**.
 - Backend services run as **separate processes**, communicate only via documented HTTP/WS protocol, and have no GPL linkage. They are released under a license of the user's choosing (default suggestion: Apache-2.0).
-- This boundary is documented in `LICENSING.md` (to be authored at Phase 1 implementation start) and validated periodically.
+- Authoritative source for license terms: `LICENSING.md` (published 2026-05-18, ADR-0004). The boundary is validated periodically.
 - See `docs/research/en-croissant-analysis.md` for the upstream license analysis.
 
 ---
@@ -377,14 +379,14 @@ These are listed as Phase 9 candidates in `10_roadmap/`. The architecture does *
 
 ---
 
-## 18. Open decisions (carried to gate-0 review)
+## 18. Open decisions (carried to next gate review)
 
-0. **(BLOCKER) GPL license boundary** — external review (see `docs/13_review_response/`) found the original "separate process = clean boundary" analysis dangerously under-examined. Three viable paths: (a) license the entire stack GPL-3.0-only, (b) obtain a written legal opinion before backend code is written, (c) replace en-croissant entirely. **Implementation cannot start until the user picks a path.**
+0. **(RESOLVED 2026-05-18)** License posture per ADR-0004 — see `LICENSING.md` (counsel verdict in `docs/13_review_response/legal-protocol-assessment-received.md`; protocol v1.0.0 stable, R1+R2 applied, P1+P2+P3 committed).
 1. **Default sidecar vs Docker** for end-user installs — currently "Docker-first for dev, PyInstaller sidecar for users". Confirm with user before Phase 8.
 2. **Embedding model default** — `bge-small` (offline, 384-dim) vs OpenAI `text-embedding-3-small` (cloud, 1536-dim). Both supported; default needs choosing.
-3. **Backend service license** — Apache-2.0 vs MIT vs proprietary closed. User decision; affects `LICENSING.md`.
+3. **(RESOLVED)** Backend service license → **Apache-2.0** per `LICENSING.md` table (also covers `libs/`, `apps/cli/`, `tests/`, `tools/`, `scripts/`, `infra/`).
 4. **Telemetry posture** — opt-in usage telemetry: yes/no/never. Default: no.
-5. **OCR primary** — PaddleOCR or Tesseract. Tentative: Paddle for accuracy on chess-book layouts; needs a benchmark on a representative book during Phase 6.
+5. **OCR primary** — chessvision.ai API is the production path since 2026-06-14 (`6635ffa`); PaddleOCR vs Tesseract comparison **deferred** (offline fallback only).
 6. **Repertoire UI density** — tree vs grid as primary; subjective. Defer to Phase 5 prototype.
 7. **Phase-6 FEN-accuracy target** — currently unset; user input needed before Phase 6 gate.
 
@@ -410,18 +412,18 @@ These are listed as Phase 9 candidates in `10_roadmap/`. The architecture does *
 
 ---
 
-## Implementation Reality (as of 2026-06-13, commit `7c41b02`)
+## Implementation Reality (as of 2026-06-20, commit `4feef86`)
 
 The architecture above describes the **target vision**. Current reality differs in the following ways:
 
 | Vision | Reality |
 |--------|---------|
 | Redis Streams message bus | Not implemented. Async work uses `asyncio.gather()` within the monolith. |
-| 14 specialized agents as separate services | 1 FastAPI monolith (`gateway/`) with 15 route files. Module boundaries exist as Python packages but are not network-isolated. |
+| 14 specialized agents as separate services | 1 FastAPI monolith (`gateway/`) with 17 route modules under `services/chess_coach/gateway/routes/` (26 router method decorators). Module boundaries exist as Python packages but are not network-isolated. `route_guard` cross-cutting decorator applied to 7 previously-unprotected routes (ADR-0002, `f24bd8b`). |
 | WebSocket streaming for real-time analysis | Not implemented. All communication is REST. |
 | Backend port `127.0.0.1:8765` | Runs on `0.0.0.0:18080`. Frontend discovers via `backend.json` descriptor file. |
-| Qdrant vector database | Not deployed. `memory_kb/` module is stubbed. Qdrant spike completed (2026-06-13) — TF-IDF fallback in use pending sentence-transformers embedding format validation. |
+| Qdrant vector database | TF-IDF position-similarity pipeline + in-memory Qdrant-shaped facade landed (`789b0cd`, `services/chess_coach/memory_kb/`); standalone Qdrant server still not deployed. Embedding-model default (item 2 of §18) carries the open decision on whether to graduate to a real embedding model. |
 
-**What is built and working:** 15 REST API routes, Stockfish 18 engine pool, SQLite WAL with 88K rows, FSRS spaced repetition, psychological profiling (5 metrics), repertoire gap analysis, grounded LLM narration pipeline, typed OpenAPI TypeScript client.
+**What is built and working:** 17 route modules under `services/chess_coach/gateway/routes/`, Stockfish 18 engine pool + Maia-1500 via lc0 (`5c05764`), `engines.json` pre-populated with both (`b7bc0b0`, appDataDir copy root cause in `cfd6603`), SQLite WAL with **88,452 rows** across all user tables (live check 2026-06-20), FSRS spaced repetition, psychological profiling (5 metrics), repertoire gap analysis, grounded LLM narration pipeline (now returns `pv_moves` + `score_display`, `1c171be` / `b1c5bf8`), typed OpenAPI TypeScript client, `route_guard` cross-cutting decorator (ADR-0002, applied to 7 previously-unprotected routes, `f24bd8b`), chessvision.ai integration for PDF diagram extraction (`6635ffa`; replaces OCR stub), **57 of 57 integration tests passing** across the `75d3af0` -> `4feef86` bisect, `activePlayerAtom` shared across Repertoire + TrainingQueue pages (`9b590f4`), 7 missing storage migrations restored (`d363f7e`), project audit (`94b89cd`, `docs/16_audit/project-audit-2026-06-14.md`), memory-disable durability across 2 session boundaries (`75d3af0`).
 
 Redis Streams and microservice extraction are deferred to Phase 6+ when workload demands it.
