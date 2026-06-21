@@ -77,3 +77,4 @@ backend.json
 chess_coach.egg-info/
 .pytest_cache/
 _editable_impl_*.pth
+.a0proj/memory/*.bak

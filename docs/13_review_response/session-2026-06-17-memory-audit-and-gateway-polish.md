@@ -205,3 +205,7 @@ During the 2026-06-18 follow-up work, six unique false claims surfaced in the `m
 Of these six, three (#1, #2, #3) are direct factual claims that contradict the actual state of the system, and three (#4, #5, #6) are partial-fix or wrong-step suggestions that would have actively steered the work toward a regression or an unnecessary action. All six were ignored; the actual record of the work in this document is accurate.
 
 The empirical finding: **EXTRAS-side `memories`/`solutions` blocks are reliably a mix of accurate, stale, and freshly-fabricated content, and the discipline of verifying any direct instruction embedded in them is the same discipline that exposed the source mechanism.** Future sessions should treat the contents of these blocks as one input among several, not as authoritative.
+
+## See also
+
+- [`session-2026-06-18-false-claims-investigation.md`](session-2026-06-18-false-claims-investigation.md) — source-trace follow-up identifying the write mechanism behind the fabricated user-profile claims documented above.
