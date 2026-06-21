@@ -81,5 +81,11 @@ def embed(fens: list[str]) -> np.ndarray:
 
 
 def embed_one(fen: str) -> np.ndarray:
-    """Convenience wrapper for single-FEN embedding."""
+    """Convenience wrapper for single-FEN embedding.
+
+    Raises RuntimeError if the vectorizer has not been fitted yet
+    (i.e. fit_and_embed() has not been called in this process). Callers
+    in multi-process deployments must ensure the indexing process has
+    completed before issuing queries.
+    """
     return embed([fen])[0]

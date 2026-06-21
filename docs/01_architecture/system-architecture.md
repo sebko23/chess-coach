@@ -383,7 +383,7 @@ These are listed as Phase 9 candidates in `10_roadmap/`. The architecture does *
 
 0. **(RESOLVED 2026-05-18)** License posture per ADR-0004 — see `LICENSING.md` (counsel verdict in `docs/13_review_response/legal-protocol-assessment-received.md`; protocol v1.0.0 stable, R1+R2 applied, P1+P2+P3 committed).
 1. **Default sidecar vs Docker** for end-user installs — currently "Docker-first for dev, PyInstaller sidecar for users". Confirm with user before Phase 8.
-2. **Embedding model default** — `bge-small` (offline, 384-dim) vs OpenAI `text-embedding-3-small` (cloud, 1536-dim). Both supported; default needs choosing.
+2. **Embedding model default** — `bge-small` (offline, 384-dim) vs OpenAI `text-embedding-3-small` (cloud, 1536-dim). Both supported; default needs choosing. **Note (2026-06-20):** `services/chess_coach/memory_kb/` ships a TF-IDF facade (289 lines, `789b0cd`) but is not wired into the gateway. Wire and validate TF-IDF quality on real positions before choosing the embedding model.
 3. **(RESOLVED)** Backend service license → **Apache-2.0** per `LICENSING.md` table (also covers `libs/`, `apps/cli/`, `tests/`, `tools/`, `scripts/`, `infra/`).
 4. **Telemetry posture** — opt-in usage telemetry: yes/no/never. Default: no.
 5. **OCR primary** — chessvision.ai API is the production path since 2026-06-14 (`6635ffa`); PaddleOCR vs Tesseract comparison **deferred** (offline fallback only).
