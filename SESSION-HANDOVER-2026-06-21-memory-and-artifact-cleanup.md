@@ -182,7 +182,7 @@ preserved backup chain in `.a0proj/memory/`:
 | Backup file | Bytes | State |
 |---|---:|---|
 | `index.pkl.20260621-210143.bak` | 722,447 | Pre-everything (1371 docs) |
-| `index.pkl.20260621-212807.bak` | 709,884 | Post-Step-2 (1363 docs) |
+| `index.pkl.20260621-212807.bak` | 717,871 | Post-Step-2 (1363 docs) |
 | `index.pkl.20260621-214841.bak` | 709,884 | Post-Step-C (1361 docs) |
 
 **To restore the pre-cleanup state**:
