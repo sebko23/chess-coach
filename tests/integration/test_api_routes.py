@@ -72,7 +72,7 @@ async def engine_client() -> httpx.AsyncClient:
     mock_pipeline = MagicMock(spec=NarrationPipeline)
     mock_pipeline.explain_simple = AsyncMock(
         return_value=NarrationOutput(
-            text="The position is equal. Standard opening principles apply.",
+            narration="The position is equal. Standard opening principles apply.",
             pv_moves=[],
             score_display="",
         )

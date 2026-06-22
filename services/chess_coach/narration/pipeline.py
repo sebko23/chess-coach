@@ -43,11 +43,11 @@ def _template_fallback(result: AnalysisResult) -> str:
 class NarrationOutput:
     """Structured result of a grounded narration.
 
-    text: LLM narration string (or template fallback if LLM failed).
+    narration: LLM narration string (or template fallback if LLM failed).
     pv_moves: principal variation moves in SAN, up to 6 plies.
     score_display: formatted score ("+0.30", "mate in 3", or "").
     """
-    text: str
+    narration: str
     pv_moves: list[str]
     score_display: str
 
@@ -172,5 +172,5 @@ class NarrationPipeline:
         )
         text = await self.explain(result)
         pv_moves, score_display = _format_pv_fields(result)
-        return NarrationOutput(text=text, pv_moves=pv_moves, score_display=score_display)
+        return NarrationOutput(narration=text, pv_moves=pv_moves, score_display=score_display)
 

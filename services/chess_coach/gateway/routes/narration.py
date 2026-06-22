@@ -13,11 +13,13 @@ from datetime import datetime, timezone
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
-
 from ..auth import require_bearer
 from ..route_guard import route_guard
 from chess_coach.narration.pipeline import NarrationOutput
+from chess_coach.protocol_types.narration import (
+    NarrationRequest,
+    NarrationResponse,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/narration", tags=["narration"])
@@ -31,29 +33,22 @@ def _pipeline(request: Request):
     return request.app.state.narration_pipeline
 
 
-class NarrationRequest(BaseModel):
-    fen: str
-    move_san: str | None = None
-    move_uci: str | None = None
-    eval_cp: int | None = None
-    game_phase: str | None = None  # "opening" | "middlegame" | "endgame"
-    player_name: str | None = None
-    context: str | None = None  # free-form extra context
+class NarrationRouteResponse(NarrationResponse):
+    """Route-layer response wrapper.
 
-
-class NarrationResponse(BaseModel):
+    Embeds the canonical NarrationResponse fields plus route-local audit
+    metadata (narration_id, grounded, created_at). The audit fields are
+    useful to clients -- the grounded flag drives frontend commentary
+    rendering (ungrounded/template outputs render with a different style).
+    """
     narration_id: str
-    fen: str
-    text: str
     grounded: bool
     created_at: str
-    pv_moves: list[str] | None = None
-    score_display: str | None = None
 
 
 @router.post(
     "/explain",
-    response_model=NarrationResponse,
+    response_model=NarrationRouteResponse,
     dependencies=[Depends(require_bearer)],
 )
 @route_guard
@@ -90,12 +85,12 @@ async def explain_position(
             context=prompt_context,
         )
         # Template fallback prefix from pipeline._template_fallback()
-        grounded = not output.text.startswith("Stockfish evaluates this position as")
+        grounded = not output.narration.startswith("Stockfish evaluates this position as")
     except Exception as exc:
         logger.warning("narration pipeline failed for fen=%s: %s", body.fen[:20], exc)
         output = NarrationOutput(
-            text=f"Position after {body.move_san or 'the last move'}. "
-                 f"Evaluation: {body.eval_cp or 0} centipawns.",
+            narration=f"Position after {body.move_san or 'the last move'}. "
+                      f"Evaluation: {body.eval_cp or 0} centipawns.",
             pv_moves=[],
             score_display="",
         )
@@ -111,19 +106,21 @@ async def explain_position(
                 narration_id,
                 body.fen,
                 "narration-r1",  # model identifier, configurable later
-                output.text,
+                output.narration,
                 1 if grounded else 0,
                 now,
             ),
         )
         await db.commit()
 
-    return NarrationResponse(
+    return NarrationRouteResponse(
         narration_id=narration_id,
         fen=body.fen,
-        text=output.text,
+        narration=output.narration,
         grounded=grounded,
         created_at=now,
         pv_moves=output.pv_moves,
         score_display=output.score_display,
+        depth_reached=None,
+        best_move=None,
     )
