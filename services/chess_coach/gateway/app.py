@@ -52,6 +52,7 @@ from .routes import (
     profile_analysis_router,
     training_planner_router,
     players_router,
+    kb_router,
 )
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.narration import NarrationPipeline
@@ -150,6 +151,22 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 1c. Narration pipeline (stored on app.state for FastAPI Depends)
     app.state.narration_pipeline = NarrationPipeline()  # type: ignore[attr-defined]
+    # 1d. Memory KB store — eager init, index positions from SQLite
+    _kb_t0 = time.time()
+    _db_path = str(state.settings.sqlite_path)
+    try:
+        _kb_count = index_positions(_db_path, limit=5000)
+        logger.info(
+        "memory_kb: indexed %d positions in %.2fs",
+            _kb_count,
+            time.time() - _kb_t0,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+        "memory_kb: index_positions failed (%s) — KB will return empty results",
+            exc,
+        )
+    app.state.kb_ready = True  # type: ignore[attr-defined]
     logger.info("gateway.startup: narration pipeline ready")
 
     # 2. Token.
@@ -250,6 +267,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(profile_analysis_router)
     app.include_router(training_planner_router)
     app.include_router(players_router)
+    app.include_router(kb_router)
 
     return app
 
