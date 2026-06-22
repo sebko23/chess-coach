@@ -158,6 +158,19 @@ class NarrationPipeline:
                 time_ms=0,
                 nps=None,
             ))
+        else:
+            # Synthetic neutral PVLine -- preserves AnalysisResult.pvs
+            # min_length=1 invariant when the route caller didn't supply
+            # eval_cp. Formatter already handles empty moves gracefully.
+            pvs.append(PVLine(
+                multipv=1,
+                score=Score(kind="cp", value=0),
+                depth=1,
+                moves=[],
+                nodes=None,
+                time_ms=None,
+                nps=None,
+            ))
 
         result = AnalysisResult(
             engine_id="user-request",

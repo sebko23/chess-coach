@@ -228,3 +228,43 @@ class TestNarrationPipeline:
         pipeline = NarrationPipeline(router=router)
         narration = await pipeline.explain(result)
         assert "mate" in narration.lower()
+
+
+class TestExplainSimple:
+    """Tests for NarrationPipeline.explain_simple() — the route-facing wrapper."""
+
+    async def test_explain_simple_positive_eval(self):
+        router = await _make_router(["Nice central control."])
+        pipeline = NarrationPipeline(router=router)
+        result = await pipeline.explain_simple(
+            fen=START_FEN, move_san="e4", eval_cp=38
+        )
+        assert result.score_display == "+0.38"
+        assert result.pv_moves == []
+        assert "Nice central control." in result.narration
+
+    async def test_explain_simple_negative_eval(self):
+        router = await _make_router(["Tough position."])
+        pipeline = NarrationPipeline(router=router)
+        result = await pipeline.explain_simple(
+            fen=START_FEN, eval_cp=-125
+        )
+        assert result.score_display == "-1.25"
+        assert result.pv_moves == []
+
+    async def test_explain_simple_without_eval_cp(self):
+        router = await _make_router(["Interesting structure."])
+        pipeline = NarrationPipeline(router=router)
+        result = await pipeline.explain_simple(fen=START_FEN, eval_cp=None)
+        assert result.score_display == "+0.00"
+        assert not result.narration.startswith("Stockfish evaluates")
+
+    async def test_explain_simple_llm_unavailable_returns_template(self):
+        router = await _make_router([LLMUnavailableError("no LLM")])
+        pipeline = NarrationPipeline(router=router)
+        result = await pipeline.explain_simple(
+            fen=START_FEN, eval_cp=50
+        )
+        assert result.narration.startswith("Stockfish evaluates")
+        assert result.score_display == "+0.50"
+        assert result.pv_moves == []
