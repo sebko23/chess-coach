@@ -34,8 +34,16 @@ class SearchResult:
 class PositionStore:
     """Thin wrapper around a Qdrant collection for chess positions."""
 
-    def __init__(self, persist_path: str | None = None) -> None:
-        if persist_path:
+    def __init__(
+        self,
+        persist_path: str | None = None,
+        qdrant_url: str | None = None,
+        qdrant_api_key: str | None = None,
+    ) -> None:
+        if qdrant_url and qdrant_url != ":memory:":
+            self._client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key or None)
+            logger.info("PositionStore: connecting to persistent Qdrant at %s", qdrant_url)
+        elif persist_path:
             self._client = QdrantClient(path=persist_path)
             logger.info("PositionStore: persisting to %s", persist_path)
         else:

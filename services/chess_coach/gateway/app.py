@@ -154,18 +154,29 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 1d. Memory KB store — eager init, index positions from SQLite
     _kb_t0 = time.time()
     _db_path = str(state.settings.sqlite_path)
-    try:
-        _kb_count = index_positions(_db_path, limit=5000)
-        logger.info(
-        "memory_kb: indexed %d positions in %.2fs",
-            _kb_count,
-            time.time() - _kb_t0,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-        "memory_kb: index_positions failed (%s) — KB will return empty results",
-            exc,
-        )
+    _qdrant_url = state.settings.qdrant_url
+    _qdrant_key = state.settings.qdrant_api_key
+    logger.info("memory_kb: using Qdrant at %s", _qdrant_url)
+    if _qdrant_url == ":memory:":
+        logger.info("memory_kb: skipping eager index in :memory: mode")
+    else:
+        try:
+            _kb_count = index_positions(
+                _db_path,
+                limit=5000,
+                qdrant_url=_qdrant_url,
+                qdrant_api_key=_qdrant_key,
+            )
+            logger.info(
+                "memory_kb: indexed %d positions in %.2fs",
+                _kb_count,
+                time.time() - _kb_t0,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "memory_kb: index_positions failed (%s) — KB will return empty results",
+                exc,
+            )
     app.state.kb_ready = True  # type: ignore[attr-defined]
     logger.info("gateway.startup: narration pipeline ready")
 

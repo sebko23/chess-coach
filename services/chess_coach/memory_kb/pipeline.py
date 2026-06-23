@@ -32,11 +32,14 @@ def index_positions(
     db_path: str,
     limit: int = 5000,
     persist_path: str | None = None,
+    qdrant_url: str | None = None,
+    qdrant_api_key: str | None = None,
 ) -> int:
     """Pull positions from SQLite, embed, and insert into Qdrant.
 
     Returns the number of positions indexed.
     Safe to call multiple times — recreates the collection on each call.
+    Pass qdrant_url to use a persistent Qdrant instance; omit for in-memory.
     """
     global _store
     conn = sqlite3.connect(db_path)
@@ -63,7 +66,11 @@ def index_positions(
     logger.info("index_positions: embedding %d positions", len(fens))
     vectors = fit_and_embed(fens)
 
-    _store = PositionStore(persist_path=persist_path)
+    _store = PositionStore(
+        persist_path=persist_path,
+        qdrant_url=qdrant_url,
+        qdrant_api_key=qdrant_api_key,
+    )
     _store.insert(fens, vectors, plies, game_ids)
     logger.info("index_positions: indexed %d positions", len(fens))
     return len(fens)

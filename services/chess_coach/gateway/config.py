@@ -95,3 +95,17 @@ class GatewaySettings(BaseSettings):
         default=True,
         description="Write backend.json descriptor file for frontend discovery.",
     )
+
+    # --- vector store (Qdrant) ---
+    qdrant_url: str = Field(
+        default=":memory:",
+        description=(
+            "Qdrant HTTP endpoint for the memory_kb vector store. "
+            "Use ':memory:' (default) for in-process ephemeral store (tests, dev). "
+            "Set to 'http://localhost:6333' when running a persistent Qdrant instance."
+        ),
+    )
+    qdrant_api_key: str = Field(
+        default="",
+        description="API key for Qdrant. Empty string = no auth (default for local dev).",
+    )

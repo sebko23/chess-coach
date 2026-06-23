@@ -62,16 +62,28 @@ async def similar_positions(body: SimilarRequest, request: Request) -> SimilarRe
     return SimilarResponse(query_fen=body.fen, hits=hits, kb_ready=True)
 
 
+class IndexRequest(BaseModel):
+    limit: int = Field(default=5000, ge=1, le=50000, description="Max positions to index")
+
+
 @kb_router.post(
     "/index",
     dependencies=[Depends(require_bearer)],
 )
 @route_guard
-async def reindex(request: Request) -> dict[str, str]:
+async def reindex(body: IndexRequest, request: Request) -> dict[str, str]:
     """Trigger a reindex of the KB from SQLite. Safe to call multiple times."""
-    db_path = str(request.app.state.gateway.settings.sqlite_path)
+    settings = request.app.state.gateway.settings
+    db_path = str(settings.sqlite_path)
+    qdrant_url = settings.qdrant_url
+    qdrant_api_key = settings.qdrant_api_key
     try:
-        count = index_positions(db_path, limit=5000)
+        count = index_positions(
+            db_path,
+            limit=body.limit,
+            qdrant_url=qdrant_url,
+            qdrant_api_key=qdrant_api_key,
+        )
         request.app.state.kb_ready = True  # type: ignore[attr-defined]
         return {"status": "ok", "indexed": str(count)}
     except Exception as exc:  # noqa: BLE001
