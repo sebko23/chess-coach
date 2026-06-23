@@ -31,6 +31,8 @@ async def prod_client() -> httpx.AsyncClient:
     from chess_coach.gateway.config import GatewaySettings
     from chess_coach.gateway import create_app
     settings = GatewaySettings()
+    # Force in-memory Qdrant for tests — no network, fast, isolated.
+    settings.qdrant_url = ":memory:"
     app = create_app(settings)
     app.state.gateway.settings = settings
     transport = httpx.ASGITransport(app=app)
@@ -219,3 +221,70 @@ class TestAuth:
     async def test_missing_header(self, prod_client):
         r = await prod_client.get("/v1/games")
         assert r.status_code == 401
+
+class TestKB:
+    """Integration tests for POST /v1/kb/similar and /v1/kb/index."""
+
+    async def test_similar_returns_200_with_valid_fen(self, prod_client):
+        resp = await prod_client.post(
+            "/v1/kb/similar",
+            json={"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", "top_k": 3},
+            headers=AUTH,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "query_fen" in data
+        assert "hits" in data
+        assert "kb_ready" in data
+        assert isinstance(data["hits"], list)
+
+    async def test_similar_hits_have_correct_shape(self, prod_client):
+        resp = await prod_client.post(
+            "/v1/kb/similar",
+            json={"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", "top_k": 5},
+            headers=AUTH,
+        )
+        assert resp.status_code == 200
+        for hit in resp.json()["hits"]:
+            assert "rank" in hit
+            assert "fen" in hit
+            assert "ply" in hit
+            assert "game_id" in hit
+
+    async def test_similar_rejects_missing_fen(self, prod_client):
+        resp = await prod_client.post(
+            "/v1/kb/similar",
+            json={"top_k": 3},
+            headers=AUTH,
+        )
+        assert resp.status_code == 422
+
+    async def test_similar_rejects_top_k_out_of_range(self, prod_client):
+        resp = await prod_client.post(
+            "/v1/kb/similar",
+            json={"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", "top_k": 99},
+            headers=AUTH,
+        )
+        assert resp.status_code == 422
+
+    async def test_similar_requires_auth(self, prod_client):
+        resp = await prod_client.post(
+            "/v1/kb/similar",
+            json={"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"},
+        )
+        assert resp.status_code == 401
+
+    async def test_index_returns_200(self, prod_client):
+        resp = await prod_client.post(
+            "/v1/kb/index",
+            json={"limit": 10},
+            headers=AUTH,
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] in ("ok", "error")
+
+    async def test_index_requires_auth(self, prod_client):
+        resp = await prod_client.post("/v1/kb/index")
+        assert resp.status_code == 401
+
