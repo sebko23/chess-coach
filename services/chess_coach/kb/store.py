@@ -1,4 +1,4 @@
-"""Qdrant vector store wrapper for memory_kb pipeline.
+"""Qdrant vector store wrapper for kb pipeline.
 
 Uses in-memory Qdrant by default. Pass persist_path to persist to disk.
 When Docker Compose adds a Qdrant container, swap the client instantiation

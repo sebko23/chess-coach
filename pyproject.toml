@@ -75,7 +75,7 @@ packages = [
     "chess_coach.analysis",
     "chess_coach.narration",
     "chess_coach.llm_router",
-    "chess_coach.memory_kb",
+    "chess_coach.kb",
     "chess_coach.debug",
     "chess_coach.jobs",
     "chess_coach.cli",
@@ -94,7 +94,7 @@ packages = [
 "chess_coach.analysis"           = "services/chess_coach/analysis"
 "chess_coach.narration"          = "services/chess_coach/narration"
 "chess_coach.llm_router"         = "services/chess_coach/llm_router"
-"chess_coach.memory_kb"          = "services/chess_coach/memory_kb"
+"chess_coach.kb"                 = "services/chess_coach/kb"
 "chess_coach.debug"              = "services/chess_coach/debug"
 "chess_coach.jobs"               = "services/chess_coach/jobs"
 "chess_coach.cli"                = "apps/cli/chess_coach/cli"

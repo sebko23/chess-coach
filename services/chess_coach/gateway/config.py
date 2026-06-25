@@ -100,7 +100,7 @@ class GatewaySettings(BaseSettings):
     qdrant_url: str = Field(
         default=":memory:",
         description=(
-            "Qdrant HTTP endpoint for the memory_kb vector store. "
+            "Qdrant HTTP endpoint for the kb vector store. "
             "Use ':memory:' (default) for in-process ephemeral store (tests, dev). "
             "Set to 'http://localhost:6333' when running a persistent Qdrant instance."
         ),

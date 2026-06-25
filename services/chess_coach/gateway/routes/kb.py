@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..auth import require_bearer
 from ..route_guard import route_guard
-from chess_coach.memory_kb import index_positions, query_similar
+from chess_coach.kb import index_positions, query_similar
 
 logger = logging.getLogger(__name__)
 

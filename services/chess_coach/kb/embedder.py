@@ -1,4 +1,4 @@
-"""FEN position embedder for memory_kb pipeline.
+"""FEN position embedder for kb pipeline.
 
 Current implementation: sentence-transformers all-MiniLM-L6-v2 (384-dim).
 Produces semantically meaningful position clusters across
