@@ -1,0 +1,3 @@
+storage:
+  storage_path: /a0/usr/projects/chess_coach/data/qdrant/storage
+  snapshots_path: /a0/usr/projects/chess_coach/data/qdrant/snapshots

@@ -49,6 +49,10 @@ data/reports/*
 data/debug/*
 data/sqlite/*
 data/secrets/*
+data/qdrant/storage/
+data/qdrant/snapshots/
+data/qdrant/*.log
+.qdrant-initialized
 !data/**/.gitkeep
 !data/**/README.md
 

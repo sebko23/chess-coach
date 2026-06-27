@@ -29,7 +29,8 @@ echo "   Data dir: $QDRANT_DATA_DIR"
 
 echo "3. Starting Qdrant..."
 nohup "$QDRANT_BIN" \
-    --storage-snapshots-dir "$QDRANT_DATA_DIR" \
+    --config-path "$QDRANT_DATA_DIR/config.yaml" \
+    --disable-telemetry \
     >> /tmp/qdrant.log 2>&1 &
 QDRANT_PID=$!
 echo "   PID: $QDRANT_PID"
