@@ -55,6 +55,7 @@ from .routes import (
     kb_router,
 )
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
+from chess_coach.kb.pipeline import index_positions
 from chess_coach.narration import NarrationPipeline
 from .exception_handlers import install_exception_handlers
 from .routes.system import build_system_router
