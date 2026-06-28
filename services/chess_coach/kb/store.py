@@ -82,7 +82,10 @@ class PositionStore:
             )
             for i in range(len(fens))
         ]
-        self._client.upsert(collection_name=COLLECTION, points=points)
+        _CHUNK = 1000  # Qdrant default JSON payload limit is 32 MiB; 1k points ~8 MB leaves headroom
+        for _start in range(0, len(points), _CHUNK):
+            _chunk = points[_start : _start + _CHUNK]
+            self._client.upsert(collection_name=COLLECTION, points=_chunk)
         logger.info("PositionStore: inserted %d positions", len(points))
 
     def search(self, query_vector: np.ndarray, top_k: int = 5) -> list[SearchResult]:
