@@ -56,6 +56,16 @@ class PositionStore:
             return
         existing = [c.name for c in self._client.get_collections().collections]
         if COLLECTION in existing:
+            info = self._client.get_collection(COLLECTION)
+            existing_dim = info.config.params.vectors.size
+            existing_count = info.points_count
+            if existing_dim == dim and existing_count > 0:
+                self._dim = dim
+                logger.info(
+                    "PositionStore: reusing existing collection dim=%d count=%d",
+                    dim, existing_count,
+                )
+                return
             self._client.delete_collection(COLLECTION)
         self._client.create_collection(
             collection_name=COLLECTION,
