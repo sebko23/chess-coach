@@ -63,6 +63,20 @@ def index_positions(
     plies = [r[1] for r in rows]
     game_ids = [r[2] for r in rows]
 
+    # Skip re-embedding if Qdrant already has a populated collection.
+    # PositionStore._ensure_collection will reuse it if dim and count match.
+    _probe = PositionStore(
+        persist_path=persist_path,
+        qdrant_url=qdrant_url,
+        qdrant_api_key=qdrant_api_key,
+    )
+    if _probe.count() >= limit:
+        logger.info(
+            "index_positions: Qdrant already has %d positions — skipping re-embed",
+            _probe.count(),
+        )
+        _store = _probe
+        return _probe.count()
     logger.info("index_positions: embedding %d positions", len(fens))
     vectors = fit_and_embed(fens)
 
