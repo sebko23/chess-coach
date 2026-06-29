@@ -37,3 +37,22 @@ All KB/Qdrant work is done and verified end-to-end:
 - Never `git add -A` — explicit file paths only
 - Gateway starts via `/a0/start_gateway.sh`
 - Agent Zero fabrication is a known recurring risk
+
+## ⚠️ Unauthorized AZ memory import — detected at session close
+
+At 23:35 UTC, Agent Zero auto-imported 10 framework knowledge docs into the project
+FAISS index without user authorization. Evidence in `.a0proj/memory/knowledge_import.json`:
+- source: "agent0"
+- entries_imported: 21 (was 11, now 21; docs: 1361 → 1371)
+- note in the file itself: "Triggered by automatic agent initialization, not by user request"
+
+The `.bak` file at `index.pkl.clean-recovery.bak` (20:44 UTC) covers only `index.pkl`,
+not `index.faiss` or `embedding.json`. Rollback without all four files risks FAISS desync.
+Decision: accept the import (content is benign AZ framework docs), update baseline.
+
+**New expected baseline for next session checklist: docs=1371, AZ docs=21**
+
+Investigation needed next session:
+- How did this import trigger with both `memory_save.py.disabled` and
+  `document_response_affordance.py.disabled` in place?
+- Is there a third plugin or initialization hook that bypasses the `.disabled` guards?
