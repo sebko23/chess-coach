@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from chess_coach.gateway.auth import require_bearer
+from ..route_guard import route_guard
 
 router = APIRouter(tags=["blunders"], dependencies=[Depends(require_bearer)])
 
@@ -33,6 +34,7 @@ class BatchBlunderRequest(BaseModel):
 
 
 @router.post("/v1/blunders/batch-by-fen", response_model=dict)
+@route_guard
 async def get_blunders_batch(body: BatchBlunderRequest, request: Request):
     """Return blunder classifications for multiple FENs in one round trip."""
     settings = request.app.state.gateway.settings
@@ -55,6 +57,7 @@ async def get_blunders_batch(body: BatchBlunderRequest, request: Request):
 
 
 @router.get("/v1/blunders/by-fen", response_model=BlunderEnvelope)
+@route_guard
 async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50):
     """Return blunders matching a specific FEN."""
     settings = request.app.state.gateway.settings

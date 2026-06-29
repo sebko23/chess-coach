@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
+from ..route_guard import route_guard
 
 router = APIRouter(tags=["games"], dependencies=[Depends(require_bearer)])
 
@@ -30,6 +31,7 @@ class GamesListResponse(BaseModel):
 
 
 @router.get("/v1/games", response_model=GamesListResponse)
+@route_guard
 async def list_games(request: Request, limit: int = 100, offset: int = 0):
     """Return a page of games ordered by creation date descending."""
     settings = request.app.state.gateway.settings
@@ -52,6 +54,7 @@ async def list_games(request: Request, limit: int = 100, offset: int = 0):
 
 
 @router.get("/v1/games/{game_id}/pgn", response_class=PlainTextResponse)
+@route_guard
 async def get_game_pgn(game_id: str, request: Request):
     """Return the raw PGN for a game."""
     settings = request.app.state.gateway.settings

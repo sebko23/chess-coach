@@ -7,6 +7,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from ..auth import require_bearer
+from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/profile", tags=["profile"])
@@ -31,6 +32,7 @@ class ProfileAnalysisResponse(BaseModel):
     response_model=ProfileAnalysisResponse,
     dependencies=[Depends(require_bearer)],
 )
+@route_guard
 async def get_profile_analysis(
     player: str,
     db_path: str = Depends(_db_path),

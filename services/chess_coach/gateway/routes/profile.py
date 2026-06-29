@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from chess_coach.gateway.auth import require_bearer
+from ..route_guard import route_guard
 
 router = APIRouter(tags=["profile"], dependencies=[Depends(require_bearer)])
 
@@ -22,6 +23,7 @@ class ProfileStats(BaseModel):
 
 
 @router.get("/v1/profile/{player}", response_model=ProfileStats)
+@route_guard
 async def get_profile(player: str, request: Request):
     """Aggregated statistics for a player."""
     settings = request.app.state.gateway.settings

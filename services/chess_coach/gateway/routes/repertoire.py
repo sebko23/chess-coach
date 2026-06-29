@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, Depends, Request
 from pydantic import BaseModel
 
 from chess_coach.gateway.auth import require_bearer
+from ..route_guard import route_guard
 
 router = APIRouter(tags=["repertoire"], dependencies=[Depends(require_bearer)])
 
@@ -43,6 +44,7 @@ class NoveltyItem(BaseModel):
 
 
 @router.get("/v1/repertoire/{player}/tree", response_model=TreeResponse)
+@route_guard
 async def get_repertoire_tree(player: str, request: Request, color: str = Query(default="white", pattern="^(white|black)$")):
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
@@ -60,6 +62,7 @@ async def get_repertoire_tree(player: str, request: Request, color: str = Query(
 
 
 @router.get("/v1/repertoire/{player}/gaps", response_model=list[GapItem])
+@route_guard
 async def get_repertoire_gaps(player: str, request: Request, color: str = Query(default="white", pattern="^(white|black)$")):
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
@@ -70,5 +73,6 @@ async def get_repertoire_gaps(player: str, request: Request, color: str = Query(
 
 
 @router.get("/v1/repertoire/{player}/novelties", response_model=list[NoveltyItem])
+@route_guard
 async def get_repertoire_novelties(player: str, request: Request, color: str = Query(default="white", pattern="^(white|black)$")):
     return []
