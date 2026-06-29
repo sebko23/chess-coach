@@ -23,15 +23,7 @@ if ! flock -n 9; then
     exit 0
 fi
 
-echo "1. Reinstalling package from source..."
-/opt/venv/bin/pip install --force-reinstall --no-deps -e . --quiet
-echo "   Done."
-
-echo "1.5. Running database migrations..."
-/opt/venv/bin/python3 -c "from pathlib import Path; from chess_coach.storage.migrate import migrate; migrate(Path('/root/.local/share/chess-coach/sqlite/chess_coach.db'))"
-echo "   Done."
-
-echo "2. Checking gateway status on port 18080..."
+echo "1. Checking gateway status on port 18080..."
 if ss -tln 2>/dev/null | grep -q ':18080 '; then
     EXISTING_PID=$(ss -tlnp 2>/dev/null | grep ':18080 ' | grep -oP 'pid=\K[0-9]+' | head -1 || true)
     if [ -n "${EXISTING_PID:-}" ] && kill -0 "$EXISTING_PID" 2>/dev/null; then
@@ -62,6 +54,14 @@ if ss -tln 2>/dev/null | grep -q ':18080 '; then
         exit 1
     fi
 fi
+
+echo "2. Reinstalling package from source..."
+/opt/venv/bin/pip install --force-reinstall --no-deps -e . --quiet
+echo "   Done."
+
+echo "2.5. Running database migrations..."
+/opt/venv/bin/python3 -c "from pathlib import Path; from chess_coach.storage.migrate import migrate; migrate(Path('/root/.local/share/chess-coach/sqlite/chess_coach.db'))"
+echo "   Done."
 
 echo "3. Starting gateway..."
 nohup /opt/venv/bin/chess-coach-gateway >> /tmp/gateway.log 2>&1 &
