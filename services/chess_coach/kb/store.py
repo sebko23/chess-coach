@@ -120,6 +120,7 @@ class PositionStore:
 
     def count(self) -> int:
         """Return number of indexed positions."""
-        if self._dim is None:
+        try:
+            return self._client.count(collection_name=COLLECTION).count
+        except Exception:
             return 0
-        return self._client.count(collection_name=COLLECTION).count
