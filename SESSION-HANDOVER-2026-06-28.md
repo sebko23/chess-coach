@@ -56,3 +56,21 @@ Investigation needed next session:
 - How did this import trigger with both `memory_save.py.disabled` and
   `document_response_affordance.py.disabled` in place?
 - Is there a third plugin or initialization hook that bypasses the `.disabled` guards?
+
+## Third plugin disabled — 2026-06-29
+
+Root cause of unauthorized 23:35 memory import identified and blocked:
+- File: `/a0/plugins/_memory/extensions/python/monologue_start/_10_memory_init.py`
+- Renamed to `_10_memory_init.py.disabled`
+- This hook runs `Memory.get()` on every agent start, which triggers `preload_knowledge()`
+  → bulk reindex of project knowledge docs into FAISS index
+- Neither `memory_save.py.disabled` nor `document_response_affordance.py.disabled`
+  covered this path
+
+**Updated session-start checklist — now SIX checks:**
+1. git log HEAD = b794cd5 (or current HEAD)
+2. git status clean
+3. memory_save.py.disabled present
+4. _20_document_response_affordance.py.disabled present
+5. _10_memory_init.py.disabled present  ← NEW
+6. docs=1371, AZ docs=21
