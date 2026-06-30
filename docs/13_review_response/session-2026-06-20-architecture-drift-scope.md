@@ -62,7 +62,7 @@ The snapshot table dated 2026-06-13 (lines 419–425) needs every row touched:
 | chessvision.ai integration for PDF diagram extraction (replaces OCR stub) | `6635ffa` | Phase-6 collapse from 12 weeks → 2 hrs |
 | route_guard decorator on 7 routes (ADR-0002) | `f24bd8b` | Cross-cutting observability |
 | 5 new integration test suites, 56/56 → 57/57 passing | `8e789e6` + later fixes | Total now 57/57 across bisect (`75d3af0`–`4feef86`) |
-| `pv_moves` + `score_display` in `/v1/narration/explain` response | `b1c5bf8` | Matches CoachesPage live-data need |
+| `pv_moves` + `score_display` schema in `/v1/narration/explain` response | `b1c5bf8` | Contract-only — schema fields added; data flow deferred to Option B (Phase 3, unimplemented). See session-2026-06-16-repo-hygiene-and-enginespage.md item 2. |
 | `grounded` field now accurately reflects LLM vs template | `1c171be` + `bf03eee` | 7 narration bugs resolved |
 | `activePlayerAtom` shared across Repertoire + TrainingQueue pages | `9b590f4` | Jotai cross-panel state |
 | Practice deck source architecture documented | `781bcb8` | `SESSION-HANDOVER-PRACTICE-DECK-SOURCE.md` |

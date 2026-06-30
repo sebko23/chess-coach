@@ -63,14 +63,29 @@ sentence-transformers upgrade is tracked work, not the current state.
    a diagnostic log to see the actual error. **Blocked on a Rust-capable environment for
    `pnpm tauri dev` to actually run.**
 
-2. **Backend: populate `pv_moves`/`score_display` in `explain_simple()`** — CoachPanel's
-   defensive null check (Fix 1, commit `17d3ee6`) prevents the crash, but PV lines render
-   empty. The frontend fix is a band-aid; the real fix is backend.
+2. **Backend: real PV data flow in narration route — Phase 3 work (escalated)** — A partial
+   fix landed in `b1c5bf8` (commit message: "Option A, contract-only — route does not currently
+   call `engine_pool.analyze()`; `explain_simple()` builds a minimal analysis from `eval_cp`
+   only (no PV moves). Real engine data flow is a separate commit (Option B)... out of scope
+   here."). Investigation 2026-06-30 confirmed Option B was never landed: `explain_simple()`
+   still constructs a synthetic `PVLine(moves=[])` on both branches (lines 156 and 169 of
+   `services/chess_coach/narration/pipeline.py`), so `_format_pv_fields` always returns
+   `pv_moves=[]` on the simple path. **Cosmetic stop-gap landed** in `b2df5e0`:
+   CoachPanel.tsx "Best Line" card gated on `result.pv_moves.length > 0` so the empty-array
+   UX defect (stray score badge with empty moves) doesn't reach users. **Real fix:** Phase 3
+   engine-backed narration — narration route branches on `depth`/`engine_id`/`multipv` from
+   `NarrationRequest` (those fields exist in the schema precisely for this), calls
+   `engine_pool.analyze()` to obtain a real `AnalysisResult`, then `pipeline.explain(result)`
+   directly with real `pvs` — bypassing `explain_simple()`'s synthetic-PVLine path.
+   Multi-commit feature with its own design pass; do not squeeze into a single session.
 
-3. **Backend: narration route handler field-name mismatch** — route uses
-   `depth`/`engine_id` instead of `move_san`/`eval_cp`/`game_phase`. This is the same
-   root issue as item 2 — a backend field-naming contract that doesn't match what the
-   narrator pipeline actually produces. Two bugs in the same component.
+3. **Backend: narration route handler field-name mismatch — closed as misdiagnosed.**
+   Investigation 2026-06-30: the route in `services/chess_coach/gateway/routes/narration.py`
+   correctly forwards the simple-mode fields (`fen`, `move_san`, `eval_cp`, `game_phase`,
+   `context`) to `pipeline.explain_simple(...)`. The `depth`/`engine_id`/`multipv` fields on
+   `NarrationRequest` are deliberate schema slots for the future engine-backed narration mode
+   (Phase 3), explicitly documented as such in the docstring. No mismatch exists today; this
+   entry was based on a misreading of the schema. Closing.
 
 4. **Original Priority 4/5** (still queued from much earlier):
    - Architecture doc update
@@ -96,6 +111,7 @@ The single highest-leverage next action is a successful `pnpm tauri dev` run in 
 environment. That resolves the EnginesPage question (most likely root cause: Tauri env path
 resolution differs from Node XDG fallback) and confirms the Practice panel UX in a real browser.
 
-Both backend bugs (items 2 and 3 above) are mechanical fixes to `explain_simple()` and the
-narration route handler — well-scoped, ~30 min total work, can be done independently of the
-Tauri question.
+Item 2 above is the live backend work and is **not** ~30 min — it's a Phase 3 feature
+(engine-backed narration via `engine_pool.analyze()` → `pipeline.explain()`), deserving
+its own design pass, not a hotfix. Item 3 was closed as a misdiagnosis this session. The
+cosmetic stop-gap for the visible UX defect landed in `b2df5e0`.
