@@ -222,17 +222,19 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
         </Text>
       </Card>
 
-      <Card withBorder>
-        <Title order={4} mb="sm">
-          <IconArrowRight size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
-          Best Line
-        </Title>
-        <PVLine
-          score={result.score_display}
-          moves={result.pv_moves}
-          isBest
-        />
-      </Card>
+      {result.pv_moves && result.pv_moves.length > 0 && (
+        <Card withBorder>
+          <Title order={4} mb="sm">
+            <IconArrowRight size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
+            Best Line
+          </Title>
+          <PVLine
+            score={result.score_display}
+            moves={result.pv_moves}
+            isBest
+          />
+        </Card>
+      )}
 
 
       {blunderResult && blunderResult?.blunders?.length > 0 && (
