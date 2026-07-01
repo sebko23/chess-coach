@@ -65,9 +65,24 @@ echo "   Done."
 
 echo "3. Starting gateway..."
 nohup /opt/venv/bin/chess-coach-gateway >> /tmp/gateway.log 2>&1 &
-sleep 4
 
-echo "4. Verifying routes..."
+echo "4. Waiting for gateway to bind..."
+for i in {1..60}; do
+  if ss -tln 2>/dev/null | grep -q ':18080 '; then
+    echo "   Gateway listening after ${i}s"
+    break
+  fi
+  sleep 1
+done
+
+if ! ss -tln 2>/dev/null | grep -q ':18080 '; then
+  echo "   ERROR: Gateway did not bind within 60s"
+  echo "   --- last 30 lines of /tmp/gateway.log ---"
+  tail -30 /tmp/gateway.log
+  exit 1
+fi
+
+echo "5. Verifying routes..."
 for endpoint in \
   "http://127.0.0.1:18080/v1/games?limit=1" \
   "http://127.0.0.1:18080/v1/training/queue/default?limit=1" \
