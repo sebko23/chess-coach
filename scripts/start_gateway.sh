@@ -67,7 +67,7 @@ echo "3. Starting gateway..."
 nohup /opt/venv/bin/chess-coach-gateway >> /tmp/gateway.log 2>&1 &
 
 echo "4. Waiting for gateway to bind..."
-for i in {1..60}; do
+for i in {1..120}; do
   if ss -tln 2>/dev/null | grep -q ':18080 '; then
     echo "   Gateway listening after ${i}s"
     break
