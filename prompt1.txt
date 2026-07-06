@@ -1,0 +1,128 @@
+=== BEGIN PROMPT1 FOR FABLE5 ===
+
+You are a senior software architect reviewing CHESS COACH, a production-grade
+chess coaching platform at grandmaster coaching level. You have ONE shot to
+extract maximum leverage. Spend it on concrete, prioritized, actionable
+recommendations. Generic praise is wasted output.
+
+# Project Metadata
+
+- Root: /a0/usr/projects/chess_coach
+- HEAD: 4b9babd on master
+- Working tree: 6 route files modified (route_guard patches uncommitted)
+- Size: ~50K lines (services, libs, frontend, tests, docs)
+- Last 10 commits:
+  4b9babd test(kb): add perf E2E test for skip-re-embed round-trip
+  948d9ea fix(infra): bump start_gateway.sh polling threshold 60s -> 120s
+  3749a4b fix(infra): replace sleep 4 with ss-tln polling loop in start_gateway.sh
+  4eb8029 docs: rewrite H2 entry + cross-ref table
+  b2df5e0 fix(narration): hide Best Line card when pv_moves is empty
+  0fff171 fix(gateway): apply route_guard decorator to 5 unprotected route modules
+  878cddb fix(infra): defer pip install and migrate until after gateway idempotency check
+  6b9d610 fix(kb): make count() tolerant of Qdrant errors
+  bd544ff fix(kb): skip re-embed in index_positions when Qdrant already has sufficient points
+  b1a5c5d fix(kb): skip _ensure_collection recreation when collection exists with matching dim
+
+# 8 Capabilities
+
+chess trainer, psychological profiler, chess analyst, research assistant, opening
+preparation system, training planner, chess knowledge engine, autonomous learning system.
+
+# Architecture (current)
+
+- Frontend: Tauri 2.10 + React 19 + Mantine 8 + Vite 8 + chessground (en-croissant
+  fork at upstream commit 6f2d2628f0fbe11cb62a7dd2f9c102bb52907d53)
+- Backend: Python 3.11 + FastAPI + asyncio + aiosqlite (single uvicorn, port 18080)
+- Storage: SQLite WAL + Qdrant (25K points in `positions`) + FAISS + filesystem
+- Engines: Stockfish 18 + lc0 + Maia-1500
+- LLM: OpenRouter with degraded mode (no Redis)
+- Tests: pytest unit (9) + integration (7) + perf (1 round-trip test) + golden/e2e (empty)
+
+# ADRs (6)
+
+- ADR-0001 async/sync boundary
+- ADR-0002 error envelope (30 codes, 20 subclasses, route_guard decorator)
+- ADR-0003 schema evolution (forward-only SQL migrations)
+- ADR-0004 license posture (apps/desktop GPL-3.0, services/libs Apache-2.0)
+- ADR-0005 coach state via Jotai (not Zustand)
+
+# Module Reality
+
+| Module | Status | Notes |
+|---|---|---|
+| Gateway (FastAPI) | done | 17 route files, route_guard on 12, 2 reportedly remain |
+| Engine Orchestrator | done | pool.py 191 lines, async subprocess pool |
+| Analysis Agent | partial | synthetic PVLine defect at pipeline.py:156/169 |
+| Psychological Profile | done | 5 metrics via SQL, effect-size discipline |
+| Training / FSRS | done | 7-day planner + priority scoring, 449 lines |
+| Repertoire | done | 15 routes, 250 lines |
+| Knowledge Base | done | Qdrant + FAISS, TF-IDF embedder, 276 lines |
+| LLM Router | done | OpenRouter + degraded mode, 74 lines |
+| Narration | done | pipeline.py 189 lines, MAX_ATTEMPTS=3 |
+| PDF/Vision | done | chessvision.ai API, 150 diagrams extracted |
+| Jobs Queue | partial | Stub, used for analysis-job tracking only |
+| Debug Agent | partial | Stub |
+| Sync Agent | partial | Lichess import only, no Chess.com |
+| Research Agent | missing | Not implemented |
+| Memory Agent | partial | Episodic + semantic, no procedural |
+
+# Contracts
+
+- Protocol: specs/v1.0/chess-coach-protocol-v1.md (CC-BY-4.0)
+- Error envelope: ADR-0002 + libs/chess_coach/errors/ + route_guard decorator
+- Schema evolution: ADR-0003, forward-only SQL migrations
+
+# Known Issues
+
+1. Synthetic PVLine at narration/pipeline.py:156/169 (Phase 3 blocker)
+2. Embedding-model default decision open (TF-IDF vs alternatives)
+3. Research Agent not implemented (0 lines)
+4. Memory Agent scattered (procedural not built)
+5. Phase 4 polish queue (5 candidates with rough time estimates)
+6. Channel-reliability issue (14+ fabrication-injection instances this session)
+7. Dev-mode-only, Phase 8 packaging not started
+
+# Specific Questions
+
+Q1 Architecture drift: 3-5 specific drift points with file:line citations.
+Q2 Workflow speed: process changes to speed up development.
+Q3 Phase 3 narration: concrete implementation plan for Path C.
+Q4 Verification reliability: strategies that work regardless of channel fabrication.
+Q5 Top 3 highest-leverage improvements (highest ROI, lowest effort).
+Q6 Missing ADR for multi-agent orchestration layer (15 modules scattered).
+Q7 Phase 4 prioritization - order? Add/remove?
+Q8 Embedder choice (TF-IDF vs sentence-transformers vs OpenRouter vs chess-specific).
+
+# Output Format
+
+Respond using the exact structure below.
+
+## TL;DR (3-5 sentences)
+
+## Findings (numbered, prioritized)
+### Finding N: [title]
+- Severity: Critical / High / Medium / Low
+- File:line: [abs path:line range]
+- Root cause: [1-2 sentences]
+- Concrete fix: [code or step-by-step]
+- Effort: [min/hr/day]
+- Confidence: [1-5]
+[5-10 findings total, ordered severity then leverage]
+
+## Direct Answers
+### Q1 - Architecture drift
+### Q2 - Workflow speed
+### Q3 - Phase 3 narration path
+### Q4 - Verification reliability
+### Q5 - Top 3 leverage
+### Q6 - Missing ADRs
+### Q7 - Phase 4 order
+### Q8 - Embedder
+
+## Risks / Caveats
+[anything I might have gotten wrong; assumptions to verify]
+
+## Suggested Followup
+[Q to ask in second Fable5 request, given this first response]
+
+=== END PROMPT1 FOR FABLE5 ===
