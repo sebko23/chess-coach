@@ -123,7 +123,7 @@ const GameDetailPage: FC = () => {
     return (
       <Stack align="center" p="xl">
         <Loader />
-        <Text c="dimmed" size="sm">Loading game detailsâ€¦</Text>
+        <Text c="dimmed" size="sm">Loading game details…</Text>
       </Stack>
     );
   }
@@ -159,7 +159,7 @@ const GameDetailPage: FC = () => {
           </Button>
           <Title order={3}>Game Detail</Title>
         </Group>
-        <Badge size="lg">ID: {gameId?.substring(0, 8)}â€¦</Badge>
+        <Badge size="lg">ID: {gameId?.substring(0, 8)}…</Badge>
       </Group>
 
       {/* Eval Graph */}
@@ -206,7 +206,7 @@ const GameDetailPage: FC = () => {
                         ? `${(b.score_cp / 100).toFixed(2)}`
                         : b.score_mate != null
                         ? `#${b.score_mate}`
-                        : "â€”"}
+                        : "—"}
                     </Table.Td>
                   </Table.Tr>
                 ))}

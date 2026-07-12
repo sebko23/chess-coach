@@ -45,7 +45,7 @@ import { currentGameIdAtom } from "@/state/atoms";
 import { SuggestionList, type EvalPoint } from "./SuggestionList";
 
 /**
- * Default FEN â€” used as fallback when no board tab is open.
+ * Default FEN — used as fallback when no board tab is open.
  * The live board position is read from ``boardFenAtom`` instead.
  */
 const FALLBACK_FEN = DEFAULT_FEN;
@@ -141,7 +141,7 @@ function ConnectionStatus() {
       title={`Connected to backend`}
     >
       <Text size="sm">
-        v{descriptor.backend_version} on {baseUrl} â€” protocol{" "}
+        v{descriptor.backend_version} on {baseUrl} — protocol{" "}
         {descriptor.protocol_version}
       </Text>
     </Alert>
@@ -258,7 +258,7 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
                   ({b.cp_delta >= 0 ? "+" : ""}{b.cp_delta}cp)
                 </Text>
                 <Text size="xs" fw={700}>
-                  â†’ {b.best_move}
+                  → {b.best_move}
                 </Text>
               </Group>
             ))}
@@ -351,7 +351,7 @@ export default function CoachPanel() {
       const id = sessionStorage.getItem("activeTab");
       setActiveTabId(prev => {
         if (prev !== id) {
-          // Tab switched â€” reset cache so next FEN triggers re-analysis
+          // Tab switched — reset cache so next FEN triggers re-analysis
           lastAnalyzedFen.current = null;
         }
         return id;
@@ -419,7 +419,7 @@ export default function CoachPanel() {
   // debouncedFen in deps ensures re-analysis on position change.
   useEffect(() => {
     if (!baseUrl || !token) {
-      // Backend not available â€” don't attempt yet.
+      // Backend not available — don't attempt yet.
       return;
     }
 
@@ -461,14 +461,14 @@ export default function CoachPanel() {
 
         }
       } catch (firstErr) {
-        // Connection failure â€” likely stale descriptor.  Re-read once and retry.
+        // Connection failure — likely stale descriptor.  Re-read once and retry.
         await loadDescriptor(setDescriptor);
 
         // Wait one microtask tick for derived atoms to settle.
         await new Promise((r) => setTimeout(r, 0));
 
         // If the re-read gave us a new connection, retry the fetch.
-        // (We use the atom values directly â€” they may have updated.)
+        // (We use the atom values directly — they may have updated.)
         try {
           const narration = await attemptFetch();
           if (!cancelled) {
@@ -477,7 +477,7 @@ export default function CoachPanel() {
             return;
           }
         } catch (_secondErr) {
-          // Still failing â€” show error with retry button.
+          // Still failing — show error with retry button.
         }
 
         if (!cancelled) {
@@ -520,7 +520,7 @@ export default function CoachPanel() {
           <Box py="xl" style={{ textAlign: "center" }}>
             <Loader size="lg" />
             <Text mt="md" c="dimmed">
-              Analysing positionâ€¦
+              Analysing position…
             </Text>
           </Box>
         )}
