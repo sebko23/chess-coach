@@ -1,12 +1,20 @@
 """Engine pool orchestrator.
 
 Manages a bounded set of UCI engine worker processes. Scheduling is FIFO;
-engines are shared (one-fen-at-a-time). Phase 1: single Stockfish instance.
+each worker has its own subprocess and per-worker asyncio.Lock so N
+analyses can run truly in parallel.
+
+BBF-19: replaced single-slot-per-engine with N-slot-per-engine. Each
+slot owns its own UCIEngine subprocess and its own lock. The semaphore
+(max_workers) caps concurrent in-flight analyses; the per-slot lock
+serializes access to that slot's single-coroutine Stockfish process.
+Round-robin slot selection keeps load balanced and avoids starvation.
 """
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import itertools
 import logging
 import platform
 from dataclasses import dataclass, field
@@ -27,12 +35,35 @@ class EngineSpec:
     skip_options: set[str] = field(default_factory=set)
 
 
-class EnginePool:
-    """Bounded FIFO engine pool.
+class _EngineSlot:
+    """One UCI engine subprocess + its per-slot asyncio.Lock.
 
-    In Phase 1 this is essentially a single-Stockfish wrapper, but the
-    interface is generic so we can later add Leela / Berserk / Ethereal
-    without breaking callers.
+    The lock is held by EnginePool.analyze() for the entire analysis
+    body (position + go() + collect), so the same slot is never
+    touched by two coroutines concurrently. asyncio.Lock is NOT
+    reentrant; callers must not re-acquire it inside the held region.
+    """
+
+    __slots__ = ("engine_id", "slot_index", "lock", "engine")
+
+    def __init__(self, engine_id: str, slot_index: int) -> None:
+        self.engine_id = engine_id
+        self.slot_index = slot_index
+        self.lock: asyncio.Lock = asyncio.Lock()
+        self.engine: UCIEngine | None = None  # lazy-init on first acquire
+
+    def __repr__(self) -> str:
+        return f"_EngineSlot(engine_id={self.engine_id!r}, slot_index={self.slot_index})"
+
+
+class EnginePool:
+    """Bounded FIFO engine pool with N parallel workers per engine_id.
+
+    In Phase 2 this provides true parallelism: max_workers stockfish
+    subprocesses for engine_id='stockfish', so asyncio.gather() of N
+    plies in pgn_import.py runs ~N times faster (modulo UCI overhead).
+    The interface is unchanged for callers; only the implementation
+    scales.
     """
 
     def __init__(
@@ -45,11 +76,23 @@ class EnginePool:
         default_threads: int = 1,
         default_hash_mb: int = 128,
     ) -> None:
+        if max_workers < 1:
+            raise ValueError(f"max_workers must be >= 1, got {max_workers}")
         self._specs = {s.engine_id: s for s in specs}
         self._max_workers = max_workers
+        # Semaphore caps total concurrent analyses across all slots.
         self._sem = asyncio.Semaphore(max_workers)
-        self._engines: dict[str, UCIEngine] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
+        # Per-engine slot ring: _slots[engine_id] = [_EngineSlot, _EngineSlot, ...]
+        self._slots: dict[str, list[_EngineSlot]] = {
+            s.engine_id: [_EngineSlot(s.engine_id, i) for i in range(max_workers)]
+            for s in specs
+        }
+        # Round-robin cursor per engine_id. itertools.count is monotonic
+        # and atomic at the bytecode level for next(); with asyncio
+        # (single-threaded event loop) this is race-free without a lock.
+        self._rr: dict[str, itertools.count] = {
+            s.engine_id: itertools.count() for s in specs
+        }
         self._default_depth = default_depth
         self._default_multipv = default_multipv
         self._default_threads = default_threads
@@ -60,13 +103,17 @@ class EnginePool:
             "-avx2" if "avx2" in platform.processor().lower() else ""
         )
 
+    @property
+    def max_workers(self) -> int:
+        return self._max_workers
+
     # ── public API ──────────────────────────────────────────────────────
 
     async def analyze(self, req: AnalysisRequest, engine_id: str) -> AnalysisResult:
         """Run an analysis job and return the canonical result.
 
-        This is the primary entry-point; it handles engine lifecycle,
-        UCI option forwarding, and result collection.
+        Round-robins to a slot, holds the slot's per-engine lock for the
+        entire body (position + go() + collect), then releases.
         """
         spec = self._specs.get(engine_id)
         if spec is None:
@@ -85,13 +132,12 @@ class EnginePool:
             options["MultiPV"] = multipv
 
         async with self._sem:
-            # Per-engine lock: serializes all calls that would touch the
+            slot = self._next_slot(engine_id)
+            # Per-slot lock: serializes all calls that would touch the
             # same Stockfish subprocess (which is single-coroutine — its
             # readuntil() raises if a second coroutine reads concurrently).
-            if engine_id not in self._locks:
-                self._locks[engine_id] = asyncio.Lock()
-            async with self._locks[engine_id]:
-                engine = await self._acquire(spec, options)
+            async with slot.lock:
+                engine = await self._acquire(spec, slot, options)
                 try:
                     await engine.position(fen=req.fen)
                     pvs_dict: dict[int, PVLine] = {}
@@ -132,60 +178,103 @@ class EnginePool:
                         pvs=pvs,
                     )
                 finally:
-                    await self._release(engine, engine_id)
+                    await self._release(engine, engine_id, slot)
 
     async def engine_info(self, engine_id: str) -> dict[str, object]:
         """Return engine metadata for GET /engines/{engine_id}."""
         spec = self._specs.get(engine_id)
         if spec is None:
             raise ValueError(f"Unknown engine: {engine_id}")
-        engine = await self._acquire(spec, {})
-        try:
-            name = getattr(engine, 'engine_name', None) or getattr(engine, '_name', 'unknown')
-            version = getattr(engine, '_version', 'unknown')
-            proc = getattr(engine, '_proc', None)
-            opts = getattr(engine, '_options', {})
-            return {
-                "engine_id": engine_id,
-                "name": name,
-                "version": version,
-                "path": spec.path,
-                "state": "ready" if proc is not None else "ready",
-                "capabilities": opts,
-            }
-        finally:
-            await self._release(engine, engine_id)
+        slot = self._slots[engine_id][0]  # any slot is representative
+        async with slot.lock:
+            engine = await self._acquire(spec, slot, {})
+            try:
+                name = getattr(engine, "engine_name", None) or getattr(engine, "_name", "unknown")
+                version = getattr(engine, "_version", "unknown")
+                proc = getattr(engine, "_proc", None)
+                opts = getattr(engine, "_options", {})
+                return {
+                    "engine_id": engine_id,
+                    "name": name,
+                    "version": version,
+                    "path": spec.path,
+                    "state": "ready" if proc is not None else "ready",
+                    "capabilities": opts,
+                    "workers": self._max_workers,
+                }
+            finally:
+                await self._release(engine, engine_id, slot)
+
+    async def warmup(self) -> None:
+        """Eagerly start one UCIEngine subprocess per slot.
+
+        Called from app.py lifespan so the first PGN import doesn't pay
+        N times the cold-start cost (one per slot). Acquires every
+        slot's lock in order, then releases.
+        """
+        for engine_id, slots in self._slots.items():
+            spec = self._specs[engine_id]
+            for slot in slots:
+                async with slot.lock:
+                    await self._acquire(spec, slot, {})
 
     async def shutdown(self) -> None:
-        """Kill all engine subprocesses."""
+        """Kill all engine subprocesses across all slots."""
         async with asyncio.TaskGroup() as tg:
-            for eid, engine in self._engines.items():
-                if engine._proc is not None:
-                    tg.create_task(engine.quit())
-        self._engines.clear()
-        self._locks.clear()
+            for slots in self._slots.values():
+                for slot in slots:
+                    if slot.engine is not None and slot.engine._proc is not None:
+                        tg.create_task(slot.engine.quit())
+        for slots in self._slots.values():
+            for slot in slots:
+                slot.engine = None
 
     # ── internal ────────────────────────────────────────────────────────
 
-    async def _acquire(self, spec: EngineSpec, options: dict) -> UCIEngine:
-        # NOTE: caller MUST already hold self._locks[spec.engine_id] (analyze() does).
-        # asyncio.Lock is NOT reentrant, so we cannot re-acquire it here.
-        engine = self._engines.get(spec.engine_id)
-        if engine is None or engine._proc is None:
-            engine = UCIEngine(spec.path, engine_id=spec.engine_id, extra_args=spec.extra_args)
+    def _next_slot(self, engine_id: str) -> _EngineSlot:
+        """Round-robin slot selection. O(1), no lock needed (asyncio is
+        single-threaded; itertools.count() is safe under the event loop)."""
+        slots = self._slots[engine_id]
+        idx = next(self._rr[engine_id]) % len(slots)
+        return slots[idx]
+
+    async def _acquire(
+        self, spec: EngineSpec, slot: _EngineSlot, options: dict
+    ) -> UCIEngine:
+        # NOTE: caller MUST already hold slot.lock. asyncio.Lock is NOT
+        # reentrant, so we cannot re-acquire it here.
+        if slot.engine is None or slot.engine._proc is None:
+            engine = UCIEngine(
+                spec.path, engine_id=spec.engine_id, extra_args=spec.extra_args
+            )
             await engine.start(options=options)
-            self._engines[spec.engine_id] = engine
+            slot.engine = engine
+            logger.info(
+                "engine_pool: started slot %d for %s (pid=%s)",
+                slot.slot_index,
+                spec.engine_id,
+                getattr(engine._proc, "pid", "?") if engine._proc else "?",
+            )
         else:
             # Filter out options that the engine doesn't support
-            filtered_options = {k: v for k, v in options.items() if k not in spec.skip_options}
+            filtered_options = {
+                k: v for k, v in options.items() if k not in spec.skip_options
+            }
             try:
-                await engine.set_options(filtered_options)
+                await slot.engine.set_options(filtered_options)
             except Exception as e:
-                logger.warning(f"set_options failed for {spec.engine_id}: {e}")
-        return engine
+                logger.warning(
+                    "set_options failed for %s slot %d: %s",
+                    spec.engine_id,
+                    slot.slot_index,
+                    e,
+                )
+        return slot.engine
 
-    async def _release(self, engine: UCIEngine, engine_id: str) -> None:
-        # In Phase 1 we keep the engine alive across requests for speed.
+    async def _release(
+        self, engine: UCIEngine, engine_id: str, slot: _EngineSlot
+    ) -> None:
+        # In Phase 2 we keep each engine alive across requests for speed.
         # A later pooling strategy may decide to idle-kill.
         pass
 

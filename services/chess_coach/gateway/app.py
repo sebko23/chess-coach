@@ -139,10 +139,10 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             ))
 
         import os
-        # Single Stockfish process is single-coroutine; the pool's per-engine
-        # lock serializes calls. With one stockfish process the safe max_workers
-        # is 1. Future: spawn N stockfish processes (one per worker) for true
-        # parallelism; controlled via CHESS_COACH_MAX_WORKERS.
+        # (env_workers / max_workers handling moved into the engine_pool block below; BBF-19)
+        # Single Stockfish is single-coroutine, but with N slots we can
+        # run N analyses truly in parallel — each slot owns its own
+        # subprocess and per-slot lock. BBF-19.
         env_workers = int(os.environ.get("CHESS_COACH_MAX_WORKERS", "0"))
         if env_workers > 0:
             max_workers = env_workers
@@ -150,17 +150,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_workers = 1
         engine_pool = EnginePool(specs, max_workers=max_workers)
         app.state.engine_pool = engine_pool  # type: ignore[attr-defined]
-        await engine_pool._acquire(  # type: ignore[attr-defined]
-            EngineSpec(engine_id="stockfish", path=stockfish_path), {}
-        )
+        # Warmup: start all N stockfish subprocesses eagerly so the
+        # first PGN import doesn't pay Nx cold-start cost.
+        await engine_pool.warmup()
         logger.info(
             "gateway.startup: engine pool max_workers=%d (CHESS_COACH_MAX_WORKERS env)",
             max_workers,
         )
         logger.info(
-            "gateway.startup: engine pool ready (stockfish=%s, maia=%s)",
+            "gateway.startup: engine pool ready (stockfish=%s, maia=%s, workers=%d)",
             stockfish_path,
             "yes" if maia_available else "no",
+            max_workers,
         )
     else:
         engine_pool = app.state.engine_pool  # type: ignore[attr-defined]
