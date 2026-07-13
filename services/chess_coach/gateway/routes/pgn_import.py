@@ -12,21 +12,22 @@ every NOT NULL column (in particular `pgn_raw`, which the BBF-7 INSERT omitted
 and which `OR IGNORE` then silently swallowed). Track real imported vs failed
 counts via cursor.rowcount instead of just counting parsed results.
 
-BBF-9: also insert one `positions` row per ply (mirroring `lichess_import.py`)
-and synchronously analyze each game's starting position, writing one
-`analyses` row per game so /v1/games/{id}/eval-graph has real data and the
-Coach panel can render a real starting-position analysis.
+BBF-9: also insert one `positions` row per ply (mirroring `lichess_import.py`).
+The BBF-9 path also wrote one `analyses` row per ply. BBF-22 removed that:
+PGN import is now a pure-insert operation. Analyses are computed lazily by
+GET /v1/games/{game_id}/eval-graph on first request and cached in the
+`analyses` table. This makes import time independent of corpus size: a
+6000-game PGN now imports in seconds instead of hours.
 
-BBF-14: extend synchronous analysis to every mainline ply up to `max_plies`
-(default 200) so newly-imported games have populated eval graphs beyond ply 0.
+BBF-14 max_plies still applies: it caps the number of positions stored per
+game. Games longer than max_plies will have only the first max_plies+1
+positions in the table; deeper plies return 404 on eval-graph.
 """
 from __future__ import annotations
 
-import asyncio
 import io
 import logging
 import uuid
-from datetime import datetime, timezone
 
 import chess
 import chess.pgn
@@ -42,9 +43,9 @@ router = APIRouter(prefix="/v1/import", tags=["import"])
 
 class PgnImportRequest(BaseModel):
     pgn: str = Field(..., description="PGN text, single or multi-game")
-    depth: int = Field(8, ge=1, le=30)
+    depth: int = Field(8, ge=1, le=30, description="Depth used by future lazy analyses at GET /v1/games/{id}/eval-graph")
     max_games: int = Field(500, ge=1, le=5000)
-    max_plies: int = Field(200, ge=1, le=1000, description="Cap on plies analyzed per game")
+    max_plies: int = Field(200, ge=1, le=1000, description="Cap on positions stored per game")
 
 
 class ImportedGame(BaseModel):
@@ -58,12 +59,16 @@ class ImportedGame(BaseModel):
 
 class PgnImportResponse(BaseModel):
     import_id: str
-    imported_count: int        # rows actually inserted into games
-    failed_count: int          # game INSERTs that failed
+    imported_count: int
+    failed_count: int
     total_games: int
-    positions_count: int       # NEW: total positions inserted across all games
-    analyzed_count: int        # NEW: starting positions that got engine analysis
-    analysis_failed_count: int # NEW: starting positions whose analysis failed
+    positions_count: int
+    # BBF-22: these are always 0 now. Import is a pure-insert operation;
+    # analyses are computed lazily by GET /v1/games/{id}/eval-graph.
+    # Kept in the response shape for back-compat with GUI and any existing
+    # scripts that read these fields.
+    analyzed_count: int
+    analysis_failed_count: int
     results: list[ImportedGame]
 
 
@@ -75,20 +80,6 @@ async def _games_table_columns(db_path: str) -> list[tuple]:
     """Return PRAGMA table_info(games) rows: (cid, name, type, notnull, dflt_value, pk)."""
     async with aiosqlite.connect(db_path) as db:
         cur = await db.execute("PRAGMA table_info(games)")
-        return list(await cur.fetchall())
-
-
-async def _positions_table_columns(db_path: str) -> list[tuple]:
-    """Return PRAGMA table_info(positions) rows."""
-    async with aiosqlite.connect(db_path) as db:
-        cur = await db.execute("PRAGMA table_info(positions)")
-        return list(await cur.fetchall())
-
-
-async def _analyses_table_columns(db_path: str) -> list[tuple]:
-    """Return PRAGMA table_info(analyses) rows."""
-    async with aiosqlite.connect(db_path) as db:
-        cur = await db.execute("PRAGMA table_info(analyses)")
         return list(await cur.fetchall())
 
 
@@ -116,8 +107,6 @@ def _walk_game(game: "chess.pgn.Game") -> list[tuple[int, str, str | None, str |
 
 def _split_games(pgn_text: str) -> list[str]:
     """Slice a multi-game PGN into per-game text blocks for pgn_raw storage."""
-    # chess.pgn only exposes parsed objects, so split crudely on blank-line
-    # boundaries that separate PGN games; each block is what we'll store in pgn_raw.
     blocks: list[str] = []
     buf: list[str] = []
     for line in pgn_text.splitlines():
@@ -132,113 +121,6 @@ def _split_games(pgn_text: str) -> list[str]:
     return [b for b in blocks if b]
 
 
-async def _insert_analysis_row(
-    db: aiosqlite.Connection,
-    import_id: str,
-    position_id: str,
-    depth: int,
-    result,
-    analyses_cols: list[tuple],
-    analyses_notnull: set[str],
-) -> bool:
-    """Insert one engine analysis row for an already-computed result."""
-    score_cp = None
-    score_mate = None
-    pv0 = result.pvs[0] if result.pvs else None
-    if pv0 and pv0.score:
-        if pv0.score.kind == "cp":
-            score_cp = pv0.score.value
-        elif pv0.score.kind == "mate":
-            score_mate = pv0.score.value
-
-    analyses_row: dict[str, object] = {
-        "id": f"{position_id}:stockfish:{depth}",
-        "position_id": position_id,
-        "engine_id": "stockfish",
-        "depth": depth,
-        "score_cp": score_cp,
-        "score_mate": score_mate,
-        "best_move": pv0.moves[0] if pv0 and pv0.moves else None,
-        "pv_moves": ",".join(pv0.moves) if pv0 and pv0.moves else None,
-        "result_json": result.model_dump_json(),
-        "classification": "book",
-        "cp_delta": 0,
-    }
-
-    # Backfill any other NOT NULL analyses column lacking a value.
-    for col in analyses_notnull:
-        if col in analyses_row:
-            continue
-        default = next((c[4] for c in analyses_cols if c[1] == col), None)
-        if default is not None and default != "":
-            continue
-        analyses_row[col] = ""
-
-    cols_csv = ", ".join(analyses_row.keys())
-    placeholders = ", ".join("?" for _ in analyses_row)
-    sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders})"
-    try:
-        cur = await db.execute(sql, list(analyses_row.values()))
-        if cur.rowcount == 1:
-            return True
-        logger.warning(
-            "pgn-import %s: analyses rowcount=%s for %s",
-            import_id,
-            cur.rowcount,
-            position_id,
-        )
-    except aiosqlite.IntegrityError as exc:
-        logger.warning(
-            "pgn-import %s: IntegrityError for %s: %s",
-            import_id,
-            position_id,
-            exc,
-        )
-    except Exception as exc:
-        logger.warning(
-            "pgn-import %s: analyses insert failed for %s: %s",
-            import_id,
-            position_id,
-            exc,
-        )
-    return False
-
-
-async def _analyze_position(
-    db: aiosqlite.Connection,
-    pool,
-    analysis_request_cls,
-    import_id: str,
-    position_id: str,
-    fen: str,
-    depth: int,
-    analyses_cols: list[tuple],
-    analyses_notnull: set[str],
-) -> bool:
-    """Run Stockfish for one position and insert its analysis row."""
-    try:
-        req = analysis_request_cls(fen=fen, depth=depth, engine_id="stockfish")
-        result = await pool.analyze(req, "stockfish")
-    except Exception as exc:
-        logger.warning(
-            "pgn-import %s: analyze failed for %s: %s",
-            import_id,
-            position_id,
-            exc,
-        )
-        return False
-
-    return await _insert_analysis_row(
-        db,
-        import_id,
-        position_id,
-        depth,
-        result,
-        analyses_cols,
-        analyses_notnull,
-    )
-
-
 @router.post(
     "/pgn",
     response_model=PgnImportResponse,
@@ -250,15 +132,22 @@ async def import_pgn(
 ) -> PgnImportResponse:
     """Parse a PGN string and import each game into the local DB.
 
-    For each successfully-inserted game we also:
-      - insert one `positions` row per ply (ply=0 is the starting position).
-      - synchronously analyze plies 0..max_plies so /v1/games/{id}/eval-graph
-        has real data immediately.
+    BBF-22: this route is now a pure-insert operation. For each game we:
+      - insert one `games` row (one DB connection, single commit at the end).
+      - insert one `positions` row per ply (capped by max_plies).
+
+    No engine analysis happens here. Analyses are computed lazily by
+    GET /v1/games/{game_id}/eval-graph on first request and cached in
+    the `analyses` table.
+
+    Import time is O(games * plies) for PGN parsing + DB writes; no
+    Stockfish is called. A 6000-game PGN imports in seconds, not hours.
     """
     import_id = str(uuid.uuid4())
     results: list[ImportedGame] = []
     failed: list[tuple[str, str]] = []  # (game_id, reason)
     positions_count = 0
+    # BBF-22: always 0. Kept in the response shape for back-compat.
     analyzed_count = 0
     analysis_failed_count = 0
 
@@ -266,26 +155,9 @@ async def import_pgn(
     pgn_io = io.StringIO(body.pgn)
     pgn_blocks = _split_games(body.pgn)
 
-    # Engine pool: may be None if the gateway never finished initializing it.
-    pool = getattr(request.app.state, "engine_pool", None)
-
-    # --- Introspect games, positions, analyses schemas once ---
+    # --- Introspect games table schema once ---
     games_cols = await _games_table_columns(db_path)
     games_notnull = {row[1] for row in games_cols if row[3] == 1}
-
-    try:
-        positions_cols = await _positions_table_columns(db_path)
-    except Exception as exc:
-        logger.warning("pgn-import %s: positions table missing: %s", import_id, exc)
-        positions_cols = []
-    positions_notnull = {row[1] for row in positions_cols if row[3] == 1}
-
-    try:
-        analyses_cols = await _analyses_table_columns(db_path)
-    except Exception as exc:
-        logger.warning("pgn-import %s: analyses table missing: %s", import_id, exc)
-        analyses_cols = []
-    analyses_notnull = {row[1] for row in analyses_cols if row[3] == 1}
 
     parsed_games: list[tuple[int, "chess.pgn.Game", dict]] = []
     for i in range(body.max_games):
@@ -304,7 +176,6 @@ async def import_pgn(
         event = game.headers.get("Event", "PGN Import")
         date = game.headers.get("Date", "????.??.??")
 
-        # Per-game raw PGN block (best-effort: i-th block if available, else full text).
         pgn_raw = pgn_blocks[i] if i < len(pgn_blocks) else body.pgn
 
         parsed_games.append(
@@ -320,9 +191,6 @@ async def import_pgn(
     total_games = len(parsed_games)
 
     async with aiosqlite.connect(db_path) as db:
-        # ====================================================================
-        # 1) Insert games (one DB connection, single commit at the end).
-        # ====================================================================
         for i, _game, row in parsed_games:
             game_id = row["id"]
 
@@ -332,7 +200,7 @@ async def import_pgn(
                     continue
                 default = next((c[4] for c in games_cols if c[1] == col), None)
                 if default is not None and default != "":
-                    continue  # column has a SQL default; SQLite will fill it
+                    continue
                 values[col] = ""
 
             cols_csv = ", ".join(values.keys())
@@ -376,12 +244,8 @@ async def import_pgn(
             if not inserted_ok:
                 continue
 
-            # ================================================================
-            # 2) Insert positions (one per mainline ply).
-            # ================================================================
+            # Insert positions (one per mainline ply, capped by max_plies).
             positions = _walk_game(_game)
-
-            # Backfill NOT NULL columns with safe defaults.
             positions_sql = (
                 "INSERT INTO positions (id, game_id, parent_id, fen, move_uci, "
                 "move_san, ply, is_mainline) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -416,57 +280,6 @@ async def import_pgn(
                         import_id, position_id, exc,
                     )
                 prev_id = position_id
-
-            # ================================================================
-            # 3) Synchronously analyze positions 0..N (capped by max_plies).
-            # ================================================================
-            if pool is None:
-                analysis_failed_count += min(len(positions), body.max_plies + 1)
-                logger.warning(
-                    "pgn-import %s: engine_pool not initialized; skipping analysis for %s",
-                    import_id, game_id,
-                )
-                continue
-
-            try:
-                # Import lazily so the engine protocol types don't have to be
-                # importable at module load time.
-                from chess_coach.protocol_types.analysis import AnalysisRequest
-            except Exception as exc:
-                analysis_failed_count += min(len(positions), body.max_plies + 1)
-                logger.warning(
-                    "pgn-import %s: AnalysisRequest import failed for %s: %s",
-                    import_id, game_id, exc,
-                )
-                continue
-
-            targets = positions[: body.max_plies + 1]
-            tasks = [
-                _analyze_position(
-                    db,
-                    pool,
-                    AnalysisRequest,
-                    import_id,
-                    f"{game_id}:{ply}",
-                    fen,
-                    body.depth,
-                    analyses_cols,
-                    analyses_notnull,
-                )
-                for ply, fen, _move_uci, _move_san in targets
-            ]
-            analysis_results = await asyncio.gather(*tasks, return_exceptions=True)
-            for ok in analysis_results:
-                if ok is True:
-                    analyzed_count += 1
-                elif isinstance(ok, Exception):
-                    logger.warning(
-                        "pgn-import %s: gather raised for %s: %s",
-                        import_id, game_id, ok,
-                    )
-                    analysis_failed_count += 1
-                else:
-                    analysis_failed_count += 1
 
         await db.commit()
 
