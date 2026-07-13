@@ -124,7 +124,7 @@ const GamesPage: FC = () => {
     try {
       const pgn = await file.text();
 
-      const resp = await fetch(`${baseUrl}/v1/import/pgn-database`, {
+      const resp = await fetch(`${baseUrl}/v1/import/pgn`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -133,6 +133,7 @@ const GamesPage: FC = () => {
         body: JSON.stringify({
           pgn,
           max_games: 500,
+          max_plies: 200,
         }),
       });
 
@@ -143,7 +144,10 @@ const GamesPage: FC = () => {
 
       const result = await resp.json();
       const count = result?.imported_count ?? result?.games_imported ?? 0;
-      setImportSuccess(`Imported ${count} game${count !== 1 ? "s" : ""}`);
+      const positions = result?.positions_count ?? 0;
+      setImportSuccess(
+        `Imported ${count} game${count !== 1 ? "s" : ""}, ${positions} position${positions !== 1 ? "s" : ""}`,
+      );
 
       await fetchGames();
 
