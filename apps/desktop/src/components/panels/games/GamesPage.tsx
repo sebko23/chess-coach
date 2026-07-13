@@ -132,7 +132,6 @@ const GamesPage: FC = () => {
         },
         body: JSON.stringify({
           pgn,
-          depth: 8,
           max_games: 500,
         }),
       });
