@@ -53,6 +53,8 @@ from .routes import (
     training_planner_router,
     players_router,
     kb_router,
+    pgn_import_router,
+    backfill_analyses_router,
 )
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.kb.pipeline import index_positions
@@ -136,10 +138,24 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 skip_options={"Hash", "Threads"},
             ))
 
-        engine_pool = EnginePool(specs, max_workers=1)
+        import os
+        # Single Stockfish process is single-coroutine; the pool's per-engine
+        # lock serializes calls. With one stockfish process the safe max_workers
+        # is 1. Future: spawn N stockfish processes (one per worker) for true
+        # parallelism; controlled via CHESS_COACH_MAX_WORKERS.
+        env_workers = int(os.environ.get("CHESS_COACH_MAX_WORKERS", "0"))
+        if env_workers > 0:
+            max_workers = env_workers
+        else:
+            max_workers = 1
+        engine_pool = EnginePool(specs, max_workers=max_workers)
         app.state.engine_pool = engine_pool  # type: ignore[attr-defined]
         await engine_pool._acquire(  # type: ignore[attr-defined]
             EngineSpec(engine_id="stockfish", path=stockfish_path), {}
+        )
+        logger.info(
+            "gateway.startup: engine pool max_workers=%d (CHESS_COACH_MAX_WORKERS env)",
+            max_workers,
         )
         logger.info(
             "gateway.startup: engine pool ready (stockfish=%s, maia=%s)",
@@ -280,6 +296,8 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(training_planner_router)
     app.include_router(players_router)
     app.include_router(kb_router)
+    app.include_router(pgn_import_router)
+    app.include_router(backfill_analyses_router)
 
     return app
 

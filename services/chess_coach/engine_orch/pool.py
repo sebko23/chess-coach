@@ -85,48 +85,54 @@ class EnginePool:
             options["MultiPV"] = multipv
 
         async with self._sem:
-            engine = await self._acquire(spec, options)
-            try:
-                await engine.position(fen=req.fen)
-                pvs_dict: dict[int, PVLine] = {}
-                use_nodes = spec.path.endswith("lc0") or any("lc0" in a for a in spec.extra_args)
-                async for ev in engine.go(depth=None if use_nodes else depth, nodes=1 if use_nodes else None):
-                    if ev.score is not None and ev.pv:
-                        pv = PVLine(
-                            multipv=ev.multipv,
-                            score=ev.score,
-                            depth=ev.depth,
-                            moves=ev.pv,
-                            nodes=ev.nodes,
-                            time_ms=ev.time_ms,
-                            nps=ev.nps,
-                        )
-                        # keep the deepest line per multipv slot
-                        if (
-                            ev.multipv not in pvs_dict
-                            or pv.depth > pvs_dict[ev.multipv].depth
-                        ):
-                            pvs_dict[ev.multipv] = pv
-                # sort by multipv index
-                pvs = [pvs_dict[k] for k in sorted(pvs_dict)]
-                if not pvs:
-                    raise RuntimeError("Engine returned no PVs")
+            # Per-engine lock: serializes all calls that would touch the
+            # same Stockfish subprocess (which is single-coroutine — its
+            # readuntil() raises if a second coroutine reads concurrently).
+            if engine_id not in self._locks:
+                self._locks[engine_id] = asyncio.Lock()
+            async with self._locks[engine_id]:
+                engine = await self._acquire(spec, options)
+                try:
+                    await engine.position(fen=req.fen)
+                    pvs_dict: dict[int, PVLine] = {}
+                    use_nodes = spec.path.endswith("lc0") or any("lc0" in a for a in spec.extra_args)
+                    async for ev in engine.go(depth=None if use_nodes else depth, nodes=1 if use_nodes else None):
+                        if ev.score is not None and ev.pv:
+                            pv = PVLine(
+                                multipv=ev.multipv,
+                                score=ev.score,
+                                depth=ev.depth,
+                                moves=ev.pv,
+                                nodes=ev.nodes,
+                                time_ms=ev.time_ms,
+                                nps=ev.nps,
+                            )
+                            # keep the deepest line per multipv slot
+                            if (
+                                ev.multipv not in pvs_dict
+                                or pv.depth > pvs_dict[ev.multipv].depth
+                            ):
+                                pvs_dict[ev.multipv] = pv
+                    # sort by multipv index
+                    pvs = [pvs_dict[k] for k in sorted(pvs_dict)]
+                    if not pvs:
+                        raise RuntimeError("Engine returned no PVs")
 
-                settings_hash = _hash_options(options)
+                    settings_hash = _hash_options(options)
 
-                return AnalysisResult(
-                    engine_id=engine_id,
-                    engine_version=engine._version,
-                    fen=req.fen,
-                    depth_reached=max(pv.depth for pv in pvs),
-                    multipv=multipv,
-                    settings_hash=settings_hash,
-                    cpu_arch=self._cpu_arch,
-                    thread_count=options.get("Threads", self._default_threads),
-                    pvs=pvs,
-                )
-            finally:
-                await self._release(engine, engine_id)
+                    return AnalysisResult(
+                        engine_id=engine_id,
+                        engine_version=engine._version,
+                        fen=req.fen,
+                        depth_reached=max(pv.depth for pv in pvs),
+                        multipv=multipv,
+                        settings_hash=settings_hash,
+                        cpu_arch=self._cpu_arch,
+                        thread_count=options.get("Threads", self._default_threads),
+                        pvs=pvs,
+                    )
+                finally:
+                    await self._release(engine, engine_id)
 
     async def engine_info(self, engine_id: str) -> dict[str, object]:
         """Return engine metadata for GET /engines/{engine_id}."""

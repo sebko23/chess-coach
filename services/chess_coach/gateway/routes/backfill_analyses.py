@@ -11,6 +11,7 @@ and analyses rows. Safe to call on a fully-imported corpus; cost is bounded by
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 from datetime import datetime, timezone
@@ -55,6 +56,63 @@ def _engine_pool(request: Request):
     response_model=BackfillResponse,
     dependencies=[Depends(require_bearer)],
 )
+async def _analyze_and_insert(
+    db,
+    pool,
+    AnalysisRequest,
+    game_id,
+    ply_idx,
+    fen,
+    depth,
+) -> bool:
+    position_id = f"{game_id}:{ply_idx}"
+    analysis_id = f"{position_id}:stockfish:{depth}"
+    try:
+        req = AnalysisRequest(fen=fen, depth=depth, engine_id="stockfish")
+        result = await pool.analyze(req, "stockfish")
+        score_cp = None
+        score_mate = None
+        if result.pvs and result.pvs[0].score:
+            sc = result.pvs[0].score
+            if sc.kind == "cp":
+                score_cp = sc.value
+            elif sc.kind == "mate":
+                score_mate = sc.value
+        best_move = (
+            result.pvs[0].moves[0]
+            if result.pvs and result.pvs[0].moves
+            else None
+        )
+        pv_moves = (
+            ",".join(result.pvs[0].moves)
+            if result.pvs and result.pvs[0].moves
+            else None
+        )
+        analyses_row = {
+            "id": analysis_id,
+            "position_id": position_id,
+            "engine_id": "stockfish",
+            "depth": depth,
+            "score_cp": score_cp,
+            "score_mate": score_mate,
+            "best_move": best_move,
+            "pv_moves": pv_moves,
+            "result_json": result.model_dump_json(),
+            "classification": "book",
+            "cp_delta": 0,
+        }
+        cols_csv = ", ".join(analyses_row.keys())
+        placeholders_sql = ", ".join("?" for _ in analyses_row)
+        sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders_sql})"
+        cur = await db.execute(sql, list(analyses_row.values()))
+        return cur.rowcount == 1
+    except Exception as exc:
+        logger.warning(
+            "backfill %s: analyze or insert failed for ply %d: %s",
+            game_id, ply_idx, exc,
+        )
+        return False
+
 async def backfill_analyses(
     body: BackfillRequest,
     request: Request,
@@ -150,64 +208,30 @@ async def backfill_analyses(
             )
             existing_ids = {row[0] for row in await cur.fetchall()}
 
-            for ply_idx, fen, _, _ in positions:
-                position_id = f"{game_id}:{ply_idx}"
-                analysis_id = f"{position_id}:stockfish:{body.depth}"
-                if analysis_id in existing_ids:
-                    plies_skipped_existing += 1
-                    continue
-                try:
-                    req = AnalysisRequest(fen=fen, depth=body.depth, engine_id="stockfish")
-                    result = await pool.analyze(req, "stockfish")
-                    score_cp = None
-                    score_mate = None
-                    if result.pvs and result.pvs[0].score:
-                        sc = result.pvs[0].score
-                        if sc.kind == "cp":
-                            score_cp = sc.value
-                        elif sc.kind == "mate":
-                            score_mate = sc.value
-                    best_move = (
-                        result.pvs[0].moves[0]
-                        if result.pvs and result.pvs[0].moves
-                        else None
-                    )
-                    pv_moves = (
-                        ",".join(result.pvs[0].moves)
-                        if result.pvs and result.pvs[0].moves
-                        else None
-                    )
-                    analyses_row = {
-                        "id": analysis_id,
-                        "position_id": position_id,
-                        "engine_id": "stockfish",
-                        "depth": body.depth,
-                        "score_cp": score_cp,
-                        "score_mate": score_mate,
-                        "best_move": best_move,
-                        "pv_moves": pv_moves,
-                        "result_json": result.model_dump_json(),
-                        "classification": "book",
-                        "cp_delta": 0,
-                    }
-                    cols_csv = ", ".join(analyses_row.keys())
-                    placeholders_sql = ", ".join("?" for _ in analyses_row)
-                    sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders_sql})"
-                    cur = await db.execute(sql, list(analyses_row.values()))
-                    if cur.rowcount == 1:
-                        plies_analyzed += 1
-                    else:
-                        plies_skipped_existing += 1
+            tasks = [
+                _analyze_and_insert(
+                    db,
+                    pool,
+                    AnalysisRequest,
+                    game_id,
+                    ply_idx,
+                    fen,
+                    body.depth,
+                )
+                for ply_idx, fen, _, _ in positions
+                if f"{game_id}:{ply_idx}:stockfish:{body.depth}" not in existing_ids
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for ok in results:
+                if ok is True:
+                    plies_analyzed += 1
+                else:
+                    if isinstance(ok, Exception):
                         logger.warning(
-                            "backfill %s: rowcount=0 for %s (race with concurrent insert?)",
-                            game_id, position_id,
+                            "backfill %s: gather raised: %s", game_id, ok,
                         )
-                except Exception as exc:
-                    failures += 1
-                    logger.warning(
-                        "backfill %s: analyze or insert failed for ply %d: %s",
-                        game_id, ply_idx, exc,
-                    )
+                        failures += 1
+                    plies_skipped_existing += 1
 
             await db.commit()
             games_processed += 1

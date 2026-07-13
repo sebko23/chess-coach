@@ -20,6 +20,8 @@ from .repertoire_recommendations import router as repertoire_recommendations_rou
 from .profile_analysis import router as profile_analysis_router
 from .training_planner import router as training_planner_router
 from .kb import kb_router
+from .pgn_import import router as pgn_import_router
+from .backfill_analyses import router as backfill_analyses_router
 # system.py uses a builder pattern (build_system_router); kept as-is.
 
 __all__ = [
@@ -39,4 +41,6 @@ __all__ = [
     "profile_analysis_router",
     "training_planner_router",
     "kb_router",
+    "pgn_import_router",
+    "backfill_analyses_router",
 ]

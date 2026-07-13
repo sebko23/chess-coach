@@ -22,6 +22,7 @@ BBF-14: extend synchronous analysis to every mainline ply up to `max_plies`
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import uuid
@@ -439,21 +440,31 @@ async def import_pgn(
                 )
                 continue
 
-            for ply, fen, _move_uci, _move_san in positions[: body.max_plies + 1]:
-                position_id = f"{game_id}:{ply}"
-                ok = await _analyze_position(
+            targets = positions[: body.max_plies + 1]
+            tasks = [
+                _analyze_position(
                     db,
                     pool,
                     AnalysisRequest,
                     import_id,
-                    position_id,
+                    f"{game_id}:{ply}",
                     fen,
                     body.depth,
                     analyses_cols,
                     analyses_notnull,
                 )
-                if ok:
+                for ply, fen, _move_uci, _move_san in targets
+            ]
+            analysis_results = await asyncio.gather(*tasks, return_exceptions=True)
+            for ok in analysis_results:
+                if ok is True:
                     analyzed_count += 1
+                elif isinstance(ok, Exception):
+                    logger.warning(
+                        "pgn-import %s: gather raised for %s: %s",
+                        import_id, game_id, ok,
+                    )
+                    analysis_failed_count += 1
                 else:
                     analysis_failed_count += 1
 
