@@ -7,12 +7,18 @@ import {
   Button,
   Group,
   Loader,
+  NumberInput,
   Stack,
   Table,
   Text,
   Title,
 } from "@mantine/core";
-import { IconAlertCircle, IconDatabase, IconUpload } from "@tabler/icons-react";
+import {
+  IconAlertCircle,
+  IconDatabase,
+  IconRefresh,
+  IconUpload,
+} from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useAtom, useSetAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -56,6 +62,10 @@ const GamesPage: FC = () => {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillError, setBackfillError] = useState<string | null>(null);
+  const [backfillSuccess, setBackfillSuccess] = useState<string | null>(null);
+  const [backfillDepth, setBackfillDepth] = useState<number>(6);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchGames = useCallback(async () => {
@@ -145,6 +155,51 @@ const GamesPage: FC = () => {
     }
   };
 
+  const handleBackfill = async () => {
+    if (!baseUrl || !token) return;
+
+    setBackfilling(true);
+    setBackfillError(null);
+    setBackfillSuccess(null);
+
+    try {
+      const resp = await fetch(`${baseUrl}/v1/import/backfill-analyses`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          game_ids: [],
+          depth: backfillDepth,
+          max_plies: 200,
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.detail ?? err?.error?.message ?? `HTTP ${resp.status}`);
+      }
+
+      const result = await resp.json();
+      const plies = result?.plies_analyzed ?? 0;
+      const failures = result?.failures ?? 0;
+      const games = result?.games_processed ?? 0;
+      setBackfillSuccess(
+        `Backfill: ${games} game${games !== 1 ? "s" : ""}, ` +
+          `${plies} plies analyzed, ${failures} failure${failures !== 1 ? "s" : ""}`,
+      );
+
+      await fetchGames();
+    } catch (e) {
+      setBackfillError(
+        e instanceof Error ? e.message : "Backfill failed",
+      );
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   useEffect(() => {
     fetchGames();
   }, [fetchGames]);
@@ -205,21 +260,45 @@ const GamesPage: FC = () => {
           <Title order={3}>Imported Games</Title>
           <Text size="sm" c="dimmed">{total} game{total !== 1 ? "s" : ""} total</Text>
         </Box>
-        <input
-          type="file"
-          accept=".pgn"
-          hidden
-          ref={fileInputRef}
-          onChange={(e) => handleImport(e.target.files?.[0] ?? null)}
-        />
-        <Button
-          leftSection={<IconUpload size={16} />}
-          onClick={() => fileInputRef.current?.click()}
-          loading={importing}
-          size="sm"
-        >
-          Import PGN
-        </Button>
+        <Group gap="xs">
+          <NumberInput
+            aria-label="Backfill depth"
+            value={backfillDepth}
+            onChange={(v) =>
+              setBackfillDepth(typeof v === "number" ? v : 6)
+            }
+            min={1}
+            max={30}
+            step={1}
+            w={90}
+            disabled={backfilling}
+          />
+          <Button
+            leftSection={<IconRefresh size={16} />}
+            onClick={handleBackfill}
+            loading={backfilling}
+            disabled={games.length === 0}
+            size="sm"
+            variant="light"
+          >
+            Backfill analyses
+          </Button>
+          <input
+            type="file"
+            accept=".pgn"
+            hidden
+            ref={fileInputRef}
+            onChange={(e) => handleImport(e.target.files?.[0] ?? null)}
+          />
+          <Button
+            leftSection={<IconUpload size={16} />}
+            onClick={() => fileInputRef.current?.click()}
+            loading={importing}
+            size="sm"
+          >
+            Import PGN
+          </Button>
+        </Group>
       </Group>
       {importSuccess && (
         <Alert icon={<IconAlertCircle size={16} />} color="green" mb="md" withCloseButton onClose={() => setImportSuccess(null)}>
@@ -229,6 +308,16 @@ const GamesPage: FC = () => {
       {importError && (
         <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" withCloseButton onClose={() => setImportError(null)}>
           <Text size="sm">{importError}</Text>
+        </Alert>
+      )}
+      {backfillSuccess && (
+        <Alert icon={<IconRefresh size={16} />} color="blue" mb="md" withCloseButton onClose={() => setBackfillSuccess(null)}>
+          <Text size="sm">{backfillSuccess}</Text>
+        </Alert>
+      )}
+      {backfillError && (
+        <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" withCloseButton onClose={() => setBackfillError(null)}>
+          <Text size="sm">{backfillError}</Text>
         </Alert>
       )}
 

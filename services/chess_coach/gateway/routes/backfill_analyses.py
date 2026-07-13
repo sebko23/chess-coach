@@ -51,11 +51,6 @@ def _engine_pool(request: Request):
     return request.app.state.engine_pool
 
 
-@router.post(
-    "/backfill-analyses",
-    response_model=BackfillResponse,
-    dependencies=[Depends(require_bearer)],
-)
 async def _analyze_and_insert(
     db,
     pool,
@@ -113,6 +108,11 @@ async def _analyze_and_insert(
         )
         return False
 
+@router.post(
+    "/backfill-analyses",
+    response_model=BackfillResponse,
+    dependencies=[Depends(require_bearer)],
+)
 async def backfill_analyses(
     body: BackfillRequest,
     request: Request,
