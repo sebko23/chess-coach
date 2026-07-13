@@ -168,22 +168,21 @@ class EnginePool:
     # ── internal ────────────────────────────────────────────────────────
 
     async def _acquire(self, spec: EngineSpec, options: dict) -> UCIEngine:
-        if spec.engine_id not in self._locks:
-            self._locks[spec.engine_id] = asyncio.Lock()
-        async with self._locks[spec.engine_id]:
-            engine = self._engines.get(spec.engine_id)
-            if engine is None or engine._proc is None:
-                engine = UCIEngine(spec.path, engine_id=spec.engine_id, extra_args=spec.extra_args)
-                await engine.start(options=options)
-                self._engines[spec.engine_id] = engine
-            else:
-                # Filter out options that the engine doesn't support
-                filtered_options = {k: v for k, v in options.items() if k not in spec.skip_options}
-                try:
-                    await engine.set_options(filtered_options)
-                except Exception as e:
-                    logger.warning(f"set_options failed for {spec.engine_id}: {e}")
-            return engine
+        # NOTE: caller MUST already hold self._locks[spec.engine_id] (analyze() does).
+        # asyncio.Lock is NOT reentrant, so we cannot re-acquire it here.
+        engine = self._engines.get(spec.engine_id)
+        if engine is None or engine._proc is None:
+            engine = UCIEngine(spec.path, engine_id=spec.engine_id, extra_args=spec.extra_args)
+            await engine.start(options=options)
+            self._engines[spec.engine_id] = engine
+        else:
+            # Filter out options that the engine doesn't support
+            filtered_options = {k: v for k, v in options.items() if k not in spec.skip_options}
+            try:
+                await engine.set_options(filtered_options)
+            except Exception as e:
+                logger.warning(f"set_options failed for {spec.engine_id}: {e}")
+        return engine
 
     async def _release(self, engine: UCIEngine, engine_id: str) -> None:
         # In Phase 1 we keep the engine alive across requests for speed.
