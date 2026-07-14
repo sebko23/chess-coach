@@ -46,16 +46,51 @@ jobs:
             chess-coach-backend:ci
 
       - name: Wait for backend
+        # Poll the backend's /v1/system/health endpoint directly
+        # with a curl. We deliberately do NOT use
+        # 'docker inspect --format={{.State.Health.Status}}'
+        # here because the Dockerfile's HEALTHCHECK hard-codes
+        # the bearer token to "***" (a TODO marker that was
+        # never replaced with the real value), so the
+        # HEALTHCHECK CMD always 401s, the container's health
+        # status never becomes "healthy", and the old poll
+        # loop timed out at 60s every run -- taking the
+        # smoke workflow red since BBF-32.
+        #
+        # A direct curl against the same endpoint with the
+        # real token (matching CHESS_COACH_BACKEND_TOKEN in
+        # the Start backend step) gives us an actual 200 vs
+        # 401/403/connection-refused signal AND a debuggable
+        # response body on failure.
         run: |
-          for i in $(seq 1 30); do
-            status=$(docker inspect --format='{{.State.Health.Status}}' chess-coach-backend-ci 2>/dev/null || echo "starting")
-            if [ "$status" = "healthy" ]; then
-              echo "backend is healthy after $((i * 2))s"
+          TOKEN="devtoken123"
+          URL="http://127.0.0.1:18080/v1/system/health"
+          # The gateway cold-start includes KB pipeline import and
+          # SQLite migrations, so allow up to 120s for the first
+          # healthy response. After the first green, subsequent
+          # restarts are sub-second.
+          for i in $(seq 1 120); do
+            http_code=$(curl -s -o /tmp/health_body -w "%{http_code}" -m 3 \
+              -H "Authorization: Bearer $TOKEN" \
+              "$URL" 2>/dev/null || echo "000")
+            if [ "$http_code" = "200" ]; then
+              body=$(cat /tmp/health_body)
+              echo "backend is healthy after $((i * 1))s"
+              echo "response: $body"
               exit 0
             fi
-            sleep 2
+            # Log only on the LAST iteration and every 10s to keep
+            # the step log readable.
+            if [ $((i % 10)) -eq 0 ] || [ "$i" = "120" ]; then
+              echo "[$i/120] http_code=$http_code body=$(cat /tmp/health_body 2>/dev/null | head -c 200)"
+            fi
+            sleep 1
           done
-          echo "backend did not become healthy in 60s"
+          echo "backend did not become healthy in 120s"
+          echo "--- last curl response (if any) ---"
+          cat /tmp/health_body 2>/dev/null || echo "(no body captured)"
+          echo
+          echo "--- backend logs ---"
           docker logs chess-coach-backend-ci
           exit 1
 
