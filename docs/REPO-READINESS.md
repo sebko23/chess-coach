@@ -174,6 +174,29 @@ rm -rf ${CHESS_COACH_DATA_DIR}
 # Restart the gateway; it will recreate the DB and run migrations
 ```
 
+## Known issues (BBF-34 audit, 2026-07-14)
+
+The codebase is shipped with three known real bugs identified by
+the BBF-34 code audit. See
+[`14_adrs/ADR-0006-engine-pool-failure-modes.md`](14_adrs/ADR-0006-engine-pool-failure-modes.md)
+for full details and "Current behavior" impact. Brief summary:
+
+- **BBF-35**: Engine pool has no timeouts on Stockfish calls. A
+  hung Stockfish wedges one slot. Recovery: backend restart.
+  Fix planned (~15 LOC, ~1 day).
+- **BBF-36**: Eval-graph concurrent-request race. Two concurrent
+  requests for the same game's first view both compute (the second
+  is wasted work) but the analyses-table primary key prevents
+  corruption. Fix planned (~15 LOC, ~0.5 day).
+- **BBF-37**: Desktop discovery hardcodes `$HOME/.local/share/...`
+  on macOS and Windows. On those platforms the desktop can't find
+  the backend unless `CHESS_COACH_DATA_DIR` is set explicitly in
+  both shells. Fix needs Tauri env-var read + macOS/Windows
+  validation.
+
+None of these bugs are blockers for the typical Linux dev workflow.
+
+
 ## Sprint history
 
 See `docs/CHANGELOG.md` for the full BBF-1..BBF-26 sprint history. The current strategic focus is repo-readiness (BBF-27 onwards); the next planned work is the 6000-game scaling follow-on (lazy eval-graph was the foundation; we're now in the polish phase).

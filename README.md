@@ -8,6 +8,82 @@ that gives ground-truth Stockfish analyses and grounded coaching narration
 for your chess games. The backend does no pre-compute; analyses are computed
 lazily on first view and cached in the local SQLite DB.
 
+## Who is this for?
+
+CHESS COACH is a chess game analysis tool, not a chess engine. It
+binds a Stockfish binary to a self-hosted FastAPI backend so you can
+get ground-truth engine evaluations of your games, plus grounded
+narration (when the LLM is wired up).
+
+Concrete audiences:
+
+- **Club players (1400-2200 ELO)** who want structured feedback on
+  their own games without paying for a subscription. The target
+  use case is "import a tournament game, get a per-ply eval-graph
+  and a list of blunders/mistakes/inaccuracies."
+- **Coaches** who want to analyze a student's games offline. The
+  desktop + backend pair run on one machine; no data leaves your
+  network.
+- **Engine nerds** who want to inspect Stockfish's behavior on
+  specific positions. The eval-graph endpoint is just
+  `GET /v1/games/{id}/eval-graph?depth=N`; you can curl it.
+
+CHESS COACH is **not**:
+
+- A chess engine (it shells out to Stockfish or another UCI engine).
+- A database of master games (it's a local-first analyzer for YOUR
+  games).
+- A cloud service. Self-hosting is the only deployment model.
+
+## Architecture in 60 seconds
+
+```
+                  Desktop (Tauri + React)
+                  apps/desktop/
+                       |
+                       | HTTP (Bearer token from backend.json)
+                       v
+                  Backend (FastAPI gateway)
+                  services/chess_coach/
+                       |
+        +--------------+--------------+
+        |              |              |
+        v              v              v
+   engine_orch     storage       narration
+   (libs/)         (libs/)        (libs/)
+        |              |
+        v              v
+   Stockfish        SQLite (analyses, positions,
+   subprocess       games tables)
+   pool (N slots)
+```
+
+**The flow in one line:** Desktop sends HTTP to backend -> backend
+asks engine_orch to run a Stockfish analysis -> engine_orch
+returns the analysis -> backend writes it to SQLite -> desktop
+displays the eval graph.
+
+**Key boundary:** the engine pool is the only thing that talks to
+Stockfish. Everything else -- the gateway, the storage layer, the
+desktop -- talks to engine_orch via an `AnalysisRequest` /
+`AnalysisResult` interface. Replacing Stockfish with leela-zero
+or another UCI engine is a one-file change to
+`services/chess_coach/engine_orch/pool.py`.
+
+**Lazy evaluation:** the import path inserts games and positions
+only. Analyses are computed on the first
+`GET /v1/games/{id}/eval-graph` call for that game and cached in
+the `analyses` table by
+`(position_id, engine_id, depth, settings_hash)`. See
+[`docs/17_lazy_eval_graph/SPEC.md`](docs/17_lazy_eval_graph/SPEC.md)
+for the design rationale and the 6000-game stress-test results.
+
+**Self-hosting model:** the desktop reads
+`${CHESS_COACH_DATA_DIR}/runtime/backend.json` to discover the
+backend. The desktop and the backend can be on the same machine
+(simplest) or on different machines sharing `CHESS_COACH_DATA_DIR`
+via an NFS mount or a copy step.
+
 ## Quick start
 
 You need three things: a working backend, a working desktop, and a way for
