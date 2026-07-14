@@ -3,6 +3,56 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-29 — feat(tests): end-to-end smoke test script
+
+`tests/integration/smoke_test.py`. Dual-mode: standalone
+(`python tests/integration/smoke_test.py`) and pytest
+(`pytest tests/integration/smoke_test.py`). Hits a real running
+gateway over HTTP, imports a 7-ply PGN, fetches the eval-graph
+twice (cache miss + cache hit), verifies all positions have
+`score_cp` populated. Exits 0 on success, 1-4 on specific failure
+modes. Reads `CHESS_COACH_BASE_URL` and `CHESS_COACH_BACKEND_TOKEN`
+env vars (defaults match the docker-compose dev defaults). Skips
+cleanly under pytest if the gateway is unreachable so CI doesn't
+fail on a dev machine without the backend.
+
+Verified end-to-end against the live gateway: 0.17s import,
+11.95s first eval (7/7 with score_cp), 0.05s cache hit, 0 exit.
+
+## BBF-28 — feat(infra): backend Dockerfile + docker-compose
+
+`f4b1e1f`. The backend now runs without the agentZero container.
+A new dev can `git clone` and `docker compose up` to get a working
+gateway on http://127.0.0.1:18080 in under a minute, no agentZero
+image, no manual token setup. 5 files: Dockerfile (single-stage
+`python:3.11-slim-bookworm`, stockfish via apt, uv 0.4.18, non-root
+user, tini as PID 1, healthcheck), docker-compose.yml (one
+backend service, port 18080 published to 127.0.0.1, ./data
+bind-mount, dev-token env var, logging driver), .dockerignore
+(keeps the build context small), BUILDING.md (added the
+"Running the backend in Docker" section), README.md (added a
+"Backend (Docker)" subsection). Build not verified end-to-end in
+this environment (host's Docker daemon not accessible from
+agentZero); the first dev who runs `docker compose build` should
+verify in < 60s.
+
+## BBF-27 — docs(repo): repo-readiness docs refresh
+
+`2b5b6bb`. Five docs files + one new reference file. README.md
+rewritten from 132 lines of legal/architectural content to a
+1-page dev-focused quick start. CONTRIBUTING.md rewritten from
+the upstream en-croissant copy to chess-coach specific;
+documents the BBF-N brief workflow, pre-commit UTF-8 hook,
+no-secrets-in-commits rule, and the frontend fork subtree
+strategy. BUILDING.md kept the existing prereqs and build
+commands; added an env vars table, dev-token workflow, lazy
+eval-graph behavior note, and cgroup/thread-limit caveat.
+docs/REPO-READINESS.md (NEW) is the operational guide for
+"I just cloned this repo, what do I do?" with 8 common pitfalls.
+docs/CHANGELOG.md (NEW) is the BBF-18..BBF-26 sprint history in
+human-readable form. .upstream-ref (NEW) is the en-croissant
+fork SHA referenced by CONTRIBUTING.md.
+
 ## BBF-26 — fix(gui): use real /v1/import/pgn route (was hitting 404)
 
 `860ad89`. The Import PGN button was calling `/v1/import/pgn-database`,
