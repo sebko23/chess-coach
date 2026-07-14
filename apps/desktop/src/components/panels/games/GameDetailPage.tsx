@@ -9,6 +9,7 @@ import {
   Card,
   Group,
   Loader,
+  NumberInput,
   Stack,
   Table,
   Text,
@@ -20,6 +21,7 @@ import {
   IconChevronDown,
   IconChevronUp,
   IconDownload,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useAtomValue } from "jotai";
@@ -72,6 +74,10 @@ const GameDetailPage: FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPgn, setShowPgn] = useState(false);
+  const [computeDepth, setComputeDepth] = useState<number>(6);
+  const [computing, setComputing] = useState(false);
+  const [computeResult, setComputeResult] = useState<string | null>(null);
+  const [computeError, setComputeError] = useState<string | null>(null);
 
   const fetchDetail = useCallback(async () => {
     if (!baseUrl || !token || !gameId) return;
@@ -119,6 +125,46 @@ const GameDetailPage: FC = () => {
     fetchDetail();
   }, [fetchDetail]);
 
+  // BBF-24: explicit pre-compute button. The eval-graph route is already
+  // lazy — it computes missing analyses on first call and caches them.
+  // This button triggers a fresh GET with a chosen depth, so the user
+  // gets progress feedback (loading banner) and can pre-warm the cache
+  // at a non-default depth (e.g. depth 12) before a deep study session.
+  // No new backend endpoint is needed; the GET /v1/games/{id}/eval-graph
+  // route is the implementation.
+  const handleCompute = useCallback(async () => {
+    if (!baseUrl || !token || !gameId) return;
+    setComputing(true);
+    setComputeResult(null);
+    setComputeError(null);
+    const t0 = Date.now();
+    try {
+      const headers = { 'Authorization': 'Bearer ' + token };
+      const resp = await fetch(
+        `${baseUrl}/v1/games/${gameId}/eval-graph?depth=${computeDepth}`,
+        { headers },
+      );
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const data: EvalPoint[] = await resp.json();
+      const n = data.length;
+      const withScore = data.filter((p) => p.score_cp != null).length;
+      const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      setComputeResult(
+        `Computed ${withScore}/${n} plies at depth ${computeDepth} in ${elapsed}s`,
+      );
+      // Refresh the displayed eval-graph with the new data.
+      setEvalPoints(data);
+    } catch (e) {
+      setComputeError(
+        e instanceof Error ? e.message : "Compute failed",
+      );
+    } finally {
+      setComputing(false);
+    }
+  }, [baseUrl, token, gameId, computeDepth]);
+
   if (loading) {
     return (
       <Stack align="center" p="xl">
@@ -159,8 +205,54 @@ const GameDetailPage: FC = () => {
           </Button>
           <Title order={3}>Game Detail</Title>
         </Group>
-        <Badge size="lg">ID: {gameId?.substring(0, 8)}…</Badge>
+        <Group>
+          <NumberInput
+            aria-label="Compute depth"
+            value={computeDepth}
+            onChange={(v) =>
+              setComputeDepth(typeof v === "number" ? v : 6)
+            }
+            min={1}
+            max={30}
+            step={1}
+            w={90}
+            disabled={computing}
+          />
+          <Button
+            leftSection={<IconRefresh size={16} />}
+            onClick={handleCompute}
+            loading={computing}
+            size="sm"
+            variant="light"
+          >
+            Compute full analysis
+          </Button>
+          <Badge size="lg">ID: {gameId?.substring(0, 8)}…</Badge>
+        </Group>
       </Group>
+
+      {computeResult && (
+        <Alert
+          icon={<IconRefresh size={16} />}
+          color="blue"
+          mb="md"
+          withCloseButton
+          onClose={() => setComputeResult(null)}
+        >
+          <Text size="sm">{computeResult}</Text>
+        </Alert>
+      )}
+      {computeError && (
+        <Alert
+          icon={<IconAlertCircle size={16} />}
+          color="red"
+          mb="md"
+          withCloseButton
+          onClose={() => setComputeError(null)}
+        >
+          <Text size="sm">{computeError}</Text>
+        </Alert>
+      )}
 
       {/* Eval Graph */}
       <Card withBorder mb="md">
