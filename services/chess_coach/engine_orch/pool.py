@@ -25,6 +25,24 @@ from chess_coach.uci.engine import UCIEngine, InfoEvent
 logger = logging.getLogger(__name__)
 
 
+class EngineHungError(RuntimeError):
+    """Raised when an engine's ``go`` command exceeds the per-pool timeout.
+
+    Distinct from a generic TimeoutError so callers (route handlers,
+    tests) can match on the specific failure mode and surface a useful
+    error message instead of an opaque timeout.
+    """
+
+    def __init__(self, engine_id: str, slot_index: int, timeout_s: float):
+        self.engine_id = engine_id
+        self.slot_index = slot_index
+        self.timeout_s = timeout_s
+        super().__init__(
+            f"engine {engine_id} slot {slot_index} exceeded {timeout_s:.1f}s "
+            f"timeout on go; subprocess terminated and slot reset"
+        )
+
+
 @dataclass(frozen=True)
 class EngineSpec:
     """Describes an engine binary and its human-readable id."""
@@ -75,11 +93,22 @@ class EnginePool:
         default_multipv: int = 1,
         default_threads: int = 1,
         default_hash_mb: int = 128,
+        engine_go_timeout_s: float = 30.0,
     ) -> None:
         if max_workers < 1:
             raise ValueError(f"max_workers must be >= 1, got {max_workers}")
+        if engine_go_timeout_s <= 0:
+            raise ValueError(
+                f"engine_go_timeout_s must be > 0, got {engine_go_timeout_s}"
+            )
         self._specs = {s.engine_id: s for s in specs}
         self._max_workers = max_workers
+        # Per-engine go() timeout. If a Stockfish subprocess hangs (e.g.
+        # malformed UCI input, infinite analysis on a tricky FEN), the
+        # pool must not leave a slot wedged forever waiting for output.
+        # On timeout we kill the subprocess and reset the slot so the
+        # next request gets a fresh engine process.
+        self._engine_go_timeout_s = engine_go_timeout_s
         # Semaphore caps total concurrent analyses across all slots.
         self._sem = asyncio.Semaphore(max_workers)
         # Per-engine slot ring: _slots[engine_id] = [_EngineSlot, _EngineSlot, ...]
@@ -142,7 +171,64 @@ class EnginePool:
                     await engine.position(fen=req.fen)
                     pvs_dict: dict[int, PVLine] = {}
                     use_nodes = spec.path.endswith("lc0") or any("lc0" in a for a in spec.extra_args)
-                    async for ev in engine.go(depth=None if use_nodes else depth, nodes=1 if use_nodes else None):
+                    # Drain the go() generator with an overall deadline.
+                    # engine.go() is an async generator, so we consume it
+                    # into a list inside a coroutine and wait_for that.
+                    async def _drain_go() -> list:
+                        events: list = []
+                        async for ev in engine.go(
+                            depth=None if use_nodes else depth,
+                            nodes=1 if use_nodes else None,
+                        ):
+                            events.append(ev)
+                        return events
+
+                    try:
+                        events = await asyncio.wait_for(
+                            _drain_go(),
+                            timeout=self._engine_go_timeout_s,
+                        )
+                    except asyncio.TimeoutError:
+                        # The engine hung. Forcibly kill the subprocess,
+                        # drop our reference, raise so the route returns
+                        # 5xx instead of silently retrying on a wedged
+                        # slot. The next caller will start a fresh
+                        # subprocess via _acquire().
+                        logger.warning(
+                            "engine_pool: slot %d for %s exceeded %.1fs on go; "
+                            "killing subprocess and resetting slot",
+                            slot.slot_index,
+                            engine_id,
+                            self._engine_go_timeout_s,
+                        )
+                        # Force-kill the subprocess directly. We don't
+                        # try engine.quit() because the wait_for above
+                        # cancelled the inner consumer, leaving the
+                        # async generator's _readline() mid-await; the
+                        # subprocess is still running and we want it
+                        # dead now, not after a graceful UCI 'quit'
+                        # handshake that itself might hang on a wedged
+                        # pipe.
+                        try:
+                            if engine._proc is not None:
+                                engine._proc.kill()
+                                # wait() with no timeout -- proc is
+                                # already signalled; this just collects
+                                # the zombie. Bound to < 100ms in
+                                # practice.
+                                await asyncio.wait_for(
+                                    engine._proc.wait(),
+                                    timeout=2.0,
+                                )
+                        except (asyncio.TimeoutError, Exception):
+                            pass
+                        slot.engine = None
+                        raise EngineHungError(
+                            engine_id=engine_id,
+                            slot_index=slot.slot_index,
+                            timeout_s=self._engine_go_timeout_s,
+                        )
+                    for ev in events:
                         if ev.score is not None and ev.pv:
                             pv = PVLine(
                                 multipv=ev.multipv,
@@ -243,7 +329,43 @@ class EnginePool:
     ) -> UCIEngine:
         # NOTE: caller MUST already hold slot.lock. asyncio.Lock is NOT
         # reentrant, so we cannot re-acquire it here.
-        if slot.engine is None or slot.engine._proc is None:
+        #
+        # A slot is reusable only if it has an engine AND a live
+        # subprocess. ``slot.engine._proc is not None`` alone is not
+        # enough: if Stockfish crashed or was killed externally between
+        # requests, the Popen object is still in memory but
+        # ``poll()`` reports a non-None return code. A naive reuse in
+        # that state would wedge the next ``engine.go()`` waiting for
+        # output that will never arrive.
+        needs_new_engine = (
+            slot.engine is None
+            or slot.engine._proc is None
+            or getattr(slot.engine._proc, "poll", lambda: None)() is not None
+        )
+        if needs_new_engine:
+            # If the previous subprocess is dead, log it and drop the
+            # broken UCIEngine instance so we start fresh.
+            if slot.engine is not None and slot.engine._proc is not None:
+                retcode = slot.engine._proc.poll()
+                logger.warning(
+                    "engine_pool: slot %d for %s has dead pid (retcode=%s); "
+                    "starting fresh subprocess",
+                    slot.slot_index,
+                    spec.engine_id,
+                    retcode,
+                )
+                # Drain any pending wait() on the dead Popen so its
+                # file descriptors close. We don't call engine.quit()
+                # because _send('quit') needs a live pipe.
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(slot.engine._proc.wait()),
+                        timeout=1.0,
+                    )
+                except (asyncio.TimeoutError, Exception):
+                    pass
+                slot.engine._proc = None
+                slot.engine = None
             engine = UCIEngine(
                 spec.path, engine_id=spec.engine_id, extra_args=spec.extra_args
             )
