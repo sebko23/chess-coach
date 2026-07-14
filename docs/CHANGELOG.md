@@ -22,6 +22,37 @@ Refs: BBF-28 (the Dockerfile the workflow builds), BBF-29
 (the smoke test the workflow runs), docs/REPO-READINESS.md
 (smoke test instructions)
 
+## BBF-31 — chore(setup): .env.example + .dockerignore fix
+
+`a0fa235`. Two small follow-on fixes to the BBF-27..30 repo-readiness
+push. `.env.example` (NEW, 61 lines) is a template for the local-venv
+workflow: lists the 3 env vars a dev needs (CHESS_COACH_BACKEND_TOKEN,
+CHESS_COACH_MAX_WORKERS, CHESS_COACH_DATA_DIR) plus optional network
+overrides. The actual `.env` is gitignored (secrets stay out of
+git). `.dockerignore` (MODIFIED, +3 lines) had a bug: the
+`**/.env` glob also matched `.env.example`, so the Docker build
+context excluded the template. Added `!**/.env.example` and similar
+negation patterns to explicitly re-include templates. The first
+dev who runs `docker compose build` will now find the template in
+the container.
+
+## BBF-30 — ci(smoke): GitHub Actions smoke workflow
+
+`be24395`. New workflow at `.github/workflows/smoke.yml` that runs
+`tests/integration/smoke_test.py` against a fresh build of the
+backend Docker image on every push to main and every PR. Uses the
+`services:` pattern with an explicit healthcheck so the runner
+waits for the gateway to be healthy before running the steps.
+Runs on `ubuntu-latest` only (Docker service pattern limitation).
+Single job (`smoke`), 5 steps: checkout, setup Python 3.11,
+install httpx, run smoke test, dump backend logs on failure.
+Concurrency group cancels in-progress runs for the same branch on
+rapid pushes. The Dockerfile build itself is not separately
+tested (no `hadolint` available in this environment); the smoke
+test catches runtime issues. The workflow was not run end-to-end
+in this environment (no GitHub Actions runner available); the
+first PR that triggers it will verify.
+
 ## BBF-29 — feat(tests): end-to-end smoke test script
 
 `tests/integration/smoke_test.py`. Dual-mode: standalone
