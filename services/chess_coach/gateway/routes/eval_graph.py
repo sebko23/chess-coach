@@ -44,6 +44,27 @@ class EvalPoint(BaseModel):
 _inflight: dict[tuple[str, int, str, int], tuple[asyncio.Future, float]] = {}
 _DEDUP_TTL_S = 60.0
 
+# Async lock to make the get-then-put sequence in _coalesce_analyze atomic.
+# Without this, two concurrent first-views on the same key could both pass
+# the "_dedup_get returned None" check and both register as the leader,
+# which would defeat the entire purpose of the dedup. The lock holds for
+# only the few microseconds of the dict round-trip; the Stockfish analysis
+# itself runs OUTSIDE the lock, so this is not a bottleneck on the hot path.
+_dedup_lock: asyncio.Lock | None = None
+
+
+def _get_dedup_lock() -> asyncio.Lock:
+    """Lazily construct the dedup lock.
+
+    asyncio.Lock must be created inside a running event loop; doing so
+    at module import would fail under pytest-asyncio's function-scoped
+    loops. We lazily bind on first use.
+    """
+    global _dedup_lock
+    if _dedup_lock is None:
+        _dedup_lock = asyncio.Lock()
+    return _dedup_lock
+
 
 def _dedup_get(key: tuple[str, int, str, int]) -> asyncio.Future | None:
     """Return the in-flight future for this cache key, or None if none."""
@@ -64,6 +85,62 @@ def _dedup_get(key: tuple[str, int, str, int]) -> asyncio.Future | None:
 
 def _dedup_put(key: tuple[str, int, str, int], future: asyncio.Future) -> None:
     _inflight[key] = (future, time.monotonic() + _DEDUP_TTL_S)
+
+
+async def _coalesce_analyze(
+    key: tuple[str, int, str, int],
+    coro_factory,
+) -> Any:
+    """Either await an in-flight analysis for ``key`` or run a fresh one.
+
+    Race-safe: a single asyncio.Lock (``_get_dedup_lock()``) guards the
+    check-then-register sequence so two concurrent first-views on the
+    same key cannot both become the leader.
+
+    The leader creates an asyncio.Future, registers it, and runs
+    ``coro_factory()`` outside the lock; followers await the same future.
+    Whichever follower count arrives, exactly one Stockfish call runs.
+
+    Cleanup: the leader's ``finally`` removes the dict entry regardless
+    of outcome (success, exception, cancellation) so the next caller
+    after this analysis finishes gets a fresh start. The TTL is just a
+    safety valve for the rare case where the leader crashed hard enough
+    to skip the finally (which should not happen in CPython but is cheap
+    insurance).
+    """
+    lock = _get_dedup_lock()
+    async with lock:
+        existing = _dedup_get(key)
+        if existing is not None:
+            fut = existing
+            is_leader = False
+        else:
+            loop = asyncio.get_event_loop()
+            fut = loop.create_future()
+            _dedup_put(key, fut)
+            is_leader = True
+
+    if is_leader:
+        try:
+            result = await coro_factory()
+            if not fut.done():
+                fut.set_result(result)
+            return result
+        except BaseException as exc:  # noqa: BLE001 - propagate to all waiters
+            if not fut.done():
+                fut.set_exception(exc)
+            raise
+        finally:
+            # Drop the entry so the next caller gets a fresh analysis.
+            # Use pop-with-default to avoid races with another coroutine
+            # that already replaced our entry (which can happen if the
+            # leader crashed and a follower somehow slipped in -- but
+            # the lock above prevents that, so this is just hygiene).
+            _inflight.pop(key, None)
+    else:
+        # Follower: await the leader's future. If the leader raises or
+        # is cancelled, we receive the same exception.
+        return await fut
 
 
 # Module-level cache for the analyses schema. Set on first call; never
@@ -269,13 +346,39 @@ async def get_eval_graph(
 
     if missing:
         async with aiosqlite.connect(db_path) as db:
-            tasks = [
-                _analyze_one_position(
-                    db, pool, AnalysisRequest, analyses_cols,
-                    position_id, fen, depth,
-                )
-                for position_id, _ply, fen in missing
-            ]
+            # BBF-36: dedup concurrent first-views on the same
+            # (game_id, ply, engine_id, depth) into one Stockfish call.
+            # The gather still launches N tasks (one per missing
+            # position, plus duplicate-key duplicates), but every task
+            # for the same key awaits the same asyncio.Future created
+            # by the leader. The pool's semaphore bounds the unique
+            # analyses, not the awaiters.
+            tasks = []
+            for position_id, ply, fen in missing:
+                key = (game_id, ply, "stockfish", depth)
+
+                async def _run(
+                    pid=position_id, f=fen, p=ply, k=key,
+                ):
+                    # Each task binds its own copy of pid/f/p/k via
+                    # default-arg closure so the gather's shared
+                    # ``for`` loop variable doesn't trip the late-bind
+                    # bug.
+                    return await _coalesce_analyze(
+                        k,
+                        lambda: _analyze_one_position(
+                            db,
+                            pool,
+                            AnalysisRequest,
+                            analyses_cols,
+                            pid,
+                            f,
+                            depth,
+                        ),
+                    )
+
+                tasks.append(_run())
+
             await asyncio.gather(*tasks, return_exceptions=True)
             await db.commit()
 
