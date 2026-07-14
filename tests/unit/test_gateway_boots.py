@@ -37,10 +37,17 @@ def test_create_app_does_not_raise():
     """
     # Ensure the env vars the gateway expects at startup
     # are set, so this test runs cleanly under pytest
-    # without depending on test fixtures.
+    # without depending on test fixtures. CHESS_COACH_DATA_DIR
+    # is pointed at a per-run tmp dir so the test never
+    # touches /data (which may not be writable in CI).
     import os
+    import tempfile
     os.environ.setdefault("CHESS_COACH_BACKEND_TOKEN", "devtoken123")
     os.environ.setdefault("CHESS_COACH_MAX_WORKERS", "1")
+    os.environ.setdefault(
+        "CHESS_COACH_DATA_DIR",
+        tempfile.mkdtemp(prefix="chess-coach-boot-test-"),
+    )
 
     from chess_coach.gateway.app import create_app
 
