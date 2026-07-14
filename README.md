@@ -50,6 +50,23 @@ curl -sS http://127.0.0.1:18080/v1/system/health \
 # {"data":{"status":"ok",...}}
 ```
 
+### Backend (Docker)
+
+If you'd rather not manage a Python venv, the backend can be run in a container:
+
+```bash
+# From the repo root
+docker compose build      # one-time, ~30s
+docker compose up -d
+docker compose logs -f backend
+
+# Same smoke test as the venv path
+curl -sS http://127.0.0.1:18080/v1/system/health \
+  -H "Authorization: Bearer devtoken123"
+```
+
+The image is `python:3.11-slim-bookworm` with stockfish installed via apt. Data is bind-mounted to `./data` on the host, so the SQLite DB and `runtime/backend.json` survive restarts. See `BUILDING.md` § "Running the backend in Docker" for details.
+
 ### Desktop (Tauri/React)
 
 ```bash

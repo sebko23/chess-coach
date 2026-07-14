@@ -153,6 +153,51 @@ desktop at a backend on a different host or port, set
 `CHESS_COACH_DATA_DIR` in the desktop's shell to a directory the
 backend has written `backend.json` to (mounted via NFS or similar).
 
+## Running the backend in Docker (recommended for new devs)
+
+If you'd rather not manage a Python venv, the backend can be run in a container. From the repo root:
+
+```bash
+# 1. Build the image (one-time, ~30s on a fast connection)
+docker compose build
+
+# 2. Start the gateway
+docker compose up -d
+docker compose logs -f backend   # follow the logs
+
+# 3. Smoke test
+curl -sS http://127.0.0.1:18080/v1/system/health \
+  -H "Authorization: Bearer devtoken123"
+# {"data":{"status":"ok",...}}
+
+# 4. Stop
+docker compose down
+# 4b. Stop and wipe the data volume
+docker compose down -v
+```
+
+What's in the image:
+
+- Base: `python:3.11-slim-bookworm` (Debian 12)
+- Stockfish: installed via `apt-get install stockfish`, symlinked to `/usr/local/bin/stockfish` so the gateway's default path works
+- Python deps: installed via `uv pip install -e .` from `pyproject.toml`
+- Non-root user (`chesscoach`, uid 1000)
+- Entrypoint: `tini` (PID 1) then `chess-coach-gateway` (installed entry point)
+- Port: 18080 published to `127.0.0.1` on the host
+- Data: bind-mounted to `./data` on the host, so the SQLite DB and `runtime/backend.json` survive container restarts. The desktop can auto-discover the backend by mounting the same directory.
+
+What the container is NOT:
+
+- The desktop (apps/desktop) is not in the container. Run it locally with `pnpm tauri dev`; the auto-discovery via `backend.json` works as long as both processes share `./data`.
+- The `agentZero` container is not required. The chess-coach backend is fully self-contained.
+
+Env vars the compose file sets (you can override in a `.env` file or in the compose file itself):
+
+- `CHESS_COACH_BACKEND_TOKEN=devtoken123` — pins the bearer token so curl works without re-reading `backend.json`.
+- `CHESS_COACH_MAX_WORKERS=1` — single stockfish subprocess. Raise to 2-4 for max parallelism on a beefier host.
+- `CHESS_COACH_DATA_DIR=/data` — the data directory inside the container, bind-mounted to `./data` on the host.
+- `CHESS_COACH_HOST=0.0.0.0` — accept connections from outside the container (the bind mount + port publishing require this).
+
 ## Bundled GPL-3.0 source-availability
 
 When we (the CHESS COACH project) distribute a release, we honor GPL-3.0 §6 source-availability for every GPL component:

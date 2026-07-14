@@ -1,0 +1,48 @@
+# Keep the Docker build context small. Anything matched here is
+# excluded from the `docker build` context sent to the daemon.
+
+# Build artifacts (pnpm, tauri, python)
+**/node_modules/
+**/dist/
+**/build/
+**/.next/
+**/.vite/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+**/.eggs/
+**/target/         # Rust / Tauri build outputs
+**/src-tauri/target/
+
+# Local environment / secrets (.env files, .git, .a0proj)
+.git/
+.a0proj/
+**/.env
+**/.env.local
+**/.env.*.local
+secrets.env
+**/backend.json
+**/anon.session
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AgentZero-specific
+infra/memurai/        # Memurai is a Windows Redis port; irrelevant for Linux backend image
+**/agent_zero/
+
+# Test artifacts
+**/htmlcov/
+**/.coverage
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Session handoffs / docs that aren't needed in the image
+SESSION-HANDOVER*.md

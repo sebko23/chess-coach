@@ -1,0 +1,68 @@
+# CHESS COACH backend — docker compose for dev / local-only use.
+#
+# BBF-28: a new dev runs `docker compose up` and gets a working
+# chess-coach gateway on http://127.0.0.1:18080. No agentZero
+# container, no manual token setup.
+#
+# Usage:
+#
+#   docker compose up --build        # start the backend
+#   curl -sS http://127.0.0.1:18080/v1/system/health \
+#     -H "Authorization: Bearer devtoken123"
+#
+#   docker compose down              # stop and remove the container
+#   docker compose down -v           # also remove the data volume
+#
+# The `./data` bind-mount keeps the SQLite DB, runtime descriptor,
+# and any engine binaries across container restarts. On first run
+# this directory is created with root ownership; chown it to your
+# user (chown -R $USER:$USER ./data) if you want to inspect it
+# without sudo.
+#
+# Note: the desktop (apps/desktop) is NOT included in this compose
+# file. Run it locally with `pnpm tauri dev`; it auto-discovers
+# the backend via the bind-mounted ./data/runtime/backend.json.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chess-coach-backend:dev
+    container_name: chess-coach-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18080:18080"
+    volumes:
+      # Persist the SQLite DB, runtime descriptor, and engine
+      # binaries across container restarts. Mounting to a host
+      # directory also lets the desktop (running outside Docker)
+      # auto-discover the backend via ./data/runtime/backend.json.
+      - ./data:/data
+    environment:
+      # Pin the dev token so curl can use Bearer devtoken123
+      # without re-reading backend.json. The gateway uses this as
+      # _active_token; the backend.json descriptor also gets
+      # session_token=devtoken123.
+      CHESS_COACH_BACKEND_TOKEN: devtoken123
+      # Single stockfish subprocess. The dev machine has 4 cores
+      # but each stockfish process spawns its own OS thread, and
+      # the per-process thread limit on Linux is typically 1024
+      # (much higher on macOS/Windows). 1 is safe; raise to 2-4
+      # for max parallelism on a beefier host.
+      CHESS_COACH_MAX_WORKERS: "1"
+      # The data dir is inside the container; the bind-mount above
+      # makes it visible at ./data on the host.
+      CHESS_COACH_DATA_DIR: /data
+      PYTHONUNBUFFERED: "1"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/v1/system/health", "-H", "Authorization: Bearer devtoken123"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
