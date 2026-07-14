@@ -21,6 +21,9 @@
 **/.env
 **/.env.local
 **/.env.*.local
+!**/.env.example  # template, commit it
+!**/.env.sample
+!**/.env.template
 secrets.env
 **/backend.json
 **/anon.session
