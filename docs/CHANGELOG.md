@@ -3,6 +3,25 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-30 — feat(ci): GitHub Actions smoke test workflow
+
+`.github/workflows/smoke.yml`. New workflow that runs
+`tests/integration/smoke_test.py` against a fresh build of the
+backend Docker image on every push to main and every PR. Uses
+the `services:` pattern with an explicit healthcheck so the
+runner waits for the gateway to be healthy before running the
+test. Runs on `ubuntu-latest` only (Docker service pattern
+limitation). Single job (`smoke`), 5 steps: checkout, setup
+Python 3.11, install httpx, run smoke test, dump backend logs
+on failure. Concurrency group cancels in-progress runs for the
+same branch on rapid pushes. The Dockerfile build itself is
+not separately tested (no `hadolint` available in this
+environment); the smoke test catches runtime issues.
+
+Refs: BBF-28 (the Dockerfile the workflow builds), BBF-29
+(the smoke test the workflow runs), docs/REPO-READINESS.md
+(smoke test instructions)
+
 ## BBF-29 — feat(tests): end-to-end smoke test script
 
 `tests/integration/smoke_test.py`. Dual-mode: standalone

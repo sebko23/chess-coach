@@ -1,0 +1,98 @@
+# GitHub Actions: BBF-30 smoke test
+#
+# Runs tests/integration/smoke_test.py against a fresh build of the
+# backend Docker image. Verifies the full lazy eval-graph path on
+# every push to main and every PR.
+#
+# Why a service and not a step:
+# - The `services:` keyword runs the backend as a long-lived
+#   sidecar; the runner waits for the healthcheck to pass before
+#   the steps run.
+# - The smoke test is a single Python script that hits the
+#   gateway over HTTP, so it doesn't need to know how the
+#   gateway is started - it just needs the URL and token.
+# - The healthcheck gates the steps, so we don't need a manual
+#   "wait for gateway to be healthy" loop.
+
+name: smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same branch when a new commit
+# is pushed. Saves CI minutes on rapid pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: lazy eval-graph smoke test
+    runs-on: ubuntu-latest
+
+    # The backend service: built from the Dockerfile in the repo
+    # root, run on port 18080, with a healthcheck that gates the
+    # subsequent steps.
+    services:
+      backend:
+        image: chess-coach-backend:ci
+        build:
+          context: .
+          dockerfile: Dockerfile
+        ports:
+          - 18080:18080
+        env:
+          CHESS_COACH_BACKEND_TOKEN: devtoken123
+          CHESS_COACH_MAX_WORKERS: "1"
+          PYTHONUNBUFFERED: "1"
+        # The compose file already has a healthcheck, but the
+        # `services:` block uses the Dockerfile's HEALTHCHECK if
+        # present. We override it here with explicit values so
+        # the runner knows exactly what to wait for.
+        options: >-
+          --health-cmd "curl -fsS http://127.0.0.1:18080/v1/system/health -H 'Authorization: Bearer devtoken123'"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+          --health-start-period 30s
+          --name chess-coach-backend-ci
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install smoke test deps
+        # httpx is the only thing the smoke test needs that isn't
+        # in the Python stdlib. Pin to a major version that exists
+        # in pyproject's deps (httpx>=0.27).
+        run: pip install 'httpx>=0.27'
+
+      - name: Run smoke test
+        env:
+          CHESS_COACH_BASE_URL: http://127.0.0.1:18080
+          CHESS_COACH_BACKEND_TOKEN: devtoken123
+        # The smoke test exits 0 on success and 1-4 on specific
+        # failure modes (see tests/integration/smoke_test.py). CI
+        # fails on any non-zero exit.
+        run: python tests/integration/smoke_test.py
+
+      - name: Backend logs on failure
+        if: failure()
+        # The backend is a service container, so its logs are
+        # captured separately. `docker logs` works for service
+        # containers, but the easier path in GitHub Actions is
+        # the automatic log capture: the runner uploads the
+        # service container's logs to the job's artifacts
+        # automatically. This step just adds an explicit echo
+        # so the logs are easy to find in the run summary.
+        run: |
+          echo "=== backend logs (last 50 lines) ==="
+          docker logs --tail 50 chess-coach-backend-ci 2>&1 || true
