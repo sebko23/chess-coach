@@ -43,6 +43,7 @@ dependencies = [
     "numpy>=1.26",
     "sentence-transformers>=3.0",
     "qdrant-client>=1.10",
+    "pdf2image>=1.17",
     "openai",
     "python-dotenv",
 ]

@@ -37,6 +37,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         tini \
+        poppler-utils \
     && ln -sf /usr/games/stockfish /usr/local/bin/stockfish \
     && rm -rf /var/lib/apt/lists/*
 
