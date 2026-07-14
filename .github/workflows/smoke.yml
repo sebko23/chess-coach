@@ -25,7 +25,16 @@ jobs:
           python-version: "3.11"
 
       - name: Install smoke test deps
-        run: pip install 'httpx>=0.27'
+        # The smoke test file (tests/integration/smoke_test.py) is
+        # dual-mode: runnable as `python tests/integration/smoke_test.py`
+        # (standalone, used in this CI step) OR as
+        # `pytest tests/integration/smoke_test.py` (the pytest entry
+        # point, used by devs locally). The file does
+        # `import pytest` near the bottom for the pytest-mode
+        # fixtures; that import is reached even in standalone mode
+        # because Python parses the whole file. So we install
+        # pytest here alongside httpx.
+        run: pip install 'httpx>=0.27' 'pytest>=8.0' 'pytest-asyncio>=0.23'
 
       - name: Build backend image
         # Build the image as a normal step. We deliberately do NOT
