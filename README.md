@@ -2,131 +2,139 @@
 
 **Grandmaster-level autonomous chess coaching platform.**
 
-## Project Status
+A Python FastAPI backend (`services/`) plus a Tauri/React desktop GUI
+(`apps/desktop/`, forked from [en-croissant](https://github.com/franciscoBSalgueiro/en-croissant))
+that gives ground-truth Stockfish analyses and grounded coaching narration
+for your chess games. The backend does no pre-compute; analyses are computed
+lazily on first view and cached in the local SQLite DB.
 
-**Phase 1 — Architecture Analysis: ✅ COMPLETE.**
-**External (Claude.ai) review: ✅ RECEIVED AND INTEGRATED.**
-**OSS legal counsel review: ✅ COMPLETE — U1 (GPL boundary) RESOLVED 2026-05-18.**
-**Protocol contract v1.0.0: ✅ PUBLISHED (R1 + R2 applied per counsel).**
-**Gate 0: 🟡 OPEN — closes when user confirms U2, U8, U10 (no further external dependencies).**
-**Implementation: ⏳ Begins immediately after Gate 0 closes.**
+## Quick start
 
----
+You need three things: a working backend, a working desktop, and a way for
+them to find each other. The desktop auto-discovers the backend via
+`${CHESS_COACH_DATA_DIR}/runtime/backend.json`, so the only environment
+variable you have to set is `CHESS_COACH_DATA_DIR` (any writable directory).
 
-## Counsel's final verdict (verbatim)
+### Backend (Python)
 
-> Plausibly no, with **low** residual risk, conditional on one targeted revision (R1) to §2 of the protocol spec.
->
-> **Conclusion for the project record**: With R1 applied, this protocol contract supports the conclusion that the GUI and Backend are separate works in an aggregate under GPL-3.0 §5. The "intimacy of communication" residual uncertainty identified in the prior analysis is resolved in your favour by the protocol's design. **U1 (GPL boundary decision) may be treated as resolved — not merely conditionally — subject to P1+P2+P3 adoption as binding requirements and R1 being applied before v1.0.0 is published.**
+```bash
+# In a venv:
+uv venv && source .venv/bin/activate          # Windows: .venv\Scripts\activate
+uv pip install -e ".[dev]"
 
-R1 and R2 have been applied; v1.0.0 is cut and published. Full assessment is preserved in `docs/13_review_response/legal-protocol-assessment-received.md`.
+# Optional: pin the dev token so you can curl without reading backend.json
+export CHESS_COACH_BACKEND_TOKEN=devtoken123
+# Optional: pin how many stockfish subprocesses to spawn (default 1).
+# Set to your CPU core count for max parallelism, but each stockfish
+# process spawns its own OS thread, so high values can hit the
+# per-process thread limit on the host.
+export CHESS_COACH_MAX_WORKERS=2
+export CHESS_COACH_DATA_DIR="$HOME/.local/share/chess-coach"
+mkdir -p "$CHESS_COACH_DATA_DIR"
 
----
+# Drop a stockfish binary somewhere on PATH, or set stockfish_path in settings.
+# The agent-zero container has it at /usr/local/bin/stockfish already.
+# If you don't have one: apt install stockfish (Debian) or
+# brew install stockfish (macOS), or build from source.
 
-## Decisions you (the user) must make to close Gate 0
-
-These are the only remaining items between us and writing code. All three are user-only decisions; no further legal or external review is needed.
-
-| # | Question | Recommendation |
-|---|---|---|
-| **U2** | Adopt the monolith-first + scope-reduced Phase 1 plan (`phase-plan-v2.md`)? | yes |
-| **U8** | Phase 1 engine roster: Stockfish only / +Leela / original 6 | Stockfish only |
-| **U10** | CLA template: Apache ICLA+CCLA vs alternative | Apache ICLA+CCLA |
-
-### Non-blocking decisions (deferred to their phases)
-
-| # | Question | Default | Phase |
-|---|---|---|---|
-| U3 | Default embedding provider: nomic-embed-text local vs OpenAI cloud | nomic-embed-text | 3 |
-| U4 | Backend service license (now unblocked, recommended Apache-2.0) | Apache-2.0 | gate-1 |
-| U5 | Telemetry posture: opt-in / never / opt-in-by-default | never | 8 |
-| U6 | Phase-6 FEN-accuracy gate | ≥97% piece, ≥90% board | 6 |
-| U7 | UI label for Profile Agent | rebrand UI to "Playing Style Patterns"; keep module name | 4 |
-| U9 | Sidecar packaging: PyInstaller / Docker-launcher / both | PyInstaller | 8 |
-| U11 | CLA gating tooling | cla-assistant.io | gate-1 |
-| U12 | Protocol spec license | CC-BY-4.0 (already set in v1.0.0) | resolved |
-
----
-
-## Architectural commitments now binding
-
-| Commitment | Source | Where it lives |
-|---|---|---|
-| **P1 — CLA with broad sublicensing grant** | counsel priority | `docs/13_review_response/legal-opinion-integration.md` §C.1 |
-| **P2 — Non-blocking auto-updater (GPL-3.0 §6 Installation Information)** | counsel priority | `docs/08_security/security-strategy.md` post-legal addendum + `legal-opinion-integration.md` §C.2/§H |
-| **P3 — Public protocol spec, third-party-implementable** | counsel priority | `docs/16_protocol/chess-coach-protocol-v1.md` v1.0.0 |
-| **R1 — §2.1 Standard Bearer Credential language** | counsel mandatory revision | `docs/16_protocol/chess-coach-protocol-v1.md` §2.1 |
-| **R2 — §5.1 Diagnostic-only log topic language** | counsel recommended revision | `docs/16_protocol/chess-coach-protocol-v1.md` §5.1 |
-| Monolith-first deployment (Phase 1–3) | Claude.ai review | `docs/10_roadmap/phase-plan-v2.md` |
-| Scope-reduced Phase 1 (Stockfish + SQLite + grounded narration) | Claude.ai review | `phase-plan-v2.md` |
-| Grounded LLM narration pipeline (mandatory) | Claude.ai review | `docs/02_modules/module-decomposition.md` § A-F6 + protocol §8 |
-| Engine memory tiers (Lite / Standard / Full) | Claude.ai review | module-decomposition § A-F2 |
-| Engine cache key includes `cpu_arch` + `thread_count` | Claude.ai review | module-decomposition § 3 |
-| DLQ pattern as bus pre-start requirement | Claude.ai review | multi-agent § Failure handling |
-| PGN comment sanitization before any LLM ingestion | Claude.ai review | security-strategy § A-F12 |
-| PDF parsing in isolated subprocess | Claude.ai review | security-strategy § A-F11 |
-| Diagram-boundary-aware chunking | Claude.ai review | database-decision § A-F8 |
-| Engine cache size cap + LRU at `(fen, engine_id)` prefix | Claude.ai review | database-decision § A-F9 |
-
----
-
-## Repository Layout (current)
-
-```
-chess_coach/
-├── README.md                       # this file
-├── docs/
-│   ├── 01_architecture/system-architecture.md
-│   ├── 02_modules/module-decomposition.md
-│   ├── 03_technology/technology-comparison.md
-│   ├── 04_database/database-decision.md
-│   ├── 05_desktop_shell/desktop-shell-decision.md
-│   ├── 06_multi_agent/multi-agent-workflow.md
-│   ├── 07_risk/risk-analysis.md
-│   ├── 08_security/security-strategy.md
-│   ├── 09_performance/performance-strategy.md
-│   ├── 10_roadmap/
-│   │   ├── phase-plan-v2.md                       # ★ ACTIVE roadmap
-│   │   └── implementation-roadmap-v1.md           # superseded
-│   ├── 11_repo_structure/repository-structure.md
-│   ├── 12_claude_review/claude-review-package.md
-│   ├── 13_review_response/
-│   │   ├── claude-review-received.md
-│   │   ├── response-to-review.md
-│   │   ├── legal-questions-brief.md
-│   │   ├── legal-opinion-integration.md
-│   │   └── legal-protocol-assessment-received.md  # ★ counsel's verdict (verbatim)
-│   ├── 16_protocol/
-│   │   └── chess-coach-protocol-v1.md             # ★ v1.0.0 STABLE
-│   ├── research/
-│   │   ├── en-croissant-analysis.md
-│   │   ├── chessstalker-concepts.md
-│   │   └── en-croissant-LICENSE.txt
-│   └── diagrams/
-└── .a0proj/
+# Run the gateway:
+python -m chess_coach.gateway
+# Listens on 0.0.0.0:18080.
 ```
 
----
+Smoke test:
 
-## What happens when you close Gate 0
+```bash
+curl -sS http://127.0.0.1:18080/v1/system/health \
+  -H "Authorization: Bearer devtoken123"
+# {"data":{"status":"ok",...}}
+```
 
-On confirmation of U2 + U8 + U10, Phase 1 implementation begins immediately, in this order (per `phase-plan-v2.md`):
+### Desktop (Tauri/React)
 
-1. Fork en-croissant from a pinned tag; commit `apps/desktop/` per `repo-structure`.
-2. Author `CONTRIBUTING.md`, `CLA-ICLA.md`, `CLA-CCLA.md` (using selected template), `BUILDING.md`, `LICENSING.md`. Wire CLA gate into CI.
-3. Publish `docs/16_protocol/chess-coach-protocol-v1.md` as `specs/v1.0/` in the public repo; commit JSON Schemas under `specs/v1.0/schemas/`.
-4. Author en-croissant integration-surface contract under `docs/15_integration_surfaces/`.
-5. Begin the vertical slice: SQLite schema + Stockfish 18 integration + FastAPI gateway + grounded narration pipeline + first React panel in `panels/coach/`.
+```bash
+cd apps/desktop
+pnpm install
+pnpm tauri dev          # full Tauri dev with hot reload
+# or:
+pnpm dev                # vite-only dev (faster, no Tauri shell)
+```
 
----
+The desktop reads `${CHESS_COACH_DATA_DIR}/runtime/backend.json` to find
+the backend. If you started the backend with `CHESS_COACH_DATA_DIR` set,
+the desktop will pick it up automatically when launched from the same
+shell. To point the desktop at a remote backend, set the same env var
+in the desktop's shell.
 
-## Operating Rules (binding for implementation)
+### End-to-end smoke test
 
-- **NEVER** use destructive inline editors on `.py` / `.tsx` / critical configs.
-- ALWAYS commit before major operations.
-- ALWAYS `docker commit agentZero agent-zero-with-port9000` before risky Docker ops.
-- Backend services run **detached** (`docker exec -d`).
-- Modular > monolithic for design; **monolithic > microservices for first deployment**.
-- License / scope / data deletion / publishing / repo identity decisions require explicit user approval.
-- CLA wired into CI before any external PR is merged to the Backend.
-- GPL-3.0 §6 anti-tivoization rules apply to every GUI binary distribution (no binary signature check at launch, updater disablable, user-built binaries must run unmodified).
+After both are up, drop a small PGN into the desktop's import button.
+The first time you open a game's eval-graph, analyses are computed
+lazily (~1-2 s for a 50-ply game at depth 6 with 1 stockfish worker).
+Subsequent views are instant (cache hit, < 100 ms).
+
+A scripted smoke test that exercises the full lazy path lives at
+`tests/integration/smoke_test.py`. Run it after starting the backend:
+
+```bash
+python tests/integration/smoke_test.py
+```
+
+## Project structure
+
+```
+chess-coach/
+├── apps/
+│   └── desktop/              Tauri + React + en-croissant fork (frontend)
+├── services/                 Python FastAPI monolith (backend gateway)
+├── libs/                     Python libs (storage, engine_orch, narration, kb, etc.)
+├── docs/                     Architecture, design notes, sprint results
+│   ├── 14_adrs/              Architecture Decision Records
+│   ├── 17_lazy_eval_graph/   BBF-22 strategic pivot spec + 6000-game stress results
+│   ├── REPO-READINESS.md     Operational guide for new developers
+│   └── CHANGELOG.md          Sprint history (BBF-1 through current)
+├── specs/                    Protocol v1.0.0 spec (CC-BY-4.0)
+├── tests/
+│   ├── gold/                 L-2 gold set (PDF→FEN eval data)
+│   └── integration/          End-to-end smoke tests
+├── scripts/                  One-off operational scripts
+├── tools/                    Internal tooling
+└── infra/                    Installer / packaging configs
+```
+
+## What is where
+
+- **`services/chess_coach/gateway/`** — FastAPI app. Routes: `/v1/games`,
+  `/v1/import/pgn`, `/v1/import/backfill-analyses`, `/v1/engines`,
+  `/v1/system/health`, etc. See `apps/desktop/openapi.json` for the
+  full contract.
+- **`services/chess_coach/engine_orch/pool.py`** — Stockfish process
+  pool with N slots (`CHESS_COACH_MAX_WORKERS`). Per-slot asyncio.Lock
+  prevents concurrent reads on the same Stockfish subprocess.
+- **`services/chess_coach/gateway/routes/eval_graph.py`** — lazy
+  eval-graph. On cache miss, computes analyses inline, caches them
+  in the `analyses` table. See `docs/17_lazy_eval_graph/SPEC.md` for
+  the design and the perf curve.
+- **`apps/desktop/src/components/panels/games/`** — Games list and
+  detail pages. The detail page has a "Compute full analysis" button
+  (BBF-24) for pre-warming the cache at a chosen depth.
+
+## Contributing
+
+See `CONTRIBUTING.md` for the workflow. Quick version: the frontend is
+a fork of en-croissant, so any upstream en-croissant changes need a
+`git subtree pull` from the SHA in `.upstream-ref` (see
+`CONTRIBUTING.md` § "Frontend fork"). The backend is original work.
+
+## Licensing
+
+See `LICENSING.md` — the GUI is GPL-3.0-only (fork of en-croissant), the
+backend is Apache-2.0, the protocol spec is CC-BY-4.0.
+
+## Status
+
+Phase 5 — Repertoire + Training: 85%. Phase 6 — PDF/Vision: not started
+in this repo. The strategic pivot to lazy eval-graph (BBF-22) is
+verified at 6000-game scale (BBF-25): 43.8 s import, ~1 s first-eval
+per game, instant cache hits. See `docs/CHANGELOG.md` for the full
+sprint history.

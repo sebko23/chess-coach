@@ -1,87 +1,135 @@
 # Contributing to CHESS COACH
 
-Thanks for considering a contribution. CHESS COACH is built modularly and welcomes external work, but a few rules are non-negotiable.
+CHESS COACH is a Python FastAPI backend plus a Tauri/React desktop GUI
+forked from [en-croissant](https://github.com/franciscoBSalgueiro/en-croissant).
+Backend and frontend are independent licensing units (see `LICENSING.md`),
+and contributions to one do not affect the other.
 
-## Before you write code
+## Where to start
 
-1. **Read `LICENSING.md`.** Know which workspace your change touches and what license applies.
-2. **Sign a CLA.** Every external contributor signs either:
-   - the **Individual CLA** (`CLA-ICLA.md`) — for individuals contributing on their own behalf, or
-   - the **Corporate CLA** (`CLA-CCLA.md`) — for contributors acting on behalf of an employer.
+- **Issues**: see the GitHub issues page. The maintainers tag work by
+  sprint ID (BBF-N). BBF-18 through BBF-26 are the recent perf-scaling
+  and GUI work; BBF-27 onwards is the repo-readiness push.
+- **Discord**: there's a chess-coach channel linked from the repo's
+  social page.
+- **Sprint history**: `docs/CHANGELOG.md` lists every BBF with its
+  scope, commit, and what was verified.
 
-   Signature is collected automatically by the CLA bot on your first pull request. **PRs cannot be merged without a valid signature on file.**
+## Development workflow
 
-   This is binding architectural requirement P1 (see `docs/13_review_response/legal-opinion-integration.md` §C.1). Without it the project cannot guarantee its license posture; without that we cannot accept contributions to the Backend.
+The repo has two runtimes. You'll need both set up:
 
-3. **Read the architecture docs.** The relevant doc set lives under `docs/`. At minimum, skim:
-   - `docs/01_architecture/system-architecture.md`
-   - `docs/02_modules/module-decomposition.md` (find the module(s) your change touches)
-   - `docs/10_roadmap/phase-plan-v2.md` (find which phase your change belongs to)
+- **Backend**: Python 3.11+, `uv` recommended. See `BUILDING.md` §
+  "Building the backend" for the full setup, including the
+  `CHESS_COACH_DATA_DIR` and `CHESS_COACH_BACKEND_TOKEN` env vars.
+- **Frontend**: Node 20+, pnpm 9+, Rust (for Tauri shell). See
+  `BUILDING.md` § "Building the desktop GUI".
 
-## How to propose a change
+If you're new to the project, the first thing to do is `BUILDING.md`
+end-to-end. Run the smoke test in `tests/integration/smoke_test.py` to
+confirm the full lazy path works on your machine.
 
-### Small change (typo, doc clarity, one-file bug fix)
+## Submitting a Pull Request
 
-Open a PR directly. Reference the affected doc / file. The CLA bot will guide you through signature on first contact.
+1. Fork the repo
+2. Clone your fork: `git clone git@github.com:{you}/chess-coach.git`
+3. Create a branch off `main`: `git checkout -b bbf-N-short-slug`
+4. Make your changes
+5. Run the verification:
+   - Backend: `python tests/integration/smoke_test.py` (with the
+     backend running)
+   - Frontend: `cd apps/desktop && pnpm exec tsgo --noEmit`
+6. Commit with a message that follows the existing `BBF-N:` prefix
+   style
+7. Open a PR
 
-### Larger change (new feature, architectural touch)
+The maintainers review PRs sprint-by-sprint. A PR that touches a
+large file (1000+ lines) without an explicit brief is likely to
+be closed and redirected to a planning thread.
 
-Open a GitHub Discussion or issue **first**. Outline:
+## Frontend fork: pulling upstream en-croissant
 
-- the problem,
-- the proposed change,
-- which architecture doc(s) it impacts,
-- whether a new ADR is needed (architectural change), see `docs/14_adrs/`.
+`apps/desktop/` is a fork of [en-croissant](https://github.com/franciscoBSalgueiro/en-croissant)
+(commit SHA stored in `.upstream-ref`). When upstream en-croissant
+makes a change you want to pull in:
 
-After discussion alignment, open the PR.
+```bash
+# Add en-croissant as a remote (once)
+git remote add encroissant https://github.com/franciscoBSalgueiro/en-croissant.git
 
-## What to test
+# Fetch the upstream tip
+git fetch encroissant
 
-Every PR must pass:
+# Merge upstream's main into our apps/desktop subtree.
+# The apps/desktop directory is the only place we touch en-croissant code;
+# other directories are original chess-coach work.
+git merge encroissant/main --allow-unrelated-histories \
+    -X subtree --into=apps/desktop
+# Resolve conflicts in apps/desktop/. Prefer our chess-coach-specific
+# changes (GamesPage.tsx, GameDetailPage.tsx, bindings, etc.) over upstream.
+```
 
-- `pytest` for Python code (unit + integration suites the change touches)
-- `pnpm test` / `pnpm lint` / `pnpm typecheck` for TypeScript code
-- the tier-rule namespace-package check (CI runs it; you don't have to run it locally unless it fails)
-- conformance tests when changing anything that touches the protocol (`specs/v1.0/tests/`)
+The current upstream commit we forked from is recorded in
+`.upstream-ref` at the repo root. This is the SHA we last merged or
+diverged from. If you want to know what changes happened in
+en-croissant since our last merge, compare
+`en-croissant/main` to the SHA in `.upstream-ref`:
 
-New code without tests is not accepted unless the change is doc-only or pure config.
+```bash
+git log --oneline $(cat .upstream-ref)..encroissant/main -- apps/desktop
+```
 
-## Coding style
+When you do pull upstream, update `.upstream-ref` to the new SHA:
 
-- **Python**: `ruff` + `black` + `mypy --strict`. CI enforces.
-- **TypeScript / TSX**: `biome` (lint + format unified). CI enforces.
-- **Rust** (Tauri shell only): `cargo fmt` + `cargo clippy --all -- -D warnings`.
+```bash
+ENCROISSANT_SHA=$(git rev-parse encroissant/main)
+echo "$ENCROISSANT_SHA" > .upstream-ref
+git add .upstream-ref
+git commit -m "chore: update .upstream-ref after en-croissant merge"
+```
 
-## Commit messages
+## Backend sprint workflow
 
-Conventional Commits format. Examples:
+Sprints are BBF-N, planned in a brief (1-2 pages) and approved before
+coding starts. A good brief has:
 
-- `feat(engine_orch): add Leela Chess Zero adapter`
-- `fix(narration): guard against empty motif list in grounding validator`
-- `docs(roadmap): clarify Phase 6 FEN-accuracy gate criterion`
-- `chore(deps): bump python-chess to 1.999`
+1. **Sprint intent** — one paragraph, no rationale, just what's being built.
+2. **Root cause / context** — for closing-bug sprints, the verified file
+   paths and line numbers. For new-feature sprints, the verified
+   ground truth.
+3. **Scope** — required files, out-of-scope files, decisions baked in.
+4. **Precise edits** — exact hunks to apply, with surrounding context
+   lines for uniqueness.
+5. **Verification protocol** — numbered V1..VN bash commands.
+6. **Out of scope** (optional) — explicit list of what NOT to touch.
+7. **Final report format** — exact template the subagent fills in.
+8. **Hermes verification** — what the supervising agent will re-derive.
 
-Scope is the affected module or area, lowercased. Use `!` after the type for breaking changes (`feat(protocol)!: …`).
+Briefs that tell the implementer to "investigate and decide" lead to
+scope drift. Bake decisions in the brief; expect implementers to
+apply them literally.
 
-## What you must NOT submit
+## Conventions
 
-Per the project's binding operating rules:
+- **Commit messages**: `<type>(<scope>): BBF-N <one-line summary>` where
+  type is one of `feat`, `fix`, `refactor`, `docs`, `test`, `chore`,
+  and scope is the affected module (`gui`, `import`, `gateway`, etc.).
+  Body explains the why and the verification.
+- **Pre-commit hook**: every commit runs `lint-utf8.mjs` to catch
+  mojibake. Don't bypass it.
+- **No `--force` push to `main`**. If you need to rewrite history,
+  coordinate in the PR.
+- **No secrets in commits**. The `secrets-handling` skill and the
+  `.gitignore` cover this. If you accidentally committed a secret,
+  rotate it BEFORE merging.
 
-- **No license changes** without a prior ADR and user (project owner) approval.
-- **No new external service dependencies** without an ADR.
-- **No code that bypasses the grounded-narration pipeline** for user-facing LLM output (`docs/02_modules/module-decomposition.md` § A-F6).
-- **No code that ties the auto-updater to a specific binary identity, signature, or launch parent** (GPL-3.0 §6 anti-tivoization; see `docs/08_security/security-strategy.md` post-legal addendum).
-- **No code that exposes the gateway on a non-loopback interface by default**.
-- **No PR that touches `.a0proj/`** without explicit owner approval.
+## Testing
 
-## Reviewer expectations
+The repo currently has no automated test suite. BBF-30 (in progress)
+will add GitHub Actions CI running the smoke test. Until then, manual
+verification via `tests/integration/smoke_test.py` is the gate.
 
-Reviews are honest and adversarial. Expect questions about architecture fit, tier-rule compliance, test coverage, and whether the change earns its complexity. Friendly tone is required; pushback is normal.
+## Support
 
-## Maintainers
-
-The project owner (currently the original developer) has final say on architecture and license decisions. Day-to-day code reviews can be done by any maintainer designated in `.github/CODEOWNERS` (to be populated as the project grows).
-
-## Reporting security issues
-
-Do not open public issues for security problems. Email security@chess-coach.local (placeholder; replace with real contact at publication). See `docs/08_security/security-strategy.md` for our security posture.
+Open an issue or contact the maintainers via the channels listed on
+the repo's social page.
