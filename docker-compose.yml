@@ -1,29 +1,72 @@
-# CHESS COACH backend — docker compose for dev / local-only use.
+# CHESS COACH backend + Qdrant sidecar -- docker compose for dev / local-only use.
 #
 # BBF-28: a new dev runs `docker compose up` and gets a working
 # chess-coach gateway on http://127.0.0.1:18080. No agentZero
 # container, no manual token setup.
 #
+# BBF-52: the `qdrant` service is added here. The gateway connects
+# to it via the compose internal network as `http://qdrant:6333`
+# (set via CHESS_COACH_QDRANT_URL in the backend service env). The
+# Qdrant container's `./data/qdrant` volume is bind-mounted from
+# the host so the collection persists across `docker compose down`
+# (without `-v`).
+#
 # Usage:
 #
-#   docker compose up --build        # start the backend
+#   docker compose up --build        # start backend + qdrant
 #   curl -sS http://127.0.0.1:18080/v1/system/health \
 #     -H "Authorization: Bearer devtoken123"
 #
-#   docker compose down              # stop and remove the container
+#   docker compose down              # stop and remove the containers
 #   docker compose down -v           # also remove the data volume
 #
 # The `./data` bind-mount keeps the SQLite DB, runtime descriptor,
-# and any engine binaries across container restarts. On first run
-# this directory is created with root ownership; chown it to your
-# user (chown -R $USER:$USER ./data) if you want to inspect it
-# without sudo.
+# engine binaries, AND the Qdrant storage across container restarts.
+# On first run this directory is created with root ownership; chown
+# it to your user (chown -R $USER:$USER ./data) if you want to
+# inspect it without sudo.
 #
 # Note: the desktop (apps/desktop) is NOT included in this compose
 # file. Run it locally with `pnpm tauri dev`; it auto-discovers
 # the backend via the bind-mounted ./data/runtime/backend.json.
 
 services:
+  qdrant:
+    # Official Qdrant image, pinned to a recent stable minor. The
+    # image runs as non-root by default and exposes 6333 (HTTP) +
+    # 6334 (gRPC). We only need 6333 from the backend.
+    image: qdrant/qdrant:v1.12.4
+    container_name: chess-coach-qdrant
+    restart: unless-stopped
+    ports:
+      # Exposed on loopback only; LAN reachability for the Qdrant
+      # REST API is not needed in dev. Production deployments would
+      # remove this port mapping and rely solely on the internal
+      # network (qdrant:6333) reachable from the backend service.
+      - "127.0.0.1:6333:6333"
+    volumes:
+      # Persist Qdrant storage across container restarts. Mirrors
+      # the path that data/qdrant/config.yaml uses for the agentZero
+      # dev workflow; in compose we mount the same host directory
+      # but the container's Qdrant binary puts its files under
+      # /qdrant/storage inside the container, so we bind-mount the
+      # host ./data/qdrant directly to /qdrant/storage.
+      - ./data/qdrant:/qdrant/storage
+    healthcheck:
+      # Qdrant's own /healthz endpoint does NOT require auth, so
+      # this healthcheck is straightforward. interval/timeout
+      # match the backend's healthcheck for symmetry.
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:6333/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   backend:
     build:
       context: .
@@ -31,6 +74,14 @@ services:
     image: chess-coach-backend:dev
     container_name: chess-coach-backend
     restart: unless-stopped
+    # depends_on with the qdrant service's healthcheck ensures the
+    # backend only starts once Qdrant is healthy. Without
+    # condition: service_healthy, the backend would race against
+    # Qdrant's startup and fall back to :memory: mode for the
+    # first 10-30s.
+    depends_on:
+      qdrant:
+        condition: service_healthy
     ports:
       - "127.0.0.1:18080:18080"
     volumes:
@@ -54,7 +105,20 @@ services:
       # The data dir is inside the container; the bind-mount above
       # makes it visible at ./data on the host.
       CHESS_COACH_DATA_DIR: /data
+      # BBF-52: point the KB vector store at the sidecar Qdrant.
+      # The hostname `qdrant` resolves via compose's internal DNS
+      # to the qdrant service's container. Leaving this unset
+      # would make the gateway fall back to ":memory:" mode and
+      # log "kb: skipping eager index in :memory: mode" on every
+      # startup -- a silent regression of the BBF-52 work.
+      CHESS_COACH_QDRANT_URL: http://qdrant:6333
+      # No API key for the local sidecar; the qdrant service does
+      # not run with --api-key. For a remote/production Qdrant,
+      # set CHESS_COACH_QDRANT_API_KEY to the matching secret.
+      CHESS_COACH_QDRANT_API_KEY: ""
       PYTHONUNBUFFERED: "1"
+    # The healthcheck token bug (Bearer *** -> Bearer devtoken123)
+    # was fixed in BBF-52; see the Dockerfile HEALTHCHECK block.
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18080/v1/system/health", "-H", "Authorization: Bearer devtoken123"]
       interval: 30s

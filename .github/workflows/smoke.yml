@@ -59,15 +59,171 @@ jobs:
           pip install -e '.[dev]'
 
       - name: Run boot test
-        # The boot test from BBF-43:
-        #   tests/unit/test_gateway_boots.py
-        # It calls chess_coach.gateway.app.create_app() and asserts
-        # the FastAPI app has at least one route registered. This
-        # mirrors the boot path of the chess-coach-gateway process
-        # without needing Docker, Stockfish, or network.
+        # The boot test from BBF-43 plus BBF-52's persistent-path
+        # unit test (tests/unit/test_kb_persistent_path.py). The
+        # boot test exercises the full import chain; the
+        # persistent-path test exercises the QdrantClient(path=...)
+        # branch of PositionStore via the qdrant-client library's
+        # embedded mode (no live Qdrant needed).
         run: |
           source /tmp/boot-venv/bin/activate
-          pytest tests/unit/test_gateway_boots.py -v --no-header --tb=short
+          pytest tests/unit/test_gateway_boots.py \
+                 tests/unit/test_kb_persistent_path.py \
+                 -v --no-header --tb=short
+
+  # BBF-52: end-to-end exercise of the persistent Qdrant path.
+  # Starts a real Qdrant sidecar via `docker run`, runs the gateway
+  # pointed at it, and runs the live integration test against
+  # /v1/kb/index and /v1/kb/similar.
+  #
+  # Uses docker run (not services:) per the BBF-33 finding that
+  # services: + build: parses to 0 jobs on ubuntu-latest. The
+  # qdrant image is prebuilt (no build: needed), so services:
+  # would actually work here -- but we keep docker run for symmetry
+  # with the smoke job below and to avoid revisiting the BBF-33
+  # workaround discussion.
+  qdrant-smoke:
+    name: qdrant sidecar smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install qdrant-smoke deps
+        # The integration test (tests/integration/test_kb_qdrant_live.py)
+        # imports pytest, pytest-asyncio, httpx, and the chess_coach
+        # package itself. The first three are explicit; the fourth
+        # is installed via `pip install -e .` so we get the package
+        # in editable mode without dragging in the docker build
+        # context (the gateway itself runs in the docker container
+        # built by the smoke job, but the test that hits its
+        # endpoints runs in the runner's Python env against the
+        # gateway's HTTP API -- no need to build the image here).
+        run: |
+          pip install --upgrade pip --quiet
+          pip install -e '.[dev]'
+          pip install 'httpx>=0.27'
+
+      - name: Start Qdrant sidecar
+        # Pin the version for reproducibility. The image exposes
+        # 6333 (HTTP) on the container's loopback; we map it to
+        # the runner's 6333 so the integration test can reach it
+        # at http://127.0.0.1:6333.
+        run: |
+          docker run -d \
+            --name qdrant-ci \
+            -p 6333:6333 \
+            -v /tmp/qdrant-storage:/qdrant/storage \
+            qdrant/qdrant:v1.12.4
+
+      - name: Wait for Qdrant healthz
+        # Qdrant's /healthz endpoint is unauth'd; poll up to 60s.
+        run: |
+          for i in $(seq 1 60); do
+            http_code=$(curl -s -o /tmp/qdrant_health -w "%{http_code}" -m 3 \
+              "http://127.0.0.1:6333/healthz" 2>/dev/null || echo "000")
+            if [ "$http_code" = "200" ]; then
+              echo "qdrant is healthy after ${i}s"
+              cat /tmp/qdrant_health
+              exit 0
+            fi
+            if [ $((i % 10)) -eq 0 ] || [ "$i" = "60" ]; then
+              echo "[$i/60] http_code=$http_code body=$(cat /tmp/qdrant_health 2>/dev/null | head -c 200)"
+            fi
+            sleep 1
+          done
+          echo "qdrant did not become healthy in 60s"
+          docker logs qdrant-ci
+          exit 1
+
+      - name: Build backend image
+        # Build the same image the smoke job builds, with the
+        # BBF-52 HEALTHCHECK fix already in. We do NOT use the
+        # compose file here -- the qdrant container is already
+        # running, and we want the gateway to point at the host
+        # port (127.0.0.1:6333) rather than the compose-network
+        # hostname `qdrant`.
+        run: docker build -t chess-coach-backend:ci -f Dockerfile .
+
+      - name: Start backend (qdrant-aware)
+        # CHESS_COACH_QDRANT_URL points the gateway at the
+        # sidecar's host port. Without this env var the gateway
+        # defaults to ":memory:" and the eager-index branch in
+        # app.py:181 is skipped, defeating the test's purpose.
+        run: |
+          docker run -d \
+            --name chess-coach-backend-qci \
+            --link qdrant-ci:qdrant \
+            -p 18080:18080 \
+            -e CHESS_COACH_BACKEND_TOKEN=devtoken123 \
+            -e CHESS_COACH_MAX_WORKERS=1 \
+            -e CHESS_COACH_QDRANT_URL=http://qdrant:6333 \
+            -e CHESS_COACH_QDRANT_API_KEY="" \
+            chess-coach-backend:ci
+
+      - name: Wait for backend
+        # Same direct-curl pattern as the smoke job below.
+        # BBF-38: the Dockerfile's HEALTHCHECK uses Bearer
+        # devtoken123 (BBF-52 fix) so `docker inspect` would
+        # also work, but we keep the curl loop for symmetry and
+        # for the richer failure body.
+        run: |
+          TOKEN="devtoken123"
+          URL="http://127.0.0.1:18080/v1/system/health"
+          for i in $(seq 1 120); do
+            http_code=$(curl -s -o /tmp/health_body -w "%{http_code}" -m 3 \
+              -H "Authorization: Bearer $TOKEN" \
+              "$URL" 2>/dev/null || echo "000")
+            if [ "$http_code" = "200" ]; then
+              body=$(cat /tmp/health_body)
+              echo "backend is healthy after $((i * 1))s"
+              echo "response: $body"
+              exit 0
+            fi
+            if [ $((i % 10)) -eq 0 ] || [ "$i" = "120" ]; then
+              echo "[$i/120] http_code=$http_code body=$(cat /tmp/health_body 2>/dev/null | head -c 200)"
+            fi
+            sleep 1
+          done
+          echo "backend did not become healthy in 120s"
+          echo "--- last curl response (if any) ---"
+          cat /tmp/health_body 2>/dev/null || echo "(no body captured)"
+          echo
+          echo "--- backend logs ---"
+          docker logs chess-coach-backend-qci
+          exit 1
+
+      - name: Run qdrant integration test
+        # The integration test exercises /v1/kb/index and
+        # /v1/kb/similar against the live gateway + live Qdrant.
+        # It skips itself when CHESS_COACH_QDRANT_URL is unset,
+        # but we set it here so it runs.
+        env:
+          CHESS_COACH_QDRANT_URL: http://qdrant:6333
+          CHESS_COACH_BACKEND_TOKEN: devtoken123
+        run: |
+          pytest tests/integration/test_kb_qdrant_live.py \
+            -v --no-header --tb=short
+
+      - name: Backend logs on failure
+        if: failure()
+        run: |
+          echo "=== qdrant logs ==="
+          docker logs --tail 80 qdrant-ci 2>&1 || true
+          echo "=== backend logs (last 80 lines) ==="
+          docker logs --tail 80 chess-coach-backend-qci 2>&1 || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f chess-coach-backend-qci 2>/dev/null || true
+          docker rm -f qdrant-ci 2>/dev/null || true
 
   smoke:
     name: lazy eval-graph smoke test
@@ -104,6 +260,10 @@ jobs:
         run: docker build -t chess-coach-backend:ci -f Dockerfile .
 
       - name: Start backend
+        # BBF-52: the curl loop below now uses Bearer devtoken123
+        # (was Bearer *** before -- see BBF-38 history). The
+        # Dockerfile's HEALTHCHECK was also fixed to use
+        # devtoken123 (BBF-52), so this token matches.
         run: |
           docker run -d \
             --name chess-coach-backend-ci \
@@ -129,6 +289,12 @@ jobs:
         # the Start backend step) gives us an actual 200 vs
         # 401/403/connection-refused signal AND a debuggable
         # response body on failure.
+        #
+        # BBF-52: the Dockerfile HEALTHCHECK is now fixed
+        # (Bearer devtoken123), so docker inspect would work
+        # too. We keep the curl loop because it has a richer
+        # failure signal (the response body) and works whether
+        # or not the HEALTHCHECK is correct.
         run: |
           TOKEN="devtoken123"
           URL="http://127.0.0.1:18080/v1/system/health"

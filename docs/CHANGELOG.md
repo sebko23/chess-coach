@@ -3,6 +3,146 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+
+## BBF-52 -- feat(deploy): Qdrant sidecar + persistent KB
+
+Closes the "KB runs in :memory: mode" gap that has been
+documented as open work since BBF-17. The gateway now points
+at a real Qdrant instance (sidecar via docker compose; CI uses
+`docker run`) instead of an in-process ephemeral store. The
+code in `services/chess_coach/kb/{store,pipeline}.py` already
+accepted a `qdrant_url` parameter; BBF-52 wires it into the
+gateway, the compose file, and the CI workflow.
+
+Closes a related long-standing bug: the Dockerfile's
+`HEALTHCHECK` directive hard-coded `Bearer ***` (a TODO marker
+that was never replaced with `devtoken123`). The healthcheck
+always 401'd, the container's `State.Health.Status` never
+reached `"healthy"`, and any `docker compose up` user saw a
+perpetually "unhealthy" backend. The smoke workflow had
+worked around this with a direct curl loop (BBF-38); BBF-52
+fixes the root cause so `docker inspect` works too.
+
+### Changes
+
+- `docker-compose.yml` (modified): adds a `qdrant` service
+  using `qdrant/qdrant:v1.12.4`, with storage bind-mounted
+  to `./data/qdrant` on the host. Adds `depends_on:
+  qdrant: { condition: service_healthy }` to the backend
+  service so the gateway only starts once the sidecar is
+  reachable. Adds `CHESS_COACH_QDRANT_URL=http://qdrant:6333`
+  to the backend service's environment, which causes the
+  lifespan handler in `gateway/app.py:172-198` to eager-index
+  positions on every startup (previously skipped silently
+  in `:memory:` mode). Fixes the backend healthcheck from
+  `Bearer ***` to `Bearer devtoken123` (the long-standing
+  TODO marker).
+
+- `Dockerfile` (modified): fixes the `HEALTHCHECK` directive
+  from `Authorization: Bearer ***` to
+  `Authorization: Bearer devtoken123`. One-line fix; the
+  rest of the Dockerfile is unchanged. Adds `wget` to the
+  apt deps for the Qdrant sidecar's healthcheck (the
+  Qdrant image ships with `wget` so the docker-compose
+  healthcheck can `wget --spider /healthz`).
+
+- `tests/unit/test_kb_persistent_path.py` (NEW, 4 tests):
+  exercises the `QdrantClient(path=...)` branch of
+  `PositionStore` via the qdrant-client library's embedded
+  mode. No live Qdrant server needed. Covers: insert +
+  search, persistence-across-instances, the `:memory:`
+  branch still works (regression guard), and the collection
+  name constant.
+
+- `tests/integration/test_kb_qdrant_live.py` (NEW): a
+  `@pytest.mark.integration` test that exercises the sidecar
+  code path end-to-end against a real Qdrant. Skips itself
+  when `CHESS_COACH_QDRANT_URL` is unset so it doesn't break
+  local unit test runs. The new `qdrant-smoke` CI job
+  enables it explicitly.
+
+- `.github/workflows/smoke.yml` (modified): adds a
+  `qdrant-smoke` job that starts a Qdrant sidecar via
+  `docker run qdrant/qdrant:v1.12.4`, builds the backend
+  image, starts the gateway with
+  `CHESS_COACH_QDRANT_URL=http://qdrant:6333`, and runs the
+  new integration test. The existing `gateway-boot` job
+  also now runs the new persistent-path unit test. The
+  existing `smoke` job's curl loop is updated to use
+  `Bearer $TOKEN` (was the literal `Bearer ***`) for
+  consistency with the Dockerfile HEALTHCHECK fix. Three
+  jobs total now: `gateway-boot`, `qdrant-smoke`, `smoke`.
+
+- `docs/20_datasets/qdrant-deployment.md` (NEW, ~190 lines):
+  the deployment recipe. Covers the docker compose shape,
+  the CI workflow, the configuration knobs, a manual
+  verification recipe, and operational notes (storage
+  size, restart cost, embedding-model migration, Phase 8
+  production considerations).
+
+- `docs/REPO-READINESS.md` (modified): rewritten as
+  "Linux-with-Docker-first" with the compose recipe as
+  the canonical first-run. The agentZero container path
+  is now an alternative for non-Docker dev. Adds a
+  "Common pitfalls" section covering the eight most
+  common dev-loop blockers (push-protection lies, smoke
+  CI red, cgroup wedge, write_file drops, python PATH,
+  unicode commits, missing pyproject entries, lazy
+  import gotchas).
+
+- `docs/10_roadmap/phase-plan-v2.md` (modified): marks
+  Phase 3 KB gap as 75% (was 50%). The sidecar move
+  closes the deployment-side of the gap; the embedder
+  quality work (Maia swap, gate-1 fix) remains open.
+
+Total: 8 files, ~1500 insertions including the deployment
+doc and tests.
+
+### Verification
+
+The push to `main` triggers three CI jobs; all must be
+green:
+
+- `gateway-boot`: fresh venv + boot regression test +
+  persistent-path unit test. Sub-minute runtime.
+- `qdrant-smoke`: builds the backend image, starts a
+  Qdrant sidecar, points the gateway at it, runs the
+  live integration test against `/v1/kb/index` and
+  `/v1/kb/similar`. ~3-4 minute runtime.
+- `smoke`: the original lazy-eval-graph smoke test,
+  unchanged except for the Dockerfile HEALTHCHECK fix.
+  ~3 minute runtime.
+
+Manual verification (after `docker compose up --build`):
+
+```bash
+# 1. Backend is healthy
+curl -sS http://127.0.0.1:18080/v1/system/health \
+  -H 'Authorization: Bearer devtoken123'
+
+# 2. Index positions from the local SQLite DB
+curl -sS -X POST http://127.0.0.1:18080/v1/kb/index \
+  -H 'Authorization: Bearer devtoken123' \
+  -H 'Content-Type: application/json' \
+  -d '{"limit": 5000}'
+# -> {"status":"ok","indexed":"5000"}
+
+# 3. Query for similar positions
+curl -sS -X POST http://127.0.0.1:18080/v1/kb/similar \
+  -H 'Authorization: Bearer devtoken123' \
+  -H 'Content-Type: application/json' \
+  -d '{"fen":"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1","top_k":5}'
+
+# 4. Inspect the sidecar directly
+curl -sS http://127.0.0.1:6333/collections/positions | jq .
+```
+
+Refs: BBF-17 (the original KB scaffold), BBF-41 (the
+`qdrant-client` dep addition), BBF-38 (the smoke CI poll
+replacement, fixed in this BBF to use the real token
+everywhere), BBF-43 (the boot regression test pattern),
+the 2026-07-15 handoff ("Recommended next moves" option
+A), `docs/10_roadmap/phase-plan-v2.md` Phase 3 section.
 ## BBF-30 — feat(ci): GitHub Actions smoke test workflow
 
 `.github/workflows/smoke.yml`. New workflow that runs

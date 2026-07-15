@@ -1,4 +1,4 @@
-# CHESS COACH backend — single-image Docker build.
+# CHESS COACH backend -- single-image Docker build.
 #
 # BBF-28: the backend now runs without the agentZero container.
 # This Dockerfile builds an image that boots the gateway on
@@ -14,7 +14,13 @@
 # ./data) so the SQLite DB and runtime descriptor survive container
 # restarts.
 #
-# BBF-29 will add a Python smoke test that runs against this image.
+# BBF-52: the HEALTHCHECK below was fixed (Bearer *** -> Bearer
+# devtoken123). The old *** marker was a TODO that was never
+# replaced; the healthcheck always 401'd, .State.Health.Status
+# never reached "healthy", and any docker-compose healthcheck
+# gating broke. The CI smoke workflow had already worked around
+# this with a direct curl loop (BBF-38), but `docker compose up`
+# users saw a perpetually "unhealthy" backend. Fix is one line.
 
 # ---- build stage: nothing to compile, single-stage is fine ----
 # Bookworm (Debian 12) because it has stockfish in apt and matches
@@ -29,6 +35,7 @@ FROM python:3.11-slim-bookworm
 # ca-certificates: lets Python's httpx + openai libraries verify
 # TLS chains (otherwise the LLM narration path fails).
 # curl: used by the HEALTHCHECK.
+# wget: used by the qdrant healthcheck in docker-compose.yml.
 # tini: PID 1 that reaps zombies and forwards signals. Critical
 # for `docker stop` (sends SIGTERM, must reach uvicorn).
 RUN apt-get update \
@@ -36,6 +43,7 @@ RUN apt-get update \
         stockfish \
         ca-certificates \
         curl \
+        wget \
         tini \
         poppler-utils \
     && ln -sf /usr/games/stockfish /usr/local/bin/stockfish \
@@ -98,7 +106,8 @@ CMD ["chess-coach-gateway"]
 # Healthcheck: requires the dev token. `curl` is in the apt deps
 # above. The gateway's /v1/system/health endpoint requires bearer
 # auth, so we set Authorization: Bearer devtoken123 (matching
-# CHESS_COACH_BACKEND_TOKEN).
+# CHESS_COACH_BACKEND_TOKEN). BBF-52 fixed this from the previous
+# Bearer *** placeholder.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS http://127.0.0.1:18080/v1/system/health \
         -H "Authorization: Bearer devtoken123" || exit 1
