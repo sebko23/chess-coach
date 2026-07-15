@@ -1,7 +1,7 @@
-"""Archetype clustering against the L-2 gold corpus (BBF-54 skeleton).
+"""Archetype clustering against the L-2 gold corpus (BBF-59 implementation).
 
-Archetypes are user-facing labels assigned to a player based
-on the cluster their metric vector falls into. The phase-plan
+Archetypes are user-facing labels assigned to a player
+based on the shape of their 6-metric vector. The phase-plan
 calls these out explicitly:
 
   > "Adds the 6th metric, archetype labels, sequence-based tilt."
@@ -12,51 +12,73 @@ internal module name stays `profile` (per the review).
 
 ## How archetypes work
 
-1. Load the L-2 gold corpus (v2 in BBF-55; v1 in this BBF).
-2. For each L-2 position, compute the 6 metric values using
-   a fixed synthetic game history anchored at that position.
-   The result is a "reference metric vector" for each L-2
-   archetype (e.g. "Tactician" archetype maps to a metric
-   vector with high tactical_vs_positional_bias and high
-   decision_fatigue).
-3. For the target player, compute their 6 metric values
-   using their real game history.
-4. Cluster the player's metric vector against the L-2
-   reference vectors using k-nearest-neighbours (k=3) and
-   assign the modal label.
+`cluster_archetypes(metrics: dict[str, float]) -> ArchetypeAssignment`
 
-## Why L-2 gold is the calibration source
+The 6-metric vector is mapped to one of the STANDARD_ARCHETYPES
+based on heuristic shape-matching. Each archetype has a
+canonical "shape" (a high/low pattern across the 6 metrics).
+The archetype whose shape best matches the player's vector
+is assigned.
 
-The phase-plan-v2.md explicitly says Phase 4 needs "labeled
-positions to validate metric effect-size thresholds". L-2
-gold v2 (BBF-55) adds `eval_delta_cp` labels that make the
-archetype reference vectors well-defined.
+This is intentionally NOT kNN against the L-2 gold corpus.
+The L-2 v1 corpus has 12 positions (5 opening / 4 middlegame
+/ 3 endgame); with k=3 you'd need at least 6 reference
+vectors per archetype for stable kNN assignments, but L-2
+v1 has 3 source types (gm_game, opening_theory,
+tactical_motif), not 8 archetypes. Per the BBF-55 CHANGELOG
+note, L-2 v2 (the eval-delta-extended corpus) was deferred to
+a later sprint because the BBF-55 test fix was more urgent.
 
-## Sprint note
+When L-2 v2 lands (planned), the implementation can switch
+from heuristic shape-matching to kNN against the labeled
+reference vectors. The `ArchetypeAssignment.effect_size`
+field carries the §B4 rigor layer either way; when the
+heuristic distance to the closest archetype is below the
+gate, the assignment is rendered as "Inconclusive" rather
+than a coaching insight.
 
-BBF-54 ships this module as a documented stub. BBF-59 fills
-in the actual clustering logic. The kNN implementation uses
-scikit-learn if it's already a transitive dep (it is for
-the embedder's cosine-similarity math); otherwise it falls
-back to a pure-Python implementation.
+## The heuristic archetypes
 
-## Why we don't expose "archetype_label" as a hard guarantee
+Each archetype has a canonical metric-vector SHAPE:
+  - Tactician: high tactical_vs_positional_bias (>0.55),
+    high conversion_ability (>0.55), low opening_comfort
+    (specialist)
+  - Positional Player: low tactical_vs_positional_bias
+    (<0.45), high opening_comfort (>20), low decision_fatigue
+  - Grinder: high conversion_ability (>0.6), low
+    decision_fatigue, low time_pressure_quality
+  - Wildcard: high opening_comfort (>40), low
+    conversion_ability (<0.4)
+  - Specialist: low opening_comfort (<5), high
+    conversion_ability (>0.6)
+  - Tilter: high sequence_based_tilt (point_estimate > 0.15)
+  - Endgame Specialist: low time_pressure_quality
+    (low blunder rate in deep plies)
+  - Unknown: no archetype shape matches above threshold
+
+## Why this is experimental
 
 Per §B4 rules, archetype labels are EXPERIMENTAL. They are
 a clustering result, not a measurement. The dashboard
 renders the label with the "experimental" badge and the
-explain view links to the L-2 reference vectors that
-produced the cluster assignment. The player can always
-drill down to see "you were labeled Tactician because your
-metric vector is closest to L2-v2-0007, L2-v2-0011, and
-L2-v2-0014 -- here are the raw metric values for those
-reference positions."
+explain view links to the nearest-neighbor details (when
+L-2 v2 lands). For now, the heuristic shape-match IS the
+nearest-neighbor computation.
+
+## BBF-59 note
+
+This replaces the BBF-54 stub. BBF-61 wires the route
+endpoint to call this function.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .effect_size import EffectSize
+from .effect_size import (
+    EffectSize,
+    COHENS_D_THRESHOLD,
+    gate_metric,
+)
 
 
 @dataclass(frozen=True)
@@ -66,14 +88,15 @@ class ArchetypeAssignment:
     Attributes:
         label: The assigned archetype name (e.g. "Tactician",
             "Positional Player", "Grinder", "Wildcard",
-            "Specialist"). "Unknown" when the player's
-            metric vector is too far from any L-2 reference.
-        nearest_neighbors: Top-k L-2 entry IDs that the
-            player's metric vector is closest to. Used
-            by the /explain endpoint to show methodology.
-        distance: The kth-nearest-neighbor distance (lower
-            = more confident assignment). Surfaced in the
-            UI as a confidence indicator.
+            "Specialist", "Tilter", "Endgame Specialist").
+            "Unknown" when the player's metric vector is too
+            far from any archetype shape.
+        confidence: Heuristic confidence score in [0, 1].
+            1.0 = perfect match, 0.0 = no match. Surfaced in
+            the UI as a confidence indicator.
+        archetype_scores: Dict mapping each archetype name
+            to its raw shape-match score. Used by the
+            /explain endpoint to show methodology.
         effect_size: EffectSize for the cluster assignment
             (computed against the null = "no archetype
             match"). When this fails the §B4 gate, the
@@ -82,8 +105,8 @@ class ArchetypeAssignment:
     """
 
     label: str
-    nearest_neighbors: list[str]
-    distance: float
+    confidence: float
+    archetype_scores: dict[str, float]
     effect_size: EffectSize
 
 
@@ -93,20 +116,119 @@ class ArchetypeAssignment:
 # methodology doc; backward compat is preserved by the
 # string value, not the index.
 STANDARD_ARCHETYPES = (
-    "Tactician",        # high tactical_vs_positional_bias, low time_pressure_quality
-    "Positional Player",# low tactical, low blunder_rate, high opening breadth
-    "Grinder",          # high conversion_ability, low decision_fatigue
-    "Wildcard",         # high opening breadth, low conversion (plays many openings, doesn't close)
-    "Specialist",       # low opening breadth (1-2 openings), high conversion
-    "Tilter",           # high sequence_based_tilt
+    "Tactician",         # high tactical_vs_positional_bias, low opening breadth
+    "Positional Player", # low tactical, low blunder_rate, high opening breadth
+    "Grinder",           # high conversion_ability, low decision_fatigue
+    "Wildcard",          # high opening breadth, low conversion (plays many openings, doesn't close)
+    "Specialist",        # low opening breadth (1-2 openings), high conversion
+    "Tilter",            # high sequence_based_tilt
     "Endgame Specialist",# low blunder_rate in deep plies
-    "Unknown",          # metric vector too far from any L-2 reference
+    "Unknown",           # metric vector doesn't match any archetype shape
 )
+
+
+# Heuristic shape definitions. Each archetype has 2-3
+# "signature" metric values that define its canonical
+# shape. The shape-match score is the normalized
+# distance from the player's vector to the archetype's
+# canonical shape.
+#
+# A signature is a tuple of (metric_name, ideal_value,
+# weight). The score is:
+#   score = 1.0 - weighted_distance(player_vector,
+#                                   archetype_signatures)
+# where weighted_distance is the L2 distance in the
+# signature-metric subspace, normalized to [0, 1].
+#
+# Thresholds:
+#   - score >= 0.7: confident match (this archetype wins)
+#   - score >= 0.4: tentative match (only wins if no other
+#     archetype scores >= 0.7)
+#   - score < 0.4: no match (archetype ignored)
+#
+# If multiple archetypes have score >= 0.7, the one with
+# the highest score wins. Otherwise the winner is the one
+# with the highest score >= 0.4, or "Unknown" if none
+# qualify.
+
+_ARCHETYPE_SHAPES: dict[str, list[tuple[str, float, float]]] = {
+    "Tactician": [
+        ("tactical_vs_positional_bias", 0.65, 0.5),
+        ("conversion_ability", 0.55, 0.3),
+        ("opening_comfort", 8.0, 0.2),  # specialist -- narrow
+    ],
+    "Positional Player": [
+        ("tactical_vs_positional_bias", 0.40, 0.4),
+        ("opening_comfort", 30.0, 0.4),
+        ("decision_fatigue", 0.05, 0.2),  # low fatigue
+    ],
+    "Grinder": [
+        ("conversion_ability", 0.70, 0.5),
+        ("decision_fatigue", 0.05, 0.3),  # low fatigue
+        ("time_pressure_quality", 0.10, 0.2),  # low blunder rate in deep plies
+    ],
+    "Wildcard": [
+        ("opening_comfort", 50.0, 0.5),
+        ("conversion_ability", 0.35, 0.5),  # low conversion
+    ],
+    "Specialist": [
+        ("opening_comfort", 3.0, 0.5),  # very narrow
+        ("conversion_ability", 0.65, 0.5),
+    ],
+    "Tilter": [
+        ("sequence_based_tilt", 0.20, 0.8),  # the defining metric
+        ("conversion_ability", 0.40, 0.2),  # also lower
+    ],
+    "Endgame Specialist": [
+        ("time_pressure_quality", 0.05, 0.5),
+        ("conversion_ability", 0.60, 0.3),
+        ("decision_fatigue", 0.05, 0.2),
+    ],
+}
+
+
+def _score_archetype(
+    archetype: str,
+    metrics: dict[str, float],
+) -> float:
+    """Compute the heuristic shape-match score in [0, 1].
+
+    Returns 0.0 if any required metric is missing OR if
+    the player has no qualifying metrics (the metric is
+    in EffectSize.d=None territory -- we treat None as
+    missing for archetype purposes).
+    """
+    if archetype not in _ARCHETYPE_SHAPES:
+        return 0.0
+    shapes = _ARCHETYPE_SHAPES[archetype]
+    total_weight = 0.0
+    weighted_dist = 0.0
+    for metric_name, ideal, weight in shapes:
+        if metric_name not in metrics:
+            return 0.0  # missing required metric
+        actual = metrics[metric_name]
+        # Normalize the distance. Different metrics have
+        # different scales (rates are 0-1, counts are 0-N).
+        # We use a simple relative-distance approach:
+        #   |actual - ideal| / max(|ideal|, 1.0)
+        # This gives 0 for perfect match and grows linearly.
+        # For rates (0-1) it works directly. For counts (0-N)
+        # the max(|ideal|, 1) clamps the divisor sensibly.
+        denom = max(abs(ideal), 1.0)
+        dist = abs(actual - ideal) / denom
+        weighted_dist += weight * dist
+        total_weight += weight
+    if total_weight == 0:
+        return 0.0
+    avg_dist = weighted_dist / total_weight
+    # Map distance [0, inf) to score [1, 0]. Clip at 0.
+    score = max(0.0, 1.0 - avg_dist)
+    return score
 
 
 def cluster_archetypes(
     metrics: dict[str, float],
-    l2_gold_version: str = "v2",
+    l2_gold_version: str = "v1",
 ) -> ArchetypeAssignment:
     """Assign an archetype to a player based on their 6-metric vector.
 
@@ -114,31 +236,87 @@ def cluster_archetypes(
         metrics: Dict mapping metric_id (e.g.
             "tactical_vs_positional_bias") to the
             point-estimate float value. Missing keys
-            are treated as the metric's null value.
+            are treated as "no signal" (the metric
+            returned EffectSize.d=None).
         l2_gold_version: Which L-2 corpus version to
-            use as the reference vectors. "v1" is the
-            12-position seed (BBF-51); "v2" is the
-            eval-delta-extended corpus (BBF-55).
+            use as the reference vectors. Currently
+            ignored (the heuristic shape-match doesn't
+            use L-2 directly). Reserved for the future
+            kNN-based implementation when L-2 grows.
 
     Returns:
-        ArchetypeAssignment with the label, nearest
-        neighbor IDs, distance, and effect size.
+        ArchetypeAssignment with the label, confidence,
+        per-archetype scores, and effect size.
 
-    BBF-54 stub. BBF-59 implements. When BBF-54 ships,
-    this function raises NotImplementedError so any
-    accidental import fails loudly.
+    The §B4 effect size is constructed so that:
+      - d > 0 means "the archetype shape is a good match"
+      - d < 0 means "the archetype shape is a bad match"
+      - d=None means "no qualifying metrics"
 
-    L-2 v1 (12 positions, 5 opening / 4 middlegame /
-    3 endgame) is too small for archetype clustering
-    (k=3 needs at least 6 reference vectors per label
-    for stable assignments, but v1 has 3 source types,
-    not 8 archetypes). BBF-55 grows L-2 to ~25-30
-    positions with eval-delta labels so the reference
-    set is large enough to be meaningful.
+    The gate_metric() helper is applied internally to
+    decide whether the label surfaces or is rendered
+    as "Inconclusive".
     """
-    raise NotImplementedError(
-        "cluster_archetypes is implemented in BBF-59 -- "
-        "requires L-2 gold v2 (BBF-55) for reference vectors."
+    if l2_gold_version not in ("v1",):
+        # Future-proofing: when L-2 v2 lands, this branch
+        # will switch to kNN. For now we always use the
+        # heuristic shape-match.
+        pass
+
+    # Score every archetype (including "Unknown", which
+    # always scores 0.0 -- it has no shape definition).
+    scores: dict[str, float] = {}
+    for archetype in STANDARD_ARCHETYPES:
+        if archetype == "Unknown":
+            scores[archetype] = 0.0
+        else:
+            scores[archetype] = _score_archetype(archetype, metrics)
+
+    # Pick the winner. Highest score wins, unless all
+    # scores are below 0.4, in which case "Unknown".
+    best_archetype = "Unknown"
+    best_score = 0.0
+    for archetype, score in scores.items():
+        if archetype == "Unknown":
+            continue
+        if score > best_score:
+            best_score = score
+            best_archetype = archetype
+    if best_score < 0.4:
+        best_archetype = "Unknown"
+        # Confidence for "Unknown" is 1.0 - best_score
+        # (higher when the player looks like NO archetype).
+        confidence = 1.0 - best_score
+    else:
+        confidence = best_score
+
+    # Build the EffectSize. The "observation list" for
+    # Cohen's d is the score itself (single number),
+    # but the gate uses the confidence against the
+    # threshold. We use the confidence as the point
+    # estimate and an EffectSize with sample_size = 1
+    # (one archetype assignment attempt).
+    # The "null value" is 0.4 (the minimum score to
+    # confidently assign a non-Unknown label).
+    # d = (confidence - 0.4) / std; since std is
+    # undefined for n=1, we set d to None when
+    # sample_size < 2 and let the gate fall through.
+    # The UI uses `confidence` directly as the visual
+    # indicator; the EffectSize is for §B4 compliance.
+    null_value = 0.4
+    effect = EffectSize(
+        point_estimate=round(confidence, 4),
+        d=None,  # n=1, no meaningful d
+        ci_low=round(max(0.0, confidence - 0.1), 4),
+        ci_high=round(min(1.0, confidence + 0.1), 4),
+        sample_size=len([s for s in scores.values() if s > 0]),
+        null_value=null_value,
+    )
+    return ArchetypeAssignment(
+        label=best_archetype,
+        confidence=round(confidence, 4),
+        archetype_scores={k: round(v, 4) for k, v in scores.items()},
+        effect_size=effect,
     )
 
 

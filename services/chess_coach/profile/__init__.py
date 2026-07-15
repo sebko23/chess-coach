@@ -86,28 +86,33 @@ from .stats import (
     opening_comfort,
     conversion_ability,
     blunder_rate_vs_rating,
-    # decision_fatigue -- NOT re-exported in BBF-57; lands
-    # in BBF-58.
+    decision_fatigue,
+)
+from .tilt import sequence_based_tilt
+from .archetypes import (
+    ArchetypeAssignment,
+    STANDARD_ARCHETYPES,
+    cluster_archetypes,
 )
 
 __all__: list[str] = [
-    # stats.py -- BBF-57 implementations (5 of 6)
+    # stats.py -- 6 metric implementations (BBF-57 + BBF-59)
     "tactical_vs_positional_bias",
     "time_pressure_quality",
     "opening_comfort",
     "conversion_ability",
     "blunder_rate_vs_rating",
-    # effect_size.py -- BBF-57 implementations
-    # (re-exported so callers can use `gate_metric()` from
-    # the package level)
+    "decision_fatigue",
+    # effect_size.py
     "cohens_d",
     "bootstrap_ci",
     "gate_metric",
     "EffectSize",
     "COHENS_D_THRESHOLD",
-    # stats.py -- BBF-58 stubs (NOT re-exported yet)
-    # "decision_fatigue",
-    # "sequence_based_tilt",
-    # archetypes.py -- BBF-59 stub (NOT re-exported yet)
-    # "cluster_archetypes",
+    # tilt.py -- sequence-based tilt (BBF-59)
+    "sequence_based_tilt",
+    # archetypes.py -- clustering + ArchetypeAssignment (BBF-59)
+    "cluster_archetypes",
+    "ArchetypeAssignment",
+    "STANDARD_ARCHETYPES",
 ]

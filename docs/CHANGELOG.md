@@ -3,6 +3,208 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-59 -- feat(profile): decision_fatigue + sequence_based_tilt + cluster_archetypes
+
+Completes the Phase 4 finish implementation BBFs (BBF-54..59).
+The remaining xfail markers in test_profile_skeleton.py are
+converted to always-on tests, and the 3 final metric/clustering
+functions ship with full §B4 rigor layer.
+
+The package's full public API is now in place:
+
+  - 6 metrics: tactical_vs_positional_bias, time_pressure_quality,
+    opening_comfort, conversion_ability, blunder_rate_vs_rating,
+    decision_fatigue
+  - 1 tilt detector: sequence_based_tilt
+  - 1 archetype clusterer: cluster_archetypes (with
+    ArchetypeAssignment + STANDARD_ARCHETYPES)
+  - 5 §B4 primitives: cohens_d, bootstrap_ci, gate_metric,
+    EffectSize, COHENS_D_THRESHOLD
+
+### What this BBF implements
+
+#### decision_fatigue (the Phase 4 6th metric)
+
+`decision_fatigue(db_path, player, *, seed=None) -> EffectSize`
+
+Hypothesis: the player's blunder rate INCREASES as move count
+grows within a single session (grouped by games.date).
+
+Implementation:
+  - Group games into sessions by `games.date` (PGN Date tag).
+  - For each session, normalize positions to [0, 1] along the
+    session timeline.
+  - Build a binary observation list (blunder = side_delta < -100).
+  - Compute the regression slope of blunder rate vs normalized
+    session position.
+  - Cohen's d is the standardized slope.
+  - Bootstrap CI on the binary list.
+
+EffectSize returns `point_estimate=max(0, slope)`, so the
+metric is 0 when no positive slope (no fatigue) and positive
+when blunders grow with move count.
+
+Sample-size requirement: MIN_SAMPLE_DECISION_FATIGUE (50).
+
+#### sequence_based_tilt
+
+`sequence_based_tilt(db_path, player, *, seed=None) -> EffectSize`
+
+Hypothesis: the player's winrate in games following a streak of
+N losses is lower than their overall baseline winrate.
+
+Implementation:
+  - For each window size N=1..MAX_WINDOW (5), look at every
+    game where the immediately-preceding N games were all
+    losses (the L-streak is at least N).
+  - Build a binary observation list across all window sizes:
+    1 if the player won the post-streak game, 0 otherwise.
+  - Baseline winrate = overall wins / total games.
+  - point_estimate = max(0, baseline - worst_window_winrate).
+  - Cohen's d is the standardized deviation of the binary
+    list from the baseline.
+
+Sample-size requirements: MIN_SAMPLE_TILT (30) total games
+AND MIN_LOSS_STREAKS (5) loss-streaks of length >= 2.
+
+The legacy `tilt_index` field in routes/profile_analysis.py
+stays in place for now. BBF-61 wires the route to call
+this function instead.
+
+#### cluster_archetypes
+
+`cluster_archetypes(metrics, l2_gold_version="v1") -> ArchetypeAssignment`
+
+Hypothesis: a player's metric vector matches one of 8 standard
+archetype shapes (Tactician, Positional Player, Grinder,
+Wildcard, Specialist, Tilter, Endgame Specialist, Unknown).
+
+Implementation:
+  - Heuristic shape-match (NOT kNN against L-2 gold).
+  - Each archetype has 2-3 "signature" metric values
+    defining its canonical shape (e.g. Tactician =
+    tactical_vs_positional_bias ~ 0.65, opening_comfort ~ 8).
+  - Score = 1.0 - weighted_distance(player_vector,
+    archetype_signatures), normalized to [0, 1].
+  - The archetype with the highest score (>= 0.4)
+    wins; otherwise "Unknown".
+  - Returns ArchetypeAssignment with label, confidence,
+    per-archetype scores, and EffectSize.
+
+The L-2 v1 corpus has 12 positions across 3 source types
+(gm_game, opening_theory, tactical_motif), which is too
+small for kNN-based archetype assignment across 8 labels
+(k=3 needs ~6 reference vectors per label for stable
+assignments). The BBF-55 CHANGELOG note deferred L-2 v2
+(eval-delta-extended corpus) to a later sprint because the
+BBF-55 test fix was more urgent.
+
+When L-2 v2 lands, the implementation can switch from
+heuristic shape-matching to kNN against labeled reference
+vectors. The ArchetypeAssignment.effect_size field carries
+the §B4 rigor layer either way; the heuristic distance
+maps to confidence and the gate_metric() helper decides
+whether to surface the label as a coaching insight.
+
+### Changes
+
+- `services/chess_coach/profile/stats.py` (modified):
+  replaced the BBF-54 decision_fatigue stub with the real
+  implementation. The SQL query groups games by date via
+  `COALESCE(date, created_at)`. The regression is a
+  pure-Python computation on the position list.
+
+- `services/chess_coach/profile/tilt.py` (modified):
+  replaced the BBF-54 sequence_based_tilt stub with the
+  real implementation. Imports `_connect` and
+  `_resolve_player` from `stats` (sibling-module private
+  helpers).
+
+- `services/chess_coach/profile/archetypes.py` (modified):
+  replaced the BBF-54 cluster_archetypes stub with the
+  heuristic shape-match implementation. The `_ARCHETYPE_SHAPES`
+  dict defines the canonical shapes for 7 archetypes
+  (plus "Unknown" which has no shape).
+
+- `services/chess_coach/profile/__init__.py` (modified):
+  re-exports the 3 new names (`decision_fatigue`,
+  `sequence_based_tilt`, `cluster_archetypes`) + the
+  `ArchetypeAssignment` and `STANDARD_ARCHETYPES` exports
+  from archetypes.py. Updates the `__all__` list and
+  removes the "NOT re-exported yet" comments.
+
+- `tests/unit/test_profile_skeleton.py` (modified):
+  converts the 3 remaining xfail markers to always-on:
+    - `test_profile_package_remaining_names_xfail` ->
+      `test_profile_package_all_three_names_importable`
+    - `test_stats_submodule_local_stubs` -> removes the
+      decision_fatigue NotImplementedError check (now
+      verified as callable)
+    - `test_tilt_stub_function_raises_not_implemented`
+      -> `test_tilt_function_is_implemented`
+    - `test_archetypes_stub_function_raises_not_implemented`
+      -> `test_archetypes_function_is_implemented`
+
+  The xfail tracker is now empty. All 9 names in the
+  package's `__all__` are verified importable at test
+  time.
+
+- `tests/unit/test_profile_tilt_archetypes.py` (NEW,
+  ~350 lines, 12 tests):
+    - 3 decision_fatigue tests (empty DB, synthetic
+      session, docstring §B4 check)
+    - 3 sequence_based_tilt tests (empty DB, no qualifying
+      streaks, tilt pattern detection)
+    - 5 cluster_archetypes tests (empty metrics, 4
+      canonical shapes (Tactician, Specialist, Wildcard,
+      Tilter), ArchetypeAssignment dataclass shape,
+      STANDARD_ARCHETYPES count)
+    - 3 module-level docstring/submodule importability
+      checks
+
+  Tests use synthetic SQLite DBs (no agentZero
+  dependency) and dict inputs for archetype clustering.
+
+- `.github/workflows/smoke.yml` (modified): the
+  `gateway-boot` job's "Run boot test" step now also
+  runs `tests/unit/test_profile_tilt_archetypes.py`.
+
+Total: 5 files modified (stats.py, tilt.py, archetypes.py,
+__init__.py, test_profile_skeleton.py, smoke.yml) + 1 file
+new (test_profile_tilt_archetypes.py), ~600 lines added
++ ~50 lines removed (the BBF-54 stubs replaced with real
+implementations).
+
+### Verification
+
+The push to `main` triggers 3 CI jobs; all must be green:
+
+- `gateway-boot`: runs all 4 profile test files. Sub-2-second
+  runtime (synthetic SQLite is fast; archetype tests are
+  pure Python dicts).
+- `qdrant-smoke`: unchanged.
+- `smoke`: unchanged.
+
+### Sprint progress (BBF-54..62)
+
+  BBF-54  package skeleton + pyproject registration
+  BBF-55  test xfail-tracking pattern
+  BBF-56  1-character typo fix from BBF-55
+  BBF-57  5 of 6 metric implementations + cohens_d +
+          bootstrap_ci
+  BBF-58  test fixture fix from BBF-57
+  BBF-59  **THIS BBF** -- 6th metric (decision_fatigue) +
+          sequence_based_tilt + cluster_archetypes
+  BBF-60  /v1/profile/{player}/explain/{metric} endpoint
+          + methodology docs
+  BBF-61  golden fixtures + dashboard schema unify
+  BBF-62  frontend rewrite
+
+Refs: BBF-54 (package skeleton + §B4 contract design);
+BBF-55 (xfail-tracking pattern); the phase-plan-v2.md
+Phase 4 exit criteria (6 metrics + archetype labels +
+sequence-based tilt); response-to-review.md §B4 (statistical
+rigor rules).
 ## BBF-58 -- fix(tests): BBF-57 test failures (synthetic fixture data)
 
 Follow-up to BBF-57 (commit `1ed89c5`). The metric

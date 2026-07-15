@@ -648,27 +648,144 @@ def decision_fatigue(
     db_path: str,
     player: str,
     session_window_minutes: int = 120,
+    *,
+    seed: int | None = None,
 ) -> EffectSize:
     """Blunder rate as a function of move count within a single session.
 
     Hypothesis (H1): The player's blunder rate INCREASES
     as move count grows within a single session (game +
-    adjacent games played within `session_window_minutes`
-    of each other).
+    adjacent games played within the same calendar date).
 
     Null hypothesis (H0): Blunder rate is constant
     across move counts within a session. Cohen's d is
-    computed as the slope of the blunder-rate-vs-move-count
-    regression, standardized.
+    computed as the regression coefficient of
+    blunder-rate vs move-count, standardized.
 
     Sample-size requirement: MIN_SAMPLE_DECISION_FATIGUE
     (50) -- needs long sessions to detect.
 
-    BBF-58 implements this. Not in BBF-57 scope.
+    Implementation:
+      - Group games into "sessions" by date (games on
+        the same calendar date form one session).
+      - For each session, compute the cumulative move
+        count and the per-position blunder indicator
+        (side_delta < -100).
+      - Build a binary observation list where each
+        observation is "is this position a blunder?"
+        paired with its position within the session,
+        normalized to [0, 1].
+      - Compute the regression of blunder rate against
+        normalized move-count.
+      - The regression slope is the point estimate;
+        positive slope means blunders increase with move
+        count (decision fatigue).
+      - d is the standardized slope (Cohen's d for
+        regression).
+      - ci is bootstrap_ci on the binary list.
+
+    Returns EffectSize(d=None, sample_size=0, ...) when
+    fewer than MIN_SAMPLE_DECISION_FATIGUE observations
+    qualify or when no qualifying sessions exist.
+
+    BBF-59 implements this.
     """
-    raise NotImplementedError(
-        "decision_fatigue is implemented in BBF-58 -- "
-        "this is the Phase 4 6th metric."
+    resolved = _resolve_player(db_path, player)
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            WITH player_games AS (
+              SELECT id, COALESCE(date, created_at) AS session_id
+              FROM games
+              WHERE (white = ? OR black = ?) AND result IS NOT NULL
+              ORDER BY session_id ASC, id ASC
+            ),
+            game_observations AS (
+              SELECT
+                g.id AS game_id,
+                pg.session_id,
+                po.ply,
+                CASE WHEN po.ply % 2 = 0
+                  THEN an.score_cp - LAG(an.score_cp) OVER (
+                    PARTITION BY po.game_id ORDER BY po.ply
+                  )
+                  ELSE LAG(an.score_cp) OVER (
+                    PARTITION BY po.game_id ORDER BY po.ply
+                  ) - an.score_cp
+                END AS side_delta
+              FROM player_games pg
+              JOIN games g ON g.id = pg.id
+              JOIN positions po ON po.game_id = g.id
+              JOIN analyses an ON an.position_id = po.id
+              WHERE po.is_mainline = 1
+                AND an.score_cp IS NOT NULL
+            )
+            SELECT session_id, side_delta
+            FROM game_observations
+            WHERE side_delta IS NOT NULL
+            ORDER BY session_id ASC, game_id ASC
+            """,
+            (resolved, resolved),
+        ).fetchall()
+    if len(rows) < MIN_SAMPLE_DECISION_FATIGUE:
+        return EffectSize(
+            point_estimate=0.0, d=None, ci_low=0.0, ci_high=0.0,
+            sample_size=len(rows), null_value=0.0,
+        )
+    # Group by session
+    sessions: dict[str, list[float]] = {}
+    for r in rows:
+        sid = r["session_id"]
+        if sid is None:
+            continue
+        sessions.setdefault(sid, []).append(float(r["side_delta"]))
+    # For each session, normalize position to [0, 1] and
+    # build the binary (blunder) observation list.
+    positions: list[float] = []  # normalized move-count
+    blunders: list[float] = []   # 1 if blunder, 0 otherwise
+    for sid, deltas in sessions.items():
+        n = len(deltas)
+        if n < 2:
+            continue
+        for i, d in enumerate(deltas):
+            positions.append(i / (n - 1))  # 0..1
+            blunders.append(1.0 if d < -100 else 0.0)
+    if len(positions) < MIN_SAMPLE_DECISION_FATIGUE:
+        return EffectSize(
+            point_estimate=0.0, d=None, ci_low=0.0, ci_high=0.0,
+            sample_size=len(positions), null_value=0.0,
+        )
+    # Compute the regression slope.
+    n = len(positions)
+    mean_p = sum(positions) / n
+    mean_b = sum(blunders) / n
+    cov_pb = sum((positions[i] - mean_p) * (blunders[i] - mean_b)
+                 for i in range(n)) / n
+    var_p = sum((p - mean_p) ** 2 for p in positions) / n
+    if var_p == 0:
+        slope = 0.0
+    else:
+        slope = cov_pb / var_p
+    point_estimate = max(0.0, slope)  # only positive slope = fatigue
+    # Cohen's d: standardize the slope by the residual std.
+    predicted = [mean_b + slope * (p - mean_p) for p in positions]
+    residuals = [blunders[i] - predicted[i] for i in range(n)]
+    if n > 2:
+        resid_std = (sum(r ** 2 for r in residuals) / (n - 2)) ** 0.5
+    else:
+        resid_std = 0.0
+    if resid_std == 0 or var_p ** 0.5 == 0:
+        d = None
+    else:
+        d = (slope * (var_p ** 0.5)) / resid_std
+    ci_low, ci_high = bootstrap_ci(blunders, seed=seed)
+    return EffectSize(
+        point_estimate=round(point_estimate, 4),
+        d=round(d, 4) if d is not None else None,
+        ci_low=round(ci_low, 4),
+        ci_high=round(ci_high, 4),
+        sample_size=n,
+        null_value=0.0,
     )
 
 

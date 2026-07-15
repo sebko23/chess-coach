@@ -71,6 +71,7 @@ jobs:
                  tests/unit/test_kb_persistent_path.py \
                  tests/unit/test_profile_skeleton.py \
                  tests/unit/test_profile_stats.py \
+                 tests/unit/test_profile_tilt_archetypes.py \
                  -v --no-header --tb=short
 
   # BBF-52: end-to-end exercise of the persistent Qdrant path.

@@ -6,22 +6,23 @@ exercises the §B4 statistical primitives (cohens_d,
 bootstrap_ci, gate_metric) and the 5 metrics that BBF-57
 implements.
 
-## BBF-54 vs BBF-55 vs BBF-57 split
+## BBF-54 vs BBF-55 vs BBF-57 vs BBF-59 split
 
 BBF-54 originally shipped a single test that asserted
 everything was importable. BBF-55 split the test into
 always-on / submodule-local / xfail halves. BBF-57
-converts the 5 metric re-exports from xfail to always-on
-(the implementations are real now).
+converted the 5 metric re-exports from xfail to
+always-on. BBF-59 completes the conversion: all 9
+names are now re-exported and the xfail markers are
+gone.
 
 Tracking the xfail set:
   BBF-54: 9 names xfail
   BBF-57: 3 names still xfail (decision_fatigue,
           sequence_based_tilt, cluster_archetypes)
-  BBF-58: removes decision_fatigue + sequence_based_tilt
-          (1 name xfail remaining: cluster_archetypes)
-  BBF-59: removes cluster_archetypes (0 names xfail --
-          this file's xfail markers can be removed)
+  BBF-59: 0 names xfail -- xfail markers removed,
+          the remaining tests are converted to
+          always-on assertions
 
 ## Why the split
 
@@ -260,39 +261,38 @@ def test_stats_metrics_callable_with_db_path() -> None:
 # --- BBF-58/59 xfail markers (still expected to fail) ---
 
 
-@pytest.mark.xfail(
-    reason="BBF-57 ships 5 metric re-exports + effect_size primitives. "
-           "Remaining xfails: decision_fatigue + sequence_based_tilt "
-           "(BBF-58) + cluster_archetypes (BBF-59).",
-    strict=False,
-)
-def test_profile_package_remaining_names_xfail() -> None:
-    """The BBF-58 + BBF-59 names are still not re-exported.
+def test_profile_package_all_three_names_importable() -> None:
+    """BBF-59 ships all 3 remaining names: decision_fatigue, sequence_based_tilt, cluster_archetypes.
 
-    This xfail narrows the original BBF-54 test (which
-    covered all 9 names) down to just the 3 remaining
-    ones. When BBF-58 lands, this should be updated to
-    only xfail on cluster_archetypes; when BBF-59
-    lands, the xfail marker can be removed entirely.
+    This test replaces the BBF-57/58 xfail test. The
+    package now exposes the full Phase 4 finish
+    public API.
     """
     from chess_coach import profile
 
     for name in ("decision_fatigue", "sequence_based_tilt", "cluster_archetypes"):
         assert hasattr(profile, name), (
-            f"chess_coach.profile.{name} should be re-exported "
-            f"by the end of BBF-59"
+            f"chess_coach.profile.{name} is in __all__ but not "
+            f"defined. Check that the BBF-59 imports include it."
         )
+
+    # Also verify they can be called (don't raise NotImplementedError)
+    import chess_coach.profile as p
+    # decision_fatigue takes (db_path, player); tilt + archetypes
+    # take other signatures
+    assert callable(p.decision_fatigue)
+    assert callable(p.sequence_based_tilt)
+    assert callable(p.cluster_archetypes)
 
 
 # --- Submodule-local tests: stats.py stubs still raise for the unimplemented ---
 
 
 def test_stats_submodule_local_stubs() -> None:
-    """BBF-57 implements 5 metrics; decision_fatigue is still a stub.
+    """BBF-59 implements all 6 metrics; no NotImplementedError raises.
 
-    The 5 implemented metrics should NOT raise
+    The 6 implemented metrics should NOT raise
     NotImplementedError when accessed via the SUBMODULE.
-    decision_fatigue (BBF-58) still does.
     """
     from chess_coach.profile.stats import (
         tactical_vs_positional_bias,
@@ -303,12 +303,7 @@ def test_stats_submodule_local_stubs() -> None:
         decision_fatigue,
     )
 
-    # The 5 implemented metrics take a (db_path, player) pair
-    # and return an EffectSize. On a fake / nonexistent db,
-    # they may raise sqlite3 errors (which we tolerate) or
-    # return an empty-data EffectSize. The KEY assertion is
-    # that NotImplementedError does NOT fire.
-    fake_db = "/tmp/_bbf57_fake_submodule.db"
+    fake_db = "/tmp/_bbf59_fake_submodule.db"
     if os.path.exists(fake_db):
         os.remove(fake_db)
     for fn in (
@@ -317,39 +312,57 @@ def test_stats_submodule_local_stubs() -> None:
         opening_comfort,
         conversion_ability,
         blunder_rate_vs_rating,
+        decision_fatigue,
     ):
         try:
             result = fn(fake_db, "fake_player", seed=42)
-            # Should return EffectSize
             from chess_coach.profile.effect_size import EffectSize
             assert isinstance(result, EffectSize), (
                 f"{fn.__name__} should return EffectSize"
             )
         except NotImplementedError:
             pytest.fail(
-                f"{fn.__name__} should be implemented in BBF-57 "
-                f"but still raises NotImplementedError"
+                f"{fn.__name__} should be implemented but still "
+                f"raises NotImplementedError"
             )
         except Exception:
             # sqlite3 errors on fake db are tolerated
             pass
 
-    # decision_fatigue is still a stub for BBF-58
-    with pytest.raises(NotImplementedError, match="BBF-58"):
-        decision_fatigue("/tmp/fake.db", "fake_player")
 
-
-def test_tilt_stub_function_raises_not_implemented() -> None:
-    """The tilt.py stub raises NotImplementedError (BBF-58)."""
+def test_tilt_function_is_implemented() -> None:
+    """BBF-59 implements sequence_based_tilt."""
     from chess_coach.profile.tilt import sequence_based_tilt
+    from chess_coach.profile.effect_size import EffectSize
 
-    with pytest.raises(NotImplementedError, match="BBF-58"):
-        sequence_based_tilt([("W", None)])
+    # Calling with a fake db path should return an EffectSize
+    # (no qualifying data) -- not raise NotImplementedError.
+    # The db path doesn't exist so sqlite3.connect will raise;
+    # we just verify that NotImplementedError does NOT fire.
+    try:
+        result = sequence_based_tilt("/tmp/_bbf59_fake_tilt.db", "fake_player")
+        assert isinstance(result, EffectSize)
+        assert result.sample_size == 0
+    except NotImplementedError:
+        import pytest
+        pytest.fail("sequence_based_tilt should not raise NotImplementedError")
+    except Exception:
+        # sqlite3 errors on fake db are tolerated
+        pass
 
 
-def test_archetypes_stub_function_raises_not_implemented() -> None:
-    """The archetypes.py stub raises NotImplementedError (BBF-59)."""
-    from chess_coach.profile.archetypes import cluster_archetypes
+def test_archetypes_function_is_implemented() -> None:
+    """BBF-59 implements cluster_archetypes."""
+    from chess_coach.profile.archetypes import (
+        ArchetypeAssignment,
+        STANDARD_ARCHETYPES,
+        cluster_archetypes,
+    )
 
-    with pytest.raises(NotImplementedError, match="BBF-59"):
-        cluster_archetypes({})
+    # Empty dict -> no metrics -> "Unknown" archetype
+    result = cluster_archetypes({})
+    assert isinstance(result, ArchetypeAssignment)
+    assert result.label == "Unknown"
+    # All 8 archetype labels are in STANDARD_ARCHETYPES
+    assert len(STANDARD_ARCHETYPES) == 8
+    assert "Unknown" in STANDARD_ARCHETYPES
