@@ -6,7 +6,7 @@ changes). This test exercises the sidecar code path
 (`QdrantClient(url=qdrant_url)`) end-to-end: a real gateway app
 with lifespan, real /v1/kb/index and /v1/kb/similar routes, and
 a live Qdrant at CHESS_COACH_QDRANT_URL (set by the qdrant-smoke
-job to http://127.0.0.1:6333).
+job to http://qdrant:6333).
 
 Why live and not mocked: the persistent-path unit test in
 tests/unit/test_kb_persistent_path.py exercises the
@@ -14,6 +14,14 @@ tests/unit/test_kb_persistent_path.py exercises the
 `QdrantClient(url=...)` branch -- the production BBF-52 path --
 which is the whole point of BBF-52. A mock would just be testing
 the mock.
+
+BBF-53: rewritten to use the new tests/integration/conftest.py
+fixtures. The old version tried to instantiate GatewaySettings()
+directly, but the top-level tests/conftest.py's `_isolate_env`
+autouse fixture had already stripped CHESS_COACH_QDRANT_URL from
+the env by then -- so the settings came back with qdrant_url=
+":memory:" and the test's assertion failed. The new conftest
+re-installs the env var from os.environ after _isolate_env runs.
 
 Requires:
   - A live Qdrant at CHESS_COACH_QDRANT_URL (qdrant-smoke job starts
@@ -26,11 +34,9 @@ from __future__ import annotations
 
 import os
 
-import httpx
 import pytest
 
 from chess_coach.gateway.auth import set_active_token
-from chess_coach.gateway.config import GatewaySettings
 
 
 pytestmark = pytest.mark.integration
@@ -42,35 +48,16 @@ def _qdrant_url_set() -> bool:
     return bool(url) and url != ":memory:"
 
 
+# Note: this skipif is checked AT TEST COLLECTION time, before
+# fixtures run. The integration conftest's _restore_qdrant_env
+# runs AFTER this check, so if CHESS_COACH_QDRANT_URL is unset
+# in the parent process env (typical local dev), the test
+# skips cleanly. In CI, the pytest CLI is invoked with the env
+# var set in the env: block of the workflow step.
 pytestmark = pytest.mark.skipif(
     not _qdrant_url_set(),
     reason="CHESS_COACH_QDRANT_URL is unset or :memory:; live Qdrant not available",
 )
-
-
-@pytest.fixture
-def settings() -> GatewaySettings:
-    s = GatewaySettings()
-    assert s.qdrant_url and s.qdrant_url != ":memory:", (
-        "test preconditions require CHESS_COACH_QDRANT_URL to be a live Qdrant URL"
-    )
-    return s
-
-
-@pytest.fixture
-def app(settings):
-    set_active_token("devtoken123")
-    from chess_coach.gateway import create_app
-    return create_app(settings)
-
-
-@pytest.fixture
-async def client(app):
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as c:
-        yield c
 
 
 async def test_index_and_query_against_live_qdrant(client):
@@ -85,6 +72,7 @@ async def test_index_and_query_against_live_qdrant(client):
     load, this test fails -- which is the right signal: BBF-52's
     persistent path requires the embedder to be functional.
     """
+    set_active_token("devtoken123")
     headers = {"Authorization": "Bearer devtoken123"}
 
     # Trigger (re)index. Small limit keeps the test fast.
