@@ -3,6 +3,39 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-56 -- fix(tests): BBF-55 typo (cluster_archetotypes -> cluster_archetypes)
+
+Follow-up to BBF-55 (commit `d6e8f67`). The xfail
+split + submodule-local tests were correct, but one
+test body had a typo: `cluster_archetotypes` (extra
+'o') when the actual function in
+`chess_coach.profile.archetypes` is `cluster_archetypes`.
+
+This is a follow-up fix, not a force-push rewrite of
+BBF-55. Per the no-force-push hard rule and the
+BBF-21/BBF-53 discipline, `d6e8f67` is left on `main`.
+
+### Changes
+
+- `tests/unit/test_profile_skeleton.py` (modified):
+  1-character fix on line 270. The diff is exactly:
+  ```
+  -        cluster_archetotypes({})
+  +        cluster_archetypes({})
+  ```
+
+Total: 1 file, +1/-1 line.
+
+### Verification
+
+All 8 tests in `test_profile_skeleton.py` should now pass:
+  - 3 always-on tests: PASSED
+  - 2 sprint-progress xfail tests: XFAIL (expected)
+  - 3 submodule-local tests: PASSED
+
+Refs: BBF-55 (the commit with the typo); BBF-21/BBF-53
+discipline ("acknowledge the wrong abstraction, do
+the real fix in a follow-up commit").
 ## BBF-55 -- fix(tests): BBF-54 test failures (xfail split + submodule-local imports)
 
 Fixes the two test failures that landed BBF-54 in a

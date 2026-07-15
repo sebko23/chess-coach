@@ -267,7 +267,7 @@ def test_archetypes_stub_function_raises_not_implemented() -> None:
     from chess_coach.profile.archetypes import cluster_archetypes
 
     with pytest.raises(NotImplementedError, match="BBF-59"):
-        cluster_archetotypes({})
+        cluster_archetypes({})
 
 
 def test_effect_size_stubs_raise_not_implemented() -> None:
