@@ -3,6 +3,180 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-61 -- feat(profile): golden fixtures + dashboard schema unify
+
+Final implementation BBF of the Phase 4 finish sprint
+(BBF-54..62). Two pieces:
+
+1. **Golden fixtures** for the 6 Phase 4 metrics at
+   `tests/gold/phase4_v1_fixtures.py` + loader at
+   `tests/unit/test_phase4_golden.py`. Three
+   hand-crafted scenarios (clean_player,
+   tactical_player, blundering_player) with expected
+   metric values (computed by hand from the fixture
+   data). Tests use a mix of EXACT assertions (for
+   opening_comfort distinct-prefix count and blunder
+   counts) and RANGE assertions (for ratios + sample
+   sizes + gate results).
+
+2. **Dashboard schema unify**: `routes/profile_analysis.py`
+   is refactored to delegate metric computation to
+   `chess_coach.profile.*` (the BBF-54..59 metric
+   implementations) instead of running its own SQL
+   queries. The response shape gains a unified
+   `metrics: [{id, value, sample_size, d, ci_low,
+   ci_high, passes_b4_gate}]` array alongside the
+   legacy flat fields (for backward compat with the
+   pre-BBF-61 dashboard).
+
+   Each metric in the array carries enough metadata
+   for the UI to decide whether to surface as a
+   coaching insight per §B4 rule 3 (below-threshold
+   metrics MUST NOT surface regardless of p-value).
+   The `passes_b4_gate` boolean is True iff
+   `gate_metric()` returns True (d >= 0.5 AND
+   sample_size >= minimum).
+
+### Golden fixtures
+
+The 3 scenarios in `tests/gold/phase4_v1_fixtures.py`:
+
+  - **clean_player** (3 games, no blunders, no tactical):
+    All deltas are small (< 50cp). Expected:
+    `opening_comfort = 1` (single opening), 0
+    opportunities, 0 blunders, 6 positions.
+
+  - **tactical_player** (5 games, 3 of 5 opportunities
+    taken): Games 1-3 have pos 2 score = +130 (delta
+    +100, TOOK); games 4-5 have pos 2 score = -60
+    (delta -90, MISSED, in opportunity range but not
+    blunder range). Expected: `opening_comfort = 1`,
+    5 opportunities, 3 taken, 0 blunders, 15 positions.
+
+  - **blundering_player** (3 games, 2 with blunders):
+    Game 1 is clean; games 2, 3 have pos 2 score =
+    -150 and -200 (blunders). Expected:
+    `opening_comfort = 2` (e4/d4), 0 opportunities
+    (no |delta| > 80 in this fixture), 2 blunders, 6
+    positions.
+
+The `EXPECTED` dict in the fixture file documents the
+hand-computed values. Tests use structural assertions
+(sample_size, point_estimate ranges) rather than exact
+Cohen's d / CI values (those are noisy and hard to
+compute by hand).
+
+The fixture is the "gold" for the Phase 4 metrics:
+when a future contributor modifies a metric
+implementation, these tests catch unintended changes
+in the metric values. The schema reminder in the
+fixture file documents the BBF-57 follow-up fix
+(`positions.score_cp` doesn't exist; the column is
+`an.score_cp`).
+
+### Dashboard schema unify
+
+The legacy `ProfileAnalysisResponse` had 5 fields
+(`tactical_tendency`, `risk_appetite`, `tilt_index`,
+`time_pressure_blunders`, `opening_breadth`) all
+computed via inline SQL queries. BBF-61 replaces
+those inline queries with calls to
+`chess_coach.profile.*`. The response now also
+includes a `metrics: [{id, value, ...}]` array:
+
+  - 7 metrics total: tactical_vs_positional_bias,
+    time_pressure_quality, opening_comfort,
+    conversion_ability, blunder_rate_vs_rating,
+    decision_fatigue, sequence_based_tilt
+  - Each metric carries: `id`, `value` (point_estimate),
+    `sample_size`, `d` (Cohen's d), `ci_low`/`ci_high`
+    (bootstrap CI), `passes_b4_gate` (boolean from
+    `gate_metric()`)
+  - The dashboard's BBF-62 frontend will read from
+    this array; the legacy flat fields are kept for
+    backward compat
+
+The route uses `asyncio.gather` with `asyncio.to_thread`
+to run the 7 metrics without blocking the event loop.
+The metrics are independent; their order doesn't matter.
+
+### Changes
+
+- `services/chess_coach/gateway/routes/profile_analysis.py`
+  (refactored, +150/-100 lines): the new route
+  imports the 7 metric functions from `chess_coach.profile`,
+  defines a `_METRIC_REGISTRY` dict for dispatch, and
+  builds the unified response shape. The legacy
+  `tilt_index` field is now the `sequence_based_tilt`
+  point_estimate (replacing the old single-loss-window
+  tilt with the new sliding-window detector).
+
+- `tests/gold/phase4_v1_fixtures.py` (NEW, ~270 lines):
+  the 3 scenarios with hand-computed expected values.
+  Follows the L-2 gold v1 pattern (BBF-51).
+
+- `tests/unit/test_phase4_golden.py` (NEW, ~250 lines,
+  6 tests): the loader. Each test parametrizes over
+  (build_fn, scenario_name). 3 tests verify the fixture
+  itself (sanity check on the hand-computed expected
+  values); 3 tests verify the metric implementations
+  match the expected output.
+
+- `tests/integration/test_profile_analysis.py` (refactored):
+  5 tests (was 4) covering both the legacy flat fields
+  (backward compat) AND the new unified metrics array.
+  The new tests verify metric_id uniqueness, the
+  §B4 contract shape, and the legacy-field-vs-unified-array
+  value correspondence.
+
+- `.github/workflows/smoke.yml` (modified): the
+  `gateway-boot` job's "Run boot test" step now also
+  runs `tests/unit/test_phase4_golden.py`.
+
+Total: 2 files modified (routes/profile_analysis.py,
+smoke.yml) + 3 files new (fixtures, golden tests,
+integration test), ~1100 lines added.
+
+### Verification
+
+The push to `main` triggers 3 CI jobs; all must be
+green:
+
+- `gateway-boot`: runs all 5 profile test files +
+  the explain endpoint test + the golden fixture
+  test. Sub-3-second runtime (synthetic SQLite +
+  in-process FastAPI).
+- `qdrant-smoke`: unchanged.
+- `smoke`: unchanged.
+
+### Sprint progress (BBF-54..62)
+
+  BBF-54  package skeleton + pyproject registration
+  BBF-55  test xfail-tracking pattern
+  BBF-56  1-character typo fix from BBF-55
+  BBF-57  5 of 6 metric implementations + cohens_d +
+          bootstrap_ci
+  BBF-58  test fixture fix from BBF-57
+  BBF-59  decision_fatigue + sequence_based_tilt +
+          cluster_archetypes
+  BBF-60  /explain endpoint + methodology doc +
+          conversion_ability fix (BBF-57 follow-up)
+  BBF-61  **THIS BBF** -- golden fixtures + dashboard
+          schema unify
+  BBF-62  frontend rewrite
+
+The phase-plan-v2.md Phase 4 exit criteria are now
+fully met (after BBF-60 + BBF-61). BBF-62 is the
+final BBF: it migrates the dashboard to consume the
+unified `metrics: [{id, value}]` array and adds the
+"experimental" badge + non-clinical disclaimer.
+
+Refs: BBF-54 (package skeleton + §B4 contract design);
+BBF-60 (the /explain endpoint and methodology doc that
+inform the unified shape); the phase-plan-v2.md Phase 4
+exit criteria (6 metrics + golden fixtures + non-clinical
+disclaimer); docs/13_review_response/response-to-review.md
+§B4 (statistical-rigor rules).
 ## BBF-60 -- feat(profile): /explain endpoint + methodology doc (§B4 rule 4) + conversion_ability fix (BBF-57 follow-up)
 
 Implements §B4 rule 4 of the Claude review: the
