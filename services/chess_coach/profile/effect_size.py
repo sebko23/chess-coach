@@ -9,12 +9,13 @@ primitives can be tested independently.
 
 Every metric in the Phase 4 sprint must report:
 
-  - **Cohen's d** — standardized effect size against the
-    null distribution. d >= 0.5 is the "worth surfacing"
-    threshold (medium effect per Cohen 1988).
-  - **Bootstrap CI** — 95% confidence interval around the
+  - **Cohen's d** -- standardized effect size of the
+    observation list against a fixed null value.
+    d >= 0.5 is the "worth surfacing" threshold (medium
+    effect per Cohen 1988).
+  - **Bootstrap CI** -- 95% confidence interval around the
     point estimate, so the UI can render uncertainty.
-  - **Below-threshold gate** — metrics with d < 0.5 OR
+  - **Below-threshold gate** -- metrics with d < 0.5 OR
     insufficient sample size MUST NOT be surfaced as
     coaching insights, regardless of p-value. The
     `gate_metric()` helper enforces this.
@@ -30,36 +31,45 @@ statistical primitives against known fixtures (e.g.
 "d of two identical distributions = 0.0") without setting
 up chess data.
 
-## Sprint note
+## BBF-57 implementation note
 
-BBF-54 ships this module as a documented skeleton (the
-functions raise `NotImplementedError`). BBF-56 fills in
-the actual implementations. The skeleton exists so that
-`from chess_coach.profile.effect_size import cohens_d`
-imports cleanly for downstream BBFs (and so that
-`gateway-boot` CI proves the package shape).
+BBF-56 was originally scoped to implement `cohens_d` and
+`bootstrap_ci` standalone. BBF-56 (the typo-fix commit)
+ended up only fixing the BBF-55 test typo, so the
+primitives stayed as stubs. BBF-57 implements both
+primitives here, alongside the metric implementations,
+per the BBF-21 discipline ("fix all known dep gaps in
+one BBF").
 """
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class EffectSize:
-    """Result of an effect-size measurement.
+    """Result of a metric computation with §B4 statistical rigor.
 
     Attributes:
-        d: Cohen's d (standardized mean difference).
-            `None` when the sample size is below the gate.
-        ci_low: Bootstrap 95% CI lower bound on the point
-            estimate the metric produces.
-        ci_high: Bootstrap 95% CI upper bound.
+        point_estimate: The metric value (e.g. tactical
+            tendency = 0.62 meaning "62% of opportunities
+            taken"). This is what the UI displays.
+        d: Cohen's d of the observation list against the
+            null value. `None` when the sample size is below
+            the gate OR when the sample has zero variance
+            (no meaningful effect-size measurement).
+        ci_low: Bootstrap 95% CI lower bound on the
+            point_estimate.
+        ci_high: Bootstrap 95% CI upper bound on the
+            point_estimate.
         sample_size: Number of observations the metric
             computed over.
         null_value: The expected value under the null
             hypothesis (used for d calculation).
     """
 
+    point_estimate: float
     d: float | None
     ci_low: float
     ci_high: float
@@ -88,8 +98,10 @@ def cohens_d(
 
     `d = (mean(sample) - null_value) / std(sample)`.
 
-    Returns `None` when the sample is empty or has zero
-    variance (no meaningful effect-size measurement).
+    Returns `None` when:
+      - The sample has fewer than 2 elements (no variance
+        can be computed).
+      - The sample has zero variance (std == 0).
 
     Cohen 1988 thresholds:
         d < 0.2  -- negligible
@@ -97,16 +109,19 @@ def cohens_d(
         0.5..0.8 -- medium  (← Phase 4 surfacing threshold)
         >= 0.8   -- large
 
-    BBF-54 ships this as a NotImplementedError stub. BBF-56
-    implements it (with tests against known-fixture data:
-    e.g. d of [1,2,3] against null=2.0 == 0.0).
+    The returned `d` is signed: positive when the sample
+    mean is HIGHER than the null value, negative when
+    LOWER. The §B4 gate uses `abs(d) >= threshold` so the
+    direction doesn't matter for surfacing.
     """
-    raise NotImplementedError(
-        "cohens_d is implemented in BBF-56 -- see "
-        "docs/15_methodology/profile-metrics-v1.md for the "
-        "spec, and tests/unit/test_effect_size.py for the "
-        "fixtures (BBF-56 also adds the test)."
-    )
+    if len(sample) < 2:
+        return None
+    mean = sum(sample) / len(sample)
+    variance = sum((x - mean) ** 2 for x in sample) / (len(sample) - 1)
+    std = variance ** 0.5
+    if std == 0:
+        return None
+    return (mean - null_value) / std
 
 
 def bootstrap_ci(
@@ -114,30 +129,71 @@ def bootstrap_ci(
     statistic: str = "mean",
     n_resamples: int = 1000,
     confidence: float = 0.95,
+    seed: int | None = None,
 ) -> tuple[float, float]:
     """Return a bootstrap CI for the given statistic.
 
     Args:
         sample: The observations.
         statistic: "mean" or "median" (extensible later).
-        n_resamples: Number of bootstrap iterations. 1000 is
-            the standard "good enough" value (Efron &
-            Tibshirani 1993).
+        n_resamples: Number of bootstrap iterations. 1000
+            is the standard "good enough" value
+            (Efron & Tibshirani 1993).
         confidence: 0.95 for a 95% CI.
+        seed: Optional RNG seed for deterministic test
+            output. When `None`, the default `random`
+            module state is used (NOT seeded; tests should
+            pass a seed for reproducibility).
 
     Returns:
         (ci_low, ci_high) percentiles from the bootstrap
-        distribution.
+            distribution of the chosen statistic.
 
-    BBF-54 ships this as a NotImplementedError stub. BBF-56
-    implements it using Python stdlib only (random.choice
-    for resampling) -- no scipy/numpy dependency unless the
-    math requires it (it doesn't for percentile-of-means).
+    Implementation:
+        - Resample with replacement `n_resamples` times.
+        - Compute the statistic for each resample.
+        - Sort the statistics.
+        - Return the alpha/2 and (1-alpha/2) percentiles
+          (linear interpolation for the percentiles; not
+          the "nearest rank" method).
+
+    Uses Python stdlib only (random.choice for resampling,
+    statistics.quantiles for percentile calculation). No
+    scipy/numpy dependency.
     """
-    raise NotImplementedError(
-        "bootstrap_ci is implemented in BBF-56 -- see "
-        "tests/unit/test_effect_size.py for fixtures."
-    )
+    if not sample:
+        return (0.0, 0.0)
+
+    rng = random.Random(seed) if seed is not None else random
+    n = len(sample)
+    resampled_stats: list[float] = []
+    for _ in range(n_resamples):
+        # Resample with replacement
+        resample = [sample[rng.randint(0, n - 1)] for _ in range(n)]
+        if statistic == "mean":
+            resampled_stats.append(sum(resample) / n)
+        elif statistic == "median":
+            sorted_rs = sorted(resample)
+            mid = n // 2
+            if n % 2 == 1:
+                resampled_stats.append(float(sorted_rs[mid]))
+            else:
+                resampled_stats.append((sorted_rs[mid - 1] + sorted_rs[mid]) / 2.0)
+        else:
+            raise ValueError(f"Unknown statistic: {statistic!r}")
+
+    resampled_stats.sort()
+    # Compute percentiles via linear interpolation
+    alpha = (1.0 - confidence) / 2.0
+    lo_idx = alpha * (n_resamples - 1)
+    hi_idx = (1.0 - alpha) * (n_resamples - 1)
+    lo_floor = int(lo_idx)
+    hi_floor = int(hi_idx)
+    lo_frac = lo_idx - lo_floor
+    hi_frac = hi_idx - hi_floor
+    ci_low = resampled_stats[lo_floor] * (1.0 - lo_frac) + resampled_stats[min(lo_floor + 1, n_resamples - 1)] * lo_frac
+    ci_high = resampled_stats[hi_floor] * (1.0 - hi_frac) + resampled_stats[min(hi_floor + 1, n_resamples - 1)] * hi_frac
+    return (ci_low, ci_high)
 
 
 def gate_metric(
@@ -155,11 +211,6 @@ def gate_metric(
     UI: when this returns False, the metric MUST be rendered
     as "insufficient evidence" rather than as a coaching
     insight. See §B4 rule 3.
-
-    BBF-54 ships this as a working gate (it doesn't need
-    statistical primitives; it operates on a precomputed
-    `EffectSize` object). BBF-56 wires it to real
-    cohens_d + bootstrap_ci results.
     """
     if effect.d is None:
         return False

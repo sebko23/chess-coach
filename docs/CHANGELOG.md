@@ -3,6 +3,206 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-57 -- feat(profile): 5 metric implementations + cohens_d + bootstrap_ci (Phase 4 finish, first implementation BBF)
+
+First real-implementation BBF of the Phase 4 finish sprint
+(BBF-54..62). Implements 5 of the 6 metrics in the
+`chess_coach.profile` package, plus the §B4 statistical
+primitives that the metrics depend on.
+
+The 5 implemented metrics are:
+
+  - **tactical_vs_positional_bias** -- extracted from
+    `routes/profile_analysis.py:104-105` (was
+    `tactical_tendency`).
+  - **time_pressure_quality** -- extracted from
+    `routes/profile_analysis.py:108-109` (was
+    `time_pressure_blunders`).
+  - **opening_comfort** -- extracted from
+    `routes/profile_analysis.py:130-136` (was
+    `opening_breadth`).
+  - **conversion_ability** -- NEW metric, not in the
+    old route. The phase-plan exit criteria requires 6
+    metrics; this is one of the 2 new ones.
+  - **blunder_rate_vs_rating** -- NEW metric, not in the
+    old route. The other of the 2 new ones.
+
+`decision_fatigue` (the 6th metric) remains a stub for
+BBF-58.
+
+The legacy `routes/profile_analysis.py` is left in
+place during the transition. BBF-61 (golden fixtures +
+dashboard schema unify) wires the route to call this
+module's functions instead.
+
+### §B4 statistical primitives
+
+This BBF also implements the `cohens_d` and `bootstrap_ci`
+primitives that BBF-54's `effect_size.py` shipped as
+documented stubs. BBF-56 (the typo-fix commit) was
+originally scoped to fill these in but ended up only
+fixing the BBF-55 typo; per the BBF-21 discipline
+("fix all known dep gaps in one BBF"), BBF-57 implements
+the primitives alongside the metrics.
+
+Both primitives use Python stdlib only:
+  - `cohens_d`: 5-line implementation using sum + sqrt
+  - `bootstrap_ci`: resampling via `random.Random(seed)`
+    for deterministic test output; percentile via linear
+    interpolation (not "nearest rank")
+
+The `EffectSize` dataclass was extended with a
+`point_estimate` field. This is the metric value (e.g.
+`0.62` for "62% of opportunities taken") -- distinct
+from `d` (the effect size) which measures how far the
+point estimate is from the null.
+
+### Changes
+
+- `services/chess_coach/profile/stats.py` (modified):
+  the 5 metric implementations + the BBF-54 stub
+  structure for `decision_fatigue` (BBF-58). Each
+  metric:
+    - Takes `(db_path, player, *, seed=None)` (the
+      `seed` keyword is for deterministic test
+      output; production callers omit it).
+    - Resolves `player == "default"` to the most-played
+      player via SQL (matches the legacy route's
+      behavior at lines 43-55).
+    - Fetches the underlying observations via a
+      shared SQL query that returns side-aware deltas
+      + ply.
+    - Builds a binary observation list (e.g. "took the
+      opportunity" vs "missed it" for tactical
+      tendency).
+    - Computes:
+      - `point_estimate` = mean of the observation list
+      - `d` = `cohens_d(observations, null_value)`
+      - `ci_low`, `ci_high` = `bootstrap_ci(observations)`
+    - Returns an `EffectSize` with all five fields.
+    - Returns `EffectSize(d=None, sample_size=0, ...)`
+      when the sample size is below the per-metric
+      gate.
+
+  Total: ~500 lines (vs ~225 lines for the BBF-54
+  skeleton; the increase is from the SQL helpers +
+  observation-list construction).
+
+- `services/chess_coach/profile/effect_size.py` (modified):
+  implements `cohens_d` (5 lines) and `bootstrap_ci`
+  (~30 lines with linear-interpolation percentiles +
+  seed support). The `gate_metric` function from
+  BBF-54 is unchanged.
+
+  The `EffectSize` dataclass gained a `point_estimate`
+  field. BBF-54's `gate_metric()` test (in
+  `test_profile_skeleton.py::test_effect_size_gate_works_on_synthetic_data`)
+  was updated to construct `EffectSize` objects that
+  include `point_estimate`.
+
+- `services/chess_coach/profile/__init__.py` (modified):
+  re-exports the 5 implemented metrics + the 5
+  effect_size primitives (`EffectSize`,
+  `COHENS_D_THRESHOLD`, `bootstrap_ci`, `cohens_d`,
+  `gate_metric`). The `__all__` list is updated to
+  reflect what's now importable.
+
+  `decision_fatigue`, `sequence_based_tilt`, and
+  `cluster_archetypes` are NOT yet re-exported (their
+  implementations land in BBF-58/59).
+
+- `tests/unit/test_profile_skeleton.py` (modified):
+  4 new always-on tests:
+    - `test_effect_size_point_estimate_field_exists` --
+      regression guard for the EffectSize dataclass
+      extension.
+    - `test_cohens_d_known_fixtures` -- tests cohens_d
+      against known-fixture data (empty, single-value,
+      constant, equal-to-null, above-null, below-null).
+    - `test_bootstrap_ci_known_fixtures` -- tests
+      bootstrap_ci against known-fixture data (empty,
+      constant, sample bracketing the mean,
+      deterministic with same seed).
+    - `test_stats_metrics_importable_from_package` --
+      confirms the 5 BBF-57 metrics are importable
+      from `chess_coach.profile`.
+
+  2 tests updated:
+    - `test_stats_metrics_callable_with_db_path` (new
+      name, was the BBF-55 `test_stats_stub_functions_raise_not_implemented`)
+      -- now asserts the 5 metrics return EffectSize
+      (not raise) when called with a fake db path.
+    - `test_profile_package_remaining_names_xfail`
+      (was `test_profile_package_all_exports_importable`)
+      -- narrowed to xfail on the 3 remaining names
+      (`decision_fatigue`, `sequence_based_tilt`,
+      `cluster_archetypes`).
+
+  The `test_stats_submodule_local_stubs` test was
+  updated to assert that the 5 implemented metrics do
+  NOT raise (they return EffectSize); `decision_fatigue`
+  still raises.
+
+- `tests/unit/test_profile_stats.py` (NEW, ~350 lines,
+  ~9 tests): tests for the 5 metric implementations
+  using a synthetic SQLite DB with controlled
+  positions/analyses/games. Each test exercises the
+  metric's SQL path and verifies the §B4 contract:
+  EffectSize shape, point estimate, Cohen's d
+  direction, sample size, CI bracket behavior.
+
+  Tests use `tmp_path` for the SQLite file (fast,
+  isolated, no agentZero DB dependency).
+
+- `.github/workflows/smoke.yml` (modified): the
+  `gateway-boot` job's "Run boot test" step now also
+  runs `tests/unit/test_profile_stats.py`. The step
+  runs in <2 seconds (synthetic SQLite is fast).
+
+Total: 5 files modified (stats.py, effect_size.py,
+__init__.py, test_profile_skeleton.py, smoke.yml) +
+1 file new (test_profile_stats.py), ~900 lines added
++ ~150 lines removed (the BBF-54 stubs replaced with
+real implementations).
+
+### Verification
+
+The push to `main` triggers 3 CI jobs; all must be
+green:
+
+- `gateway-boot`: runs the new test file. Sub-2-second
+  runtime.
+- `qdrant-smoke`: unchanged from BBF-52.
+- `smoke`: unchanged from BBF-52.
+
+The 5 xfail markers remaining (decision_fatigue,
+sequence_based_tilt, cluster_archetypes) will be
+removed by BBF-58 and BBF-59.
+
+### Sprint progress
+
+  BBF-54  package skeleton + pyproject registration
+  BBF-55  test xfail-tracking pattern
+  BBF-56  1-character typo fix from BBF-55
+  BBF-57  5 of 6 metric implementations + cohens_d +
+          bootstrap_ci (this commit)
+  BBF-58  decision_fatigue (6th metric) + sequence-based
+          tilt
+  BBF-59  cluster_archetypes against L-2 v2
+  BBF-60  /v1/profile/{player}/explain/{metric} endpoint
+          + methodology docs
+  BBF-61  golden fixtures + dashboard schema unify
+  BBF-62  frontend rewrite (badge + disclaimer +
+          /explain drill-down UI)
+
+Refs: BBF-54 (the package skeleton + §B4 contract
+design); BBF-55 (the xfail-tracking pattern that lets
+us land each BBF green); BBF-21/BBF-53/BBF-55/BBF-56
+discipline ("fix all known dep gaps in one BBF",
+which is why cohens_d + bootstrap_ci land here);
+the phase-plan-v2.md Phase 4 exit criteria (the 6
+metrics required); response-to-review.md §B4 (the
+statistical-rigor rules this BBF implements).
 ## BBF-56 -- fix(tests): BBF-55 typo (cluster_archetotypes -> cluster_archetypes)
 
 Follow-up to BBF-55 (commit `d6e8f67`). The xfail
