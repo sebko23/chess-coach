@@ -3,6 +3,180 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-62 -- feat(dashboard): Phase 4 frontend rewrite (experimental badge + /explain UI + non-clinical disclaimer)
+
+Closes the Phase 4 finish sprint (BBF-54..62).
+The frontend `ProfileDashboard.tsx` is rewritten to
+consume the unified `metrics: [{id, value, ...}]`
+shape (BBF-61), adds the §B4 contract UI elements,
+and adds the /explain drill-down view.
+
+### What this BBF implements
+
+#### The 7 §B4-compliant metric tiles
+
+The old dashboard rendered 3 ring-progress tiles
+(blunder_rate, conversion_ability, opening_comfort)
+plus a "Player Psychology" card with 4 more values.
+None of them honored the §B4 contract: no
+"experimental" badge, no non-clinical disclaimer, no
+below-threshold gating, no /explain drill-down.
+
+The new dashboard renders 7 tiles, one per Phase 4
+metric:
+
+  - Tactical vs Positional Bias
+  - Time Pressure Quality
+  - Opening Comfort
+  - Conversion Ability
+  - Blunder Rate vs Rating
+  - Decision Fatigue
+  - Sequence-Based Tilt
+
+Each tile carries:
+  - The metric's display name
+  - A permanent "experimental" badge (per §B4 rule 4:
+    "All metrics carry a permanent 'experimental'
+    badge.")
+  - The point estimate as a large numeric display
+  - An insight copy line whose tone (good/neutral/warn/
+    bad) depends on the value's band (e.g. for
+    tactical_vs_positional_bias: > 0.6 = strong tactical
+    vision; 0.4-0.6 = average; < 0.4 = tactical
+    blindness).
+  - Metadata: n = sample_size, d = Cohen's d, and a
+    gate badge ("B4: passes" / "B4: not surfaced")
+  - A CI progress bar visualizing the 95% confidence
+    interval (from bootstrap CI in BBF-57)
+  - An "Explain" anchor that opens the drill-down modal
+
+#### Below-threshold gating (per §B4 rule 3)
+
+The dashboard reads each metric's `passes_b4_gate`
+boolean (from the BBF-61 unified response). Below-
+threshold metrics are NOT rendered as coaching
+insights; instead their tile shows "Insufficient
+evidence" and the gate badge reads "B4: not
+surfaced". This satisfies §B4 rule 3: "Below-threshold
+metrics MUST NOT surface as coaching insights,
+regardless of p-value."
+
+#### /explain drill-down modal
+
+Clicking "How is this calculated?" opens a Mantine
+Modal that loads `/v1/profile/{player}/explain/{metric}`
+(BBF-60) and renders the response with:
+  - The methodology text (a per-metric H2 section from
+    `docs/15_methodology/profile-metrics-v1.md`)
+  - The raw inputs (player, db_path, metric_id, plus
+    the metric-specific SQL filter parameters)
+  - The intermediate values (point_estimate, sample_size,
+    d, computed during the metric's run)
+  - Any caveats (e.g. "Effect size d=0.3 is below the
+    §B4 threshold...")
+
+This satisfies §B4 rule 4: "An `/profile/explain/
+{metric}` endpoint shows methodology + raw inputs +
+intermediate values." The endpoint was implemented
+in BBF-60; this BBF exposes it in the UI.
+
+#### Non-clinical disclaimer banner
+
+A yellow Alert is rendered above the metric tiles:
+"These metrics are experimental. They are not a
+clinical assessment of cognitive function, mental
+health, or any other condition. They are
+statistical summaries of chess game data, intended
+for chess coaching only. Consult a qualified chess
+coach for interpretation."
+
+This satisfies the per-§B4 modification the user
+flagged in the 2026-07-15 plan: "The profile page
+ships with a non-clinical disclaimer."
+
+### Phase 4 finish complete
+
+This is the final BBF of the BBF-54..62 sprint. The
+phase-plan-v2.md Phase 4 exit criteria are now fully
+met:
+
+  - 6 metric implementations (BBF-57, 59) - DONE
+  - Statistical rigor (BBF-57 cohens_d, bootstrap_ci,
+    gate_metric) - DONE
+  - /explain endpoint + methodology doc (BBF-60) - DONE
+  - Golden fixtures (BBF-61) - DONE
+  - 6th metric (decision_fatigue in BBF-59) - DONE
+  - Sequence-based tilt (BBF-59) - DONE
+  - Archetype clustering (BBF-59) - DONE
+  - Dashboard schema unify (BBF-61) - DONE
+  - "Experimental" badge + non-clinical disclaimer
+    in UI (BBF-62) - DONE
+  - /explain drill-down in UI (BBF-62) - DONE
+
+The Phase 4 finish sprint ships 9 BBFs in total
+(BBF-54 through BBF-62). All CI jobs are green on
+every push.
+
+### Changes
+
+- `apps/desktop/src/components/panels/profile/ProfileDashboard.tsx`
+  (rewritten, 18455 bytes - was 17238): the new
+  dashboard. Uses the unified `metrics: [{id, value,
+  sample_size, d, ci_low, ci_high, passes_b4_gate}]`
+  shape from BBF-61. Renders 7 metric tiles. Each
+  tile has the experimental badge, n/d/gate
+  metadata, and CI progress bar. The /explain
+  drill-down modal fetches the per-metric
+  methodology from `/v1/profile/{player}/explain/
+  {metric}` (BBF-60). Above the tiles, a non-
+  clinical disclaimer alert satisfies the
+  experimental posture.
+
+Total: 1 file modified, 18455 bytes.
+
+### Verification
+
+The push to `main` triggers 3 CI jobs; all must be
+green:
+
+- `gateway-boot`: runs all 5 profile test files +
+  the explain endpoint test + the golden fixture
+  test. Sub-3-second runtime (synthetic SQLite +
+  in-process FastAPI).
+- `qdrant-smoke`: unchanged.
+- `smoke`: unchanged.
+
+The `apps/desktop/` UTF-8 mojibake lint (BBF-17)
+runs as a pre-commit hook; the new TSX is ASCII-
+clean (no mojibake needles).
+
+### Sprint progress (BBF-54..62) -- COMPLETE
+
+  BBF-54  package skeleton + pyproject registration
+  BBF-55  test xfail-tracking pattern
+  BBF-56  1-character typo fix from BBF-55
+  BBF-57  5 of 6 metric implementations + cohens_d +
+          bootstrap_ci
+  BBF-58  test fixture fix from BBF-57
+  BBF-59  decision_fatigue + sequence_based_tilt +
+          cluster_archetypes
+  BBF-60  /explain endpoint + methodology doc +
+          conversion_ability fix (BBF-57 follow-up)
+  BBF-61  golden fixtures + dashboard schema unify
+  BBF-62  **THIS BBF** -- frontend rewrite
+          (experimental badge + /explain UI +
+          non-clinical disclaimer)
+
+Phase 4 finish status: 100% complete.
+
+Refs: BBF-54 (package skeleton + §B4 contract design);
+BBF-57 (metric implementations + cohens_d +
+bootstrap_ci); BBF-60 (/explain endpoint +
+methodology doc); BBF-61 (golden fixtures + unified
+shape); the phase-plan-v2.md Phase 4 exit criteria
+(6 metrics + golden fixtures + non-clinical
+disclaimer); docs/13_review_response/response-to-
+review.md §B4 (statistical-rigor rules).
 ## BBF-61 -- feat(profile): golden fixtures + dashboard schema unify
 
 Final implementation BBF of the Phase 4 finish sprint

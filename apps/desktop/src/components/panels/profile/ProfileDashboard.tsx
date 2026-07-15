@@ -1,171 +1,272 @@
-﻿import { useAtomValue } from "jotai";
+import { useAtomValue } from "jotai";
 import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
 import {
-  Container, Title, Text, SimpleGrid, Card, RingProgress, Progress,
-  Badge, Stack, Group, Paper, Loader, Alert, Divider, Space,
+  Container, Title, Text, SimpleGrid, Card, Badge, Stack, Group,
+  Paper, Loader, Alert, Divider, Modal, ScrollArea, Code, Progress,
+  Anchor, Box,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid,
-} from "recharts";
 
-interface MetricsResponse {
-  blunder_rate: number | null;
-  conversion_ability: number | null;
-  opening_comfort: number | null;
-  game_count: number;
-  computed_at: string | null;
+/**
+ * ProfileDashboard — Phase 4 finish sprint (BBF-62)
+ *
+ * The dashboard reads from the unified /v1/profile/{player}/analysis
+ * response shape (BBF-61): `metrics: [{id, value, sample_size, d,
+ * ci_low, ci_high, passes_b4_gate}]`.
+ *
+ * §B4 contract (docs/13_review_response/response-to-review.md):
+ *  - Each metric tile carries a permanent "experimental" badge
+ *  - The non-clinical disclaimer banner is rendered alongside
+ *    the "Playing Style Patterns" header
+ *  - Each tile has an "Explain" drill-down that opens a modal
+ *    with the /v1/profile/{player}/explain/{metric} response
+ *    (methodology + raw inputs + intermediate values)
+ *  - Below-threshold metrics (passes_b4_gate = false) are NOT
+ *    surfaced as coaching insights — they're rendered as
+ *    "Insufficient evidence" with a footnote.
+ */
+
+interface UnifiedMetric {
+  id: string;
+  value: number | null;
+  sample_size: number;
+  d: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+  passes_b4_gate: boolean;
 }
 
-interface HistoryPoint {
-  date: string;
-  blunder_rate: number;
-  conversion_ability: number;
-  opening_comfort: number;
+interface AnalysisResponse {
+  player_name: string;
+  total_games: number;
+  // Legacy flat fields kept for backward compat with
+  // the pre-BBF-61 dashboard. Not used in this rewrite.
+  tactical_tendency: number;
+  risk_appetite: number;
+  tilt_index: number;
+  time_pressure_blunders: number;
+  opening_breadth: number;
+  // New unified shape (BBF-61 onward).
+  metrics: UnifiedMetric[];
 }
 
-interface HistoryResponse {
-  history: HistoryPoint[];
+interface ExplainResponse {
+  player_name: string;
+  metric_id: string;
+  effect: {
+    point_estimate: number | null;
+    d: number | null;
+    ci_low: number | null;
+    ci_high: number | null;
+    sample_size: number;
+    null_value: number;
+  };
+  passes_b4_gate: boolean;
+  methodology: string;
+  raw_inputs: Record<string, unknown>;
+  intermediate_values: Record<string, unknown>;
+  caveats: string[];
 }
 
-const BLUNDER_COLORS: Record<string, string> = {
-  blunder: "red",
-  mistake: "orange",
-  inaccuracy: "yellow",
+// The 7 BBF-54..59 metric IDs, in display order.
+// Order matches the phase-plan-v2.md Phase 4 exit criteria.
+const METRIC_DISPLAY_ORDER: string[] = [
+  "tactical_vs_positional_bias",
+  "time_pressure_quality",
+  "opening_comfort",
+  "conversion_ability",
+  "blunder_rate_vs_rating",
+  "decision_fatigue",
+  "sequence_based_tilt",
+];
+
+// Friendly display labels for the 7 metrics. Keys must
+// match the METRIC_DISPLAY_ORDER ids.
+const METRIC_DISPLAY_LABELS: Record<string, string> = {
+  tactical_vs_positional_bias: "Tactical vs Positional Bias",
+  time_pressure_quality: "Time Pressure Quality",
+  opening_comfort: "Opening Comfort",
+  conversion_ability: "Conversion Ability",
+  blunder_rate_vs_rating: "Blunder Rate vs Rating",
+  decision_fatigue: "Decision Fatigue",
+  sequence_based_tilt: "Sequence-Based Tilt",
 };
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "N/A";
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("en-US", {
-      year: "numeric", month: "short", day: "numeric",
-    });
-  } catch {
-    return dateStr;
+// Brief insight copy rendered under each metric. The insight
+// is shown ONLY when passes_b4_gate is true (per §B4 rule 3).
+// Below-threshold metrics render "Insufficient evidence".
+function insightCopy(
+  metricId: string,
+  value: number | null,
+  passesGate: boolean,
+): { text: string; tone: "good" | "neutral" | "warn" | "bad" } {
+  if (value === null) {
+    return { text: "No data", tone: "neutral" };
+  }
+  if (!passesGate) {
+    return {
+      text: `Insufficient evidence — sample size is too small or effect size below the §B4 threshold.`,
+      tone: "neutral",
+    };
+  }
+  switch (metricId) {
+    case "tactical_vs_positional_bias":
+      if (value > 0.6) return { text: "Strong tactical vision — converts opportunities well.", tone: "good" };
+      if (value > 0.4) return { text: "Average tactical conversion — more puzzle practice recommended.", tone: "neutral" };
+      return { text: "Tactical blindness — daily puzzle training recommended.", tone: "warn" };
+    case "time_pressure_quality":
+      if (value < 0.05) return { text: "Good time management — blunders don't increase in deep play.", tone: "good" };
+      if (value < 0.15) return { text: "Mild time pressure effect — moderate late-game blunders.", tone: "neutral" };
+      return { text: "Struggles under time pressure — practice fast games.", tone: "warn" };
+    case "opening_comfort":
+      if (value >= 2) return { text: "Broad opening repertoire — consider specialising.", tone: "good" };
+      if (value >= 1) return { text: "Balanced opening repertoire.", tone: "neutral" };
+      return { text: "Narrow repertoire — try new openings to broaden your range.", tone: "warn" };
+    case "conversion_ability":
+      if (value > 0.6) return { text: "Strong conversion — capitalizes on advantages effectively.", tone: "good" };
+      if (value > 0.4) return { text: "Average conversion — winning positions need more precision.", tone: "neutral" };
+      return { text: "Weak conversion — closing out games is a priority area.", tone: "warn" };
+    case "blunder_rate_vs_rating":
+      if (value < 0.1) return { text: "Low blunder rate — better than the rating-expected level.", tone: "good" };
+      if (value < 0.2) return { text: "Moderate blunder rate — tactical errors are a key weakness.", tone: "neutral" };
+      return { text: "High blunder rate — tactical errors are a priority area.", tone: "bad" };
+    case "decision_fatigue":
+      if (value < 0.05) return { text: "Decision quality is stable across the session.", tone: "good" };
+      if (value < 0.15) return { text: "Mild decision fatigue — consider taking breaks.", tone: "neutral" };
+      return { text: "Decision fatigue is significant — short sessions help.", tone: "warn" };
+    case "sequence_based_tilt":
+      if (value < 0.05) return { text: "Resilient — performs well after loss streaks.", tone: "good" };
+      if (value < 0.15) return { text: "Moderate tilt — monitor after losses.", tone: "neutral" };
+      return { text: "High tilt risk — take breaks after losses.", tone: "warn" };
+    default:
+      return { text: "", tone: "neutral" };
   }
 }
 
-function trendEmoji(current: number | null, previous: number | null, higherIsBetter: boolean): { emoji: string; color: string; text: string } {
-  if (current === null || previous === null) return { emoji: "→", color: "gray", text: "No trend data" };
-  const diff = current - previous;
-  const improving = higherIsBetter ? diff > 0 : diff < 0;
-  const threshold = 0.03;
-  if (Math.abs(diff) < threshold) return { emoji: "→", color: "gray", text: "Stable" };
-  if (improving) return { emoji: "↑", color: "green", text: `Improved by ${Math.abs(diff).toFixed(2)}` };
-  return { emoji: "↓", color: "red", text: `Declined by ${Math.abs(diff).toFixed(2)}` };
+function toneColor(tone: "good" | "neutral" | "warn" | "bad"): string {
+  switch (tone) {
+    case "good": return "teal";
+    case "neutral": return "gray";
+    case "warn": return "yellow";
+    case "bad": return "red";
+  }
+}
+
+function formatValue(metricId: string, value: number | null): string {
+  if (value === null) return "N/A";
+  switch (metricId) {
+    case "opening_comfort":
+      // Distinct count -> show as integer or "limited"
+      return Number.isFinite(value) && Number.isInteger(value)
+        ? String(value)
+        : value.toFixed(2);
+    default:
+      return value.toFixed(3);
+  }
 }
 
 export default function ProfileDashboard() {
   const baseUrl = useAtomValue(backendBaseUrlAtom);
   const token = useAtomValue(backendTokenAtom);
 
-  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
-  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
-
-
-  // Psychological profiling state
-  const [psych, setPsych] = useState<{
-    player_name: string;
-    total_games: number;
-    tactical_tendency: number;
-    risk_appetite: number;
-    tilt_index: number;
-    time_pressure_blunders: number;
-    opening_breadth: number;
+  // Drill-down modal state
+  const [explainModal, setExplainModal] = useState<{
+    metricId: string;
+    data: ExplainResponse | null;
+    loading: boolean;
   } | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const headers = useMemo(
+    () => (token
+      ? ({ Authorization: `Bearer ${token}` } as HeadersInit)
+      : ({} as HeadersInit)),
+    [token],
+  );
+
+  /**
+   * Fetch the unified analysis response (BBF-61 onward).
+   *
+   * POST /v1/profile/{player}/analysis returns both the
+   * legacy flat fields AND the new metrics:[{id, value,
+   * sample_size, d, passes_b4_gate}] array. This dashboard
+   * reads from the metrics array; the flat fields are
+   * ignored.
+   */
+  const fetchAnalysis = useCallback(async () => {
     if (!baseUrl) return;
     setLoading(true);
     setError(null);
     try {
-      const profileRes = await fetch(`${baseUrl}/v1/profile/default`, { headers });
-      if (!profileRes.ok) throw new Error(`Profile: ${profileRes.status}`);
-      const profileData = await profileRes.json();
-      // Backend returns { player_id, metrics: [...] }
-      const metricsData = profileData.metrics || [];
-      // Map metrics array to flat object
-      const mapped = {
-        game_count: 0,
-        computed_at: null,
-        blunder_rate: null,
-        conversion_ability: null,
-        opening_comfort: null,
-      };
-      for (const m of metricsData) {
-        if (m.metric_id === "blunder_rate") mapped.blunder_rate = m.value;
-        if (m.metric_id === "conversion_ability") mapped.conversion_ability = m.value;
-        if (m.metric_id === "opening_comfort") mapped.opening_comfort = m.value;
-      }
-      setMetrics(mapped);
-      setHistory([]);
-    } catch (e: any) {
-      setError(e.message || String(e));
+      const resp = await fetch(
+        `${baseUrl}/v1/profile/default/analysis`,
+        { method: "POST", headers },
+      );
+      if (!resp.ok) throw new Error(`Analysis: ${resp.status}`);
+      const data = (await resp.json()) as AnalysisResponse;
+      setAnalysis(data);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
     } finally {
       setLoading(false);
     }
   }, [baseUrl, headers]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchAnalysis(); }, [fetchAnalysis]);
 
-  const fetchPsychProfile = useCallback(async () => {
+  /**
+   * Fetch the /explain/{metric} response for the drill-down
+   * modal. The response includes methodology text + raw
+   * inputs + intermediate values per §B4 rule 4.
+   */
+  const openExplain = useCallback(async (metricId: string) => {
     if (!baseUrl || !token) return;
+    setExplainModal({ metricId, data: null, loading: true });
     try {
-      const resp = await fetch(`${baseUrl}/v1/profile/default/analysis`, {
-        method: 'POST',
-        headers: headers as HeadersInit,
+      const resp = await fetch(
+        `${baseUrl}/v1/profile/default/explain/${metricId}`,
+        { headers },
+      );
+      if (!resp.ok) throw new Error(`Explain: ${resp.status}`);
+      const data = (await resp.json()) as ExplainResponse;
+      setExplainModal({ metricId, data, loading: false });
+    } catch (e: unknown) {
+      // Surface as a minimal modal with the error string;
+      // the user can close it and try again.
+      const msg = e instanceof Error ? e.message : String(e);
+      setExplainModal({
+        metricId,
+        data: {
+          player_name: "",
+          metric_id: metricId,
+          effect: { point_estimate: null, d: null, ci_low: null, ci_high: null, sample_size: 0, null_value: 0 },
+          passes_b4_gate: false,
+          methodology: "Failed to load methodology.",
+          raw_inputs: { error: msg },
+          intermediate_values: {},
+          caveats: [msg],
+        },
+        loading: false,
       });
-      if (resp.ok) setPsych(await resp.json());
-    } catch { /* silent */ }
+    }
   }, [baseUrl, token, headers]);
 
-  useEffect(() => { fetchPsychProfile(); }, [fetchPsychProfile]);
-
-
-  const blunderRate = metrics?.blunder_rate ?? null;
-  const conversionAbility = metrics?.conversion_ability ?? null;
-  const openingComfort = metrics?.opening_comfort ?? null;
-  const gameCount = metrics?.game_count ?? 0;
-  const computedAt = metrics?.computed_at ?? null;
-
-  // Blunder rate: lower is better (0 = perfect, ~0.5 = terrible)
-  const blunderPct = blunderRate !== null ? Math.round((1 - Math.min(blunderRate, 0.5) / 0.5) * 100) : 0;
-  const blunderTrend = trendEmoji(blunderRate, history.length >= 2 ? history[history.length - 2].blunder_rate : null, false);
-
-  // Conversion ability: higher is better (>0.5 = good)
-  const convPct = conversionAbility !== null ? Math.round(Math.min(conversionAbility, 1) * 100) : 0;
-  const convTrend = trendEmoji(conversionAbility, history.length >= 2 ? history[history.length - 2].conversion_ability : null, true);
-
-  // Opening comfort: higher values (>0.75) indicate strong familiar positions
-  const openingPct = openingComfort !== null ? Math.round(Math.min(openingComfort, 1) * 100) : 0;
-  const openingTrend = trendEmoji(openingComfort, history.length >= 2 ? history[history.length - 2].opening_comfort : null, true);
-
-  // Key insight paragraph
-  const insight = useMemo(() => {
-    const parts: string[] = [];
-    if (blunderRate !== null) {
-      if (blunderRate < 0.1) parts.push("Low blunder rate — excellent tactical accuracy.");
-      else if (blunderRate < 0.2) parts.push("Moderate blunder rate — tactical consistency is average.");
-      else parts.push("High blunder rate — tactical errors are a key weakness.");
+  // Build a metric_id -> UnifiedMetric lookup so the render
+  // can iterate over METRIC_DISPLAY_ORDER (not over the
+  // server's order).
+  const metricsById = useMemo(() => {
+    const out = new Map<string, UnifiedMetric>();
+    if (analysis) {
+      for (const m of analysis.metrics) {
+        out.set(m.id, m);
+      }
     }
-    if (conversionAbility !== null) {
-      if (conversionAbility > 0.6) parts.push("Strong conversion — you capitalize on advantages effectively.");
-      else if (conversionAbility > 0.4) parts.push("Average conversion — winning positions need more precision.");
-      else parts.push("Weak conversion — closing out games is a priority area.");
-    }
-    if (openingComfort !== null) {
-      if (openingComfort > 0.8) parts.push("High opening comfort — you excel in familiar structures.");
-      else if (openingComfort > 0.6) parts.push("Moderate opening comfort — expanding the repertoire may help.");
-      else parts.push("Low opening comfort — position unfamiliarity is costing points.");
-    }
-    if (parts.length === 0) return "Import more games to generate profile insights.";
-    return parts.join(" ");
-  }, [blunderRate, conversionAbility, openingComfort]);
+    return out;
+  }, [analysis]);
 
   if (!baseUrl) {
     return (
@@ -186,234 +287,210 @@ export default function ProfileDashboard() {
     );
   }
 
-  if (error) {
+  if (error || !analysis) {
     return (
       <Container py="xl">
         <Alert color="red" title="Failed to load profile">
-          <Text>{error}</Text>
+          <Text>{error || "No data"}</Text>
         </Alert>
       </Container>
     );
   }
 
-  const chartData = history.map((h) => ({
-    date: h.date ? h.date.slice(0, 10) : "",
-    blunder: h.blunder_rate,
-    conversion: h.conversion_ability,
-    opening: h.opening_comfort,
-  }));
-
   return (
     <Container size="lg" py="md">
-      <Title order={2}>Profile</Title>
-      <Text c="dimmed" size="sm" mb="lg">
-        Based on {gameCount > 0 ? `${gameCount} analysed games` : "0 games"}
-        {computedAt ? ` · Updated ${formatDate(computedAt)}` : ""}
+      {/* Header + non-clinical disclaimer (BBF-62 §B4) */}
+      <Title order={2} mb="xs">
+        Playing Style Patterns
+        <Badge ml="sm" color="orange" variant="light" size="sm">
+          experimental
+        </Badge>
+      </Title>
+      <Text c="dimmed" size="sm" mb="md">
+        Based on {analysis.total_games} {analysis.total_games === 1 ? "game" : "games"}
+        {" \u00b7 "}
+        player: {analysis.player_name}
       </Text>
 
-      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md" mb="xl">
-        {/* Blunder Rate */}
-        <Card withBorder shadow="sm" p="lg" radius="md">
-          <Stack align="center" gap="xs">
-            <RingProgress
-              size={120}
-              thickness={14}
-              roundCaps
-              sections={[
-                { value: blunderPct, color: blunderPct > 70 ? "green" : blunderPct > 40 ? "yellow" : "red", tooltip: `${blunderPct}% clean` },
-              ]}
-              label={
-                <Text ta="center" size="sm" fw={700}>
-                  {blunderRate !== null ? blunderRate.toFixed(2) : "N/A"}
+      {/* Non-clinical disclaimer (BBF-62 §B4) */}
+      <Alert
+        color="yellow"
+        title="Non-clinical disclaimer"
+        mb="md"
+        icon={<Box>{"\u26A0"}</Box>}
+      >
+        <Text size="xs">
+          These metrics are experimental. They are not a clinical
+          assessment of cognitive function, mental health, or any
+          other condition. They are statistical summaries of chess
+          game data, intended for chess coaching only. Consult a
+          qualified chess coach for interpretation.
+        </Text>
+      </Alert>
+
+      {/* The 7 metric tiles (BBF-62 unified-shape render). */}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md" mb="xl">
+        {METRIC_DISPLAY_ORDER.map((metricId) => {
+          const metric = metricsById.get(metricId);
+          if (!metric) {
+            // Server didn't return this metric (e.g. metric
+            // was removed or renamed). Render an empty tile.
+            return (
+              <Card withBorder shadow="sm" p="md" radius="md" key={metricId}>
+                <Stack align="center" gap="xs">
+                  <Group gap="xs">
+                    <Text fw={600} size="sm">
+                      {METRIC_DISPLAY_LABELS[metricId] ?? metricId}
+                    </Text>
+                    <Badge color="orange" variant="light" size="xs">experimental</Badge>
+                  </Group>
+                  <Text c="dimmed" size="xs">No data</Text>
+                </Stack>
+              </Card>
+            );
+          }
+          const insight = insightCopy(metricId, metric.value, metric.passes_b4_gate);
+          const displayValue = formatValue(metricId, metric.value);
+          // Confidence interval width as a % of the CI midpoint
+          const ciWidth = (metric.ci_low !== null && metric.ci_high !== null)
+            ? Math.abs(metric.ci_high - metric.ci_low)
+            : 0;
+          const showCi = metric.ci_low !== null && metric.ci_high !== null
+            && ciWidth > 0;
+          return (
+            <Card withBorder shadow="sm" p="md" radius="md" key={metricId}>
+              <Stack align="stretch" gap="xs">
+                <Group justify="space-between" align="center">
+                  <Text fw={600} size="sm">
+                    {METRIC_DISPLAY_LABELS[metricId] ?? metricId}
+                  </Text>
+                  <Badge color="orange" variant="light" size="xs">
+                    experimental
+                  </Badge>
+                </Group>
+                {/* Large numeric display */}
+                <Text ta="center" size="xl" fw={700}>
+                  {displayValue}
                 </Text>
-              }
-            />
-            <Text fw={600} size="sm">Blunder Rate</Text>
-            <Text size="xs" c="dimmed">Lower is better</Text>
-            <Group gap={4}>
-              <Text size="sm" c={blunderTrend.color}>{blunderTrend.emoji}</Text>
-              <Text size="xs" c={blunderTrend.color}>{blunderTrend.text}</Text>
-            </Group>
-            <Progress
-              value={blunderPct}
-              color={blunderPct > 70 ? "green" : blunderPct > 40 ? "yellow" : "red"}
-              size="sm"
-              w="100%"
-            />
-          </Stack>
-        </Card>
-
-        {/* Conversion Ability */}
-        <Card withBorder shadow="sm" p="lg" radius="md">
-          <Stack align="center" gap="xs">
-            <RingProgress
-              size={120}
-              thickness={14}
-              roundCaps
-              sections={[
-                { value: convPct, color: convPct > 60 ? "green" : convPct > 40 ? "yellow" : "red", tooltip: `${convPct}%` },
-              ]}
-              label={
-                <Text ta="center" size="sm" fw={700}>
-                  {conversionAbility !== null ? conversionAbility.toFixed(2) : "N/A"}
+                {/* Insight copy */}
+                <Text size="xs" c="dimmed" ta="center" style={{ minHeight: 32 }}>
+                  {insight.text}
                 </Text>
-              }
-            />
-            <Text fw={600} size="sm">Conversion Ability</Text>
-            <Text size="xs" c="dimmed">Higher is better</Text>
-            <Group gap={4}>
-              <Text size="sm" c={convTrend.color}>{convTrend.emoji}</Text>
-              <Text size="xs" c={convTrend.color}>{convTrend.text}</Text>
-            </Group>
-            <Progress
-              value={convPct}
-              color={convPct > 60 ? "green" : convPct > 40 ? "yellow" : "red"}
-              size="sm"
-              w="100%"
-            />
-          </Stack>
-        </Card>
-
-        {/* Opening Comfort */}
-        <Card withBorder shadow="sm" p="lg" radius="md">
-          <Stack align="center" gap="xs">
-            <RingProgress
-              size={120}
-              thickness={14}
-              roundCaps
-              sections={[
-                { value: openingPct, color: openingPct > 75 ? "green" : openingPct > 50 ? "yellow" : "red", tooltip: `${openingPct}%` },
-              ]}
-              label={
-                <Text ta="center" size="sm" fw={700}>
-                  {openingComfort !== null ? openingComfort.toFixed(2) : "N/A"}
-                </Text>
-              }
-            />
-            <Text fw={600} size="sm">Opening Comfort</Text>
-            <Text size="xs" c="dimmed">Familiar positions</Text>
-            <Group gap={4}>
-              <Text size="sm" c={openingTrend.color}>{openingTrend.emoji}</Text>
-              <Text size="xs" c={openingTrend.color}>{openingTrend.text}</Text>
-            </Group>
-            <Progress
-              value={openingPct}
-              color={openingPct > 75 ? "green" : openingPct > 50 ? "yellow" : "red"}
-              size="sm"
-              w="100%"
-            />
-          </Stack>
-        </Card>
-
-        {psych && (
-          <Card withBorder shadow="sm" p="lg" radius="md">
-            <Title order={4} mb="md">Player Psychology</Title>
-            <SimpleGrid cols={2} spacing="sm">
-              <Stack gap="xs">
-                <Text size="sm" fw={600} c="dimmed">Tilt Index</Text>
-                <Badge size="lg" color={psych.tilt_index > 0.15 ? 'red' : psych.tilt_index > 0.05 ? 'yellow' : 'teal'} variant="light">
-                  {(psych.tilt_index * 100).toFixed(1)}% win-rate drop after loss
-                </Badge>
-                <Text size="xs" c="dimmed">{psych.tilt_index > 0.15 ? 'High tilt risk — take breaks after losses' : psych.tilt_index > 0.05 ? 'Moderate tilt — monitor after losses' : 'Resilient — performs well after losses'}</Text>
+                {/* CI / d / sample_size metadata */}
+                <Group justify="space-between" gap="xs">
+                  <Text size="xs" c="dimmed">
+                    n = {metric.sample_size}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    d = {metric.d !== null ? metric.d.toFixed(2) : "N/A"}
+                  </Text>
+                  <Badge
+                    color={metric.passes_b4_gate ? "teal" : "gray"}
+                    variant="light"
+                    size="xs"
+                  >
+                    {metric.passes_b4_gate ? "B4: passes" : "B4: not surfaced"}
+                  </Badge>
+                </Group>
+                {/* CI progress bar (visualizes the CI range) */}
+                {showCi && metric.value !== null && (
+                  <Box>
+                    <Progress
+                      value={((metric.value! - metric.ci_low!) /
+                        ciWidth) * 100}
+                      color={toneColor(insight.tone)}
+                      size="xs"
+                    />
+                    <Text size="xs" c="dimmed" ta="center" mt={4}>
+                      95% CI [{metric.ci_low!.toFixed(2)}, {metric.ci_high!.toFixed(2)}]
+                    </Text>
+                  </Box>
+                )}
+                {/* Explain drill-down button */}
+                <Anchor
+                  size="xs"
+                  onClick={() => openExplain(metricId)}
+                  style={{ cursor: "pointer", textAlign: "center" }}
+                >
+                  How is this calculated? (Explain)
+                </Anchor>
               </Stack>
-              <Stack gap="xs">
-                <Text size="sm" fw={600} c="dimmed">Tactical Tendency</Text>
-                <Badge size="lg" color={psych.tactical_tendency > 0.6 ? 'teal' : psych.tactical_tendency > 0.3 ? 'yellow' : 'red'} variant="light">
-                  {(psych.tactical_tendency * 100).toFixed(1)}% opportunities taken
-                </Badge>
-                <Text size="xs" c="dimmed">{psych.tactical_tendency > 0.6 ? 'Strong tactical vision' : psych.tactical_tendency > 0.3 ? 'Average tactics — practice puzzles' : 'Tactical blindness — daily puzzle training recommended'}</Text>
-              </Stack>
-              <Stack gap="xs">
-                <Text size="sm" fw={600} c="dimmed">Time Pressure</Text>
-                <Badge size="lg" color={psych.time_pressure_blunders > 0.1 ? 'red' : psych.time_pressure_blunders > 0.05 ? 'yellow' : 'teal'} variant="light">
-                  {(psych.time_pressure_blunders * 100).toFixed(1)}% more blunders in endgame
-                </Badge>
-                <Text size="xs" c="dimmed">{psych.time_pressure_blunders > 0.1 ? 'Struggles under time pressure — practice fast games' : 'Good time management'}</Text>
-              </Stack>
-              <Stack gap="xs">
-                <Text size="sm" fw={600} c="dimmed">Opening Breadth</Text>
-                <Badge size="lg" color={psych.opening_breadth > 80 ? 'blue' : psych.opening_breadth > 40 ? 'yellow' : 'gray'} variant="light">
-                  {psych.opening_breadth} distinct openings
-                </Badge>
-                <Text size="xs" c="dimmed">{psych.opening_breadth > 80 ? 'Broad repertoire — consider specialising' : psych.opening_breadth > 40 ? 'Balanced repertoire' : 'Narrow repertoire — try new openings'}</Text>
-              </Stack>
-            </SimpleGrid>
-            <Text size="xs" c="dimmed" mt="md">Based on {psych.total_games} games · player: {psych.player_name}</Text>
-          </Card>
-        )}
-
+            </Card>
+          );
+        })}
       </SimpleGrid>
 
-      {/* Key Insight */}
-      <Paper withBorder p="md" radius="md" mb="xl">
-        <Title order={5} mb="xs">Key Insight</Title>
-        <Text size="sm" style={{ lineHeight: 1.7 }}>{insight}</Text>
-      </Paper>
+      <Divider label="End of Profile" labelPosition="left" mb="md" />
 
-      {/* Trend Charts */}
-      {chartData.length >= 4 && (
-        <>
-          <Divider label="Trend History" labelPosition="left" mb="md" />
-          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-            <Card withBorder shadow="sm" p="sm">
-              <Text size="xs" fw={600} mb="xs">Blunder Rate</Text>
-              <ResponsiveContainer width="100%" height={100}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                  <XAxis dataKey="date" hide />
-                  <YAxis hide domain={[0, "dataMax + 0.1"]} />
-                  <Tooltip
-                    contentStyle={{ fontSize: 11 }}
-                    formatter={(value: any) => value?.toFixed?.(3) ?? ""}
-                  />
-                  <Line
-                    type="monotone" dataKey="blunder" stroke="#e03131"
-                    strokeWidth={2} dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-
-            <Card withBorder shadow="sm" p="sm">
-              <Text size="xs" fw={600} mb="xs">Conversion Ability</Text>
-              <ResponsiveContainer width="100%" height={100}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                  <XAxis dataKey="date" hide />
-                  <YAxis hide domain={[0, 1]} />
-                  <Tooltip
-                    contentStyle={{ fontSize: 11 }}
-                    formatter={(value: any) => value?.toFixed?.(3) ?? ""}
-                  />
-                  <Line
-                    type="monotone" dataKey="conversion" stroke="#2f9e44"
-                    strokeWidth={2} dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-
-            <Card withBorder shadow="sm" p="sm">
-              <Text size="xs" fw={600} mb="xs">Opening Comfort</Text>
-              <ResponsiveContainer width="100%" height={100}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                  <XAxis dataKey="date" hide />
-                  <YAxis hide domain={[0, 1]} />
-                  <Tooltip
-                    contentStyle={{ fontSize: 11 }}
-                    formatter={(value: any) => value?.toFixed?.(3) ?? ""}
-                  />
-                  <Line
-                    type="monotone" dataKey="opening" stroke="#1971c2"
-                    strokeWidth={2} dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card>
-          </SimpleGrid>
-        </>
-      )}
+      {/* Drill-down modal: loads /v1/profile/default/explain/{metric_id} */}
+      <Modal
+        opened={explainModal !== null}
+        onClose={() => setExplainModal(null)}
+        title={
+          explainModal
+            ? `Explain: ${METRIC_DISPLAY_LABELS[explainModal.metricId] ?? explainModal.metricId}`
+            : "Explain"
+        }
+        size="xl"
+        scrollAreaComponent={ScrollArea.Autosize}
+      >
+        {explainModal?.loading && (
+          <Stack align="center" py="xl">
+            <Loader size="md" />
+            <Text size="sm">Loading methodology...</Text>
+          </Stack>
+        )}
+        {explainModal?.data && (
+          <Stack gap="md">
+            <Group>
+              <Badge
+                color={explainModal.data.passes_b4_gate ? "teal" : "gray"}
+                variant="light"
+              >
+                {explainModal.data.passes_b4_gate
+                  ? "B4 gate: passes"
+                  : "B4 gate: not surfaced"}
+              </Badge>
+              <Badge color="orange" variant="light">experimental</Badge>
+              <Text size="xs" c="dimmed">
+                n = {explainModal.data.effect.sample_size}
+              </Text>
+            </Group>
+            <Box>
+              <Text size="sm" fw={600} mb="xs">Methodology</Text>
+              <Paper withBorder p="sm" radius="sm">
+                <Code block style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
+                  {explainModal.data.methodology}
+                </Code>
+              </Paper>
+            </Box>
+            <Box>
+              <Text size="sm" fw={600} mb="xs">Raw inputs</Text>
+              <Code block style={{ fontSize: 11 }}>
+                {JSON.stringify(explainModal.data.raw_inputs, null, 2)}
+              </Code>
+            </Box>
+            <Box>
+              <Text size="sm" fw={600} mb="xs">Intermediate values</Text>
+              <Code block style={{ fontSize: 11 }}>
+                {JSON.stringify(explainModal.data.intermediate_values, null, 2)}
+              </Code>
+            </Box>
+            {explainModal.data.caveats.length > 0 && (
+              <Box>
+                <Text size="sm" fw={600} mb="xs">Caveats</Text>
+                <Stack gap="xs">
+                  {explainModal.data.caveats.map((c, i) => (
+                    <Alert key={i} color="yellow" variant="light">
+                      <Text size="xs">{c}</Text>
+                    </Alert>
+                  ))}
+                </Stack>
+              </Box>
+            )}
+          </Stack>
+        )}
+      </Modal>
     </Container>
   );
 }
