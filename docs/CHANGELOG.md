@@ -341,6 +341,82 @@ section previously listed BBF-35 / BBF-36 / BBF-37 as
 is updated to "BBF-1..BBF-47" instead of "BBF-1..BBF-26".
 No code touched.
 
+## BBF-50 — docs(repo): explicit platform stance (Linux-primary, Windows/macOS experimental)
+
+`TBD`. Docs-only follow-on to BBF-48. The previous handoff
+flagged "How much of BBF-37 (desktop path lookup on
+Windows/macOS) is actually wanted?" as an open strategic
+question (BBF-37 is deferred indefinitely -- needs macOS
+hardware to verify). BBF-50 lands an interim answer: Linux
+is the primary target and the only CI-tested platform;
+Windows and macOS are "experimental today, may change with
+Phase 8" -- they may work with manual `CHESS_COACH_DATA_DIR`
+configuration, but they are not CI-tested and not in the
+roadmap until Phase 8 (packaging).
+
+Changes
+
+  README.md
+    New "Supported platforms" section between
+    "Who is this for?" and "Architecture in 60
+    seconds". A 3-row table (Backend / Desktop /
+    Smoke CI; Linux / Windows / macOS) plus three
+    paragraphs: primary target Linux, Windows/macOS
+    experimental-with-caveat, and a pointer to
+    `docs/REPO-READINESS.md` for the OS-specific
+    configuration examples.
+
+  docs/REPO-READINESS.md
+    New "Supported platforms" section between
+    "TL;DR for a new dev" and "The two runtimes".
+    Same matrix table as the README, plus:
+    - The three default data-dir paths per OS
+      (Linux: `~/.local/share/chess-coach`; macOS:
+      `~/Library/Application Support/chess-coach`;
+      Windows: `%LOCALAPPDATA%\chess-coach`).
+    - Three example `CHESS_COACH_DATA_DIR` exports
+      (macOS bash, Windows bash, Windows PowerShell)
+      for the dev who is on a non-Linux box.
+    - The "experimental today, may change with
+      Phase 8" framing, which makes the caveat
+      explicit (per the 2026-07-15 handoff's
+      Question 2 follow-up).
+    - A note on what "supported" means: requires
+      (a) BBF-37 to land, AND (b) a CI matrix on
+      `windows-latest` + `macos-latest` runners
+      to turn green. The "experimental" label
+      flips to "supported" only when both
+      conditions hold.
+
+No code touched.
+
+Verification
+
+  - Both files render correctly in markdown
+    (verified by reading the patched output in
+    the clean clone before committing).
+  - 13/13 unit tests still pass in the dev
+    environment.
+  - The smoke CI workflow on this commit
+    should pass (no code touched; only docs).
+
+Not in scope
+
+  - The Windows/macOS CI matrix (a future BBF
+    after BBF-37 lands).
+  - BBF-37 itself (still deferred; needs macOS
+    hardware).
+  - L-2 gold set strategy (BBF-49, separate).
+  - Qdrant sidecar (BBF-51, separate).
+
+Refs: BBF-48 (the docs catchup that surfaced
+this question), the 2026-07-15 handoff
+("Question 2: How much of BBF-37 is actually
+wanted?"), `docs/10_roadmap/phase-plan-v2.md`
+(Phase 8 packaging), the BBF-37 entry in
+`docs/CHANGELOG.md`.
+
+
 
 
 ## BBF-33 — fix(ci): rebuild image in a step, not as a service

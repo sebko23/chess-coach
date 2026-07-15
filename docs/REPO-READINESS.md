@@ -23,6 +23,51 @@ python tests/integration/smoke_test.py
 
 If all three steps succeed, you have a working chess-coach dev environment. If any step fails, see "Pitfalls" below.
 
+## Supported platforms
+
+| Component | Linux | Windows | macOS |
+|----------|-------|---------|-------|
+| Backend  | Supported (CI-tested) | Experimental | Experimental |
+| Desktop  | Supported (CI-tested) | Experimental | Experimental |
+| Smoke CI | ubuntu-latest only | -- | -- |
+
+**Primary target: Linux.** Development, CI, and the verified
+happy path all run on Linux. The backend boots cleanly on a
+stock Debian/Ubuntu box with the dependencies in
+`pyproject.toml`. The smoke workflow (`.github/workflows/smoke.yml`)
+runs on `ubuntu-latest` runners only.
+
+**Windows and macOS are experimental today, may change with
+Phase 8.** They may work with manual `CHESS_COACH_DATA_DIR`
+configuration, but they are not CI-tested and not in the
+roadmap until Phase 8 (packaging). On Windows/macOS, the
+backend and the desktop use different default paths for
+`CHESS_COACH_DATA_DIR`:
+
+  - Linux: `~/.local/share/chess-coach` (XDG default)
+  - macOS:  `~/Library/Application Support/chess-coach`
+  - Windows: `%LOCALAPPDATA%\chess-coach`
+
+**If you are running on Windows or macOS**, set
+`CHESS_COACH_DATA_DIR` to the same path in **both** the
+backend's shell and the desktop's shell so they can find
+each other via the `runtime/backend.json` descriptor.
+Without that, the desktop cannot discover the backend
+and will fail to start. Example values per OS:
+
+  - macOS: `export CHESS_COACH_DATA_DIR="$HOME/Library/Application Support/chess-coach"`
+  - Windows (bash): `export CHESS_COACH_DATA_DIR="$LOCALAPPDATA/chess-coach"`
+  - Windows (PowerShell): `$env:CHESS_COACH_DATA_DIR = "$env:LOCALAPPDATA\chess-coach"`
+
+**The Windows path is a known deferred item (BBF-37).** The
+macOS path needs hardware the maintainers do not currently
+have, so a verification pass is pending. See
+`docs/CHANGELOG.md` for the BBF-37 entry ("DEFERRED -- needs
+macOS hardware"). The repo will move Windows/macOS from
+"experimental" to "supported" when (a) BBF-37 lands, AND
+(b) a CI matrix runs the smoke workflow on `windows-latest`
+and `macos-latest` runners and turns green.
+
 ## The two runtimes
 
 CHESS COACH has two independent codebases that communicate over HTTP:
