@@ -56,6 +56,293 @@ Refs: External developer review (2026-07-14); BBF-22 (the lazy
 eval-graph architecture the audit examined); ADR-0001
 (async/sync boundary, which the engine pool follows).
 
+## BBF-35 — fix(engine-pool): engine go timeout + dead-pid reset
+
+`24bbb1c`. Closes ADR-0006 Findings 1 and 2: a hung
+Stockfish `go` previously wedged the slot forever, and
+a subprocess that exited between requests was silently
+reused as a dead Popen and hung the next caller. New
+`EngineHungError` exception, `engine_go_timeout_s`
+parameter (default 30s) on the engine pool, and a
+`slot.engine._proc.poll()` check in `_acquire()` that
+catches dead-pid scenarios and starts a fresh subprocess.
+Tests: `tests/unit/test_engine_pool_lifecycle.py` (10
+tests across 4 classes, run in 1.17s with a FakeUCIEngine
+monkeypatched into `pool.UCIEngine` -- no real
+subprocesses, so the agentZero cgroup wedge from fake-hang
+scripts is sidestepped). Real bug fix, no perf claim (per
+BBF-21 discipline).
+
+## BBF-36 — fix(eval-graph): coalesce concurrent first-viewers
+
+`e69fb0c`. Closes ADR-0006 Finding 3: the eval-graph
+route could be hit by multiple concurrent first-viewers
+on the same `(game_id, ply, engine_id, depth)` cache
+key. The analyses table's `INSERT OR IGNORE` prevented
+corruption, but did not save redundant Stockfish work.
+Added `_inflight` dict + `_get_dedup_lock()` +
+`_dedup_get` / `_dedup_put` + `_coalesce_analyze` to
+`services/chess_coach/gateway/routes/eval_graph.py`.
+The `async with lock` wraps the get-then-put so two
+concurrent first-views cannot both register as the
+leader. Tests: `tests/unit/test_eval_graph_dedup.py`
+(12 tests across 3 classes, run in 9.88s). The 100-call
+stress test was the one that needed a test-bug fix
+(missing `leader_started` / `release` synchronization
+in the stress variant, mirroring the 2-call version);
+without that fix the test deadlocked on
+`release.wait()` inside the leader. **Efficiency
+correctness fix, not a perf win** (per BBF-21
+discipline) -- the bottleneck remains Stockfish per
+`go()`, and no `MAX_WORKERS` change or gather
+restructuring was made.
+
+## BBF-37 — DEFERRED (needs macOS hardware)
+
+The desktop discovery path in
+`apps/desktop/src/state/atoms/coach.ts` hardcodes
+`$HOME/.local/share/...` on all platforms, but the
+backend writes to `%LOCALAPPDATA%\...` on Windows and
+`~/Library/Application Support/...` on macOS. The
+desktop cannot find the backend by default on
+Windows/macOS without an explicit
+`CHESS_COACH_DATA_DIR` set in both shells. **Deferred
+indefinitely** -- needs macOS hardware to verify the
+macOS leg, and the user has no current path to that
+hardware. ~20 LOC, not started.
+
+## BBF-38 — ci(smoke): poll /v1/system/health with curl, not docker inspect
+
+`f05203b`. The original smoke workflow polled
+`docker inspect --format={{.State.Health.Status}}` to
+wait for the gateway. The Dockerfile's `HEALTHCHECK`
+hard-codes the bearer token to `"***"` (a TODO marker
+that was never replaced with the real value), so the
+`HEALTHCHECK` CMD always 401s, the container's health
+status never becomes `"healthy"`, and the old poll
+timed out at 60s every run -- taking the smoke
+workflow red since BBF-32. This BBF replaces the
+`docker inspect` poll with a direct `curl` against
+`/v1/system/health` using the real token. The poll
+runs up to 120s, with periodic log output every 10s
+and a final dump of the backend container's logs on
+failure. This BBF is the change that surfaced every
+subsequent missing-dep error in the BBF-39-44 chain
+with a debuggable log instead of a silent timeout.
+The commit message in `f05203b` contains a wrong claim
+that the Dockerfile had no `HEALTHCHECK` directive; the
+directive IS there (with the bad token), but the
+fix is correct regardless of whether the directive
+exists.
+
+## BBF-39 — fix(routes): SUPERSEDED by BBF-43
+
+`f8db480` (original), reverted in `f113f6c` (BBF-43).
+The original BBF-39 added a PEP 562 lazy import for
+`pdf_ingest_router` in
+`services/chess_coach/gateway/routes/__init__.py` on
+the theory that a missing optional dep should fail at
+request time, not process startup. The design had a
+bug: `from .routes import (..., pdf_ingest_router, ...)`
+in `app.py:39` triggers the lazy `__getattr__` lookup
+**at import time** (because `from X import Y` resolves
+`Y` on `X` during the import), so the gateway
+crashed on startup anyway. The unit test I wrote for
+BBF-39 only checked `routes.pdf_ingest_router` directly
+and "expected" the `ModuleNotFoundError` it observed,
+which confirmed the broken behavior rather than
+catching the bug. See BBF-43 for the fix.
+
+## BBF-40 — build(deps): add aiohttp>=3.9 to runtime dependencies
+
+`11fc5e9`. The lichess import endpoint at
+`/v1/system/health/lichess/...` (handled by
+`services/chess_coach/gateway/routes/lichess_import.py`)
+streams NDJSON from `https://lichess.org/api/...` using
+`aiohttp.ClientSession`. `aiohttp` was not in
+`pyproject.toml`'s `[project.dependencies]`, so the
+runtime image had no `aiohttp` and the gateway crashed
+on startup. One-line addition: `aiohttp>=3.9`. Real
+feature (Lichess game import), so making the dep lazy
+(per BBF-39) was the wrong call -- adding the dep
+restored the lichess import endpoint.
+
+## BBF-41 — build(deps): add numpy, sentence-transformers, qdrant-client
+
+`e97311e`. Continuing the missing-dep sweep that
+BBF-40 started. The next smoke run surfaced
+`ModuleNotFoundError: No module named 'numpy'` in
+`services/chess_coach/kb/embedder.py`. A static scan
+of every top-level import in the runtime tree found
+three more eagerly-imported third-party deps the
+runtime Docker image was missing:
+
+  - `numpy>=1.26` -- used by `kb/embedder.py`
+    (`np.array`, `np.stack`, `np.linalg.norm`) and
+    `kb/store.py` (vector ops).
+  - `sentence-transformers>=3.0` -- used by
+    `kb/embedder.py` to load the embedding model.
+  - `qdrant-client>=1.10` -- used by `kb/store.py`
+    (`QdrantClient`, models).
+
+Three-line addition. `scikit-learn` is imported lazily
+inside `kb/embedder.py:validate_model` with an
+`# local import, optional dep` comment, so it is
+deliberately NOT in the runtime deps. `starlette` and
+`dotenv` are import-name variants of already-declared
+deps (`fastapi` pulls in `starlette`; `python-dotenv`
+is imported as `dotenv`) -- no change needed.
+
+## BBF-42 — build(deps): add pdf2image>=1.17 and poppler-utils
+
+`a2e71c8`. The PDF ingest feature at
+`POST /v1/import/pdf` (handled by
+`services/chess_coach/gateway/routes/pdf_ingest.py`)
+is a real production feature, not a stub. It extracts
+chess diagrams from PDF pages via `chessvision.ai`.
+It needs two runtime deps that were never declared:
+
+  - The Python `pdf2image` package (a thin wrapper
+    around the poppler CLI).
+  - The Debian `poppler-utils` system package, which
+    provides the `pdftoppm` and `pdftocairo` binaries
+    that `pdf2image` shells out to.
+
+Added `"pdf2image>=1.17"` to
+`[project.dependencies]`. Added `poppler-utils` to
+the `apt-get install` block in `Dockerfile`. The
+BBF-39 lazy import is now dead code but not removed
+in this BBF -- the follow-up BBF-43 handles the
+revert.
+
+## BBF-43 — refactor(routes): revert BBF-39 lazy import, add boot test
+
+`f113f6c`. BBF-39's PEP 562 lazy import for
+`pdf_ingest_router` was broken (see BBF-39). With the
+BBF-42 dep addition, the lazy import is dead code.
+This BBF:
+
+  1. Restores `services/chess_coach/gateway/routes/__init__.py`
+     to the pre-BBF-39 eager-import shape (45 lines vs
+     BBF-39's 101). All 18 routers are imported at
+     module load again.
+  2. Deletes `tests/unit/test_routes_lazy_pdf_ingest.py`
+     (the test that "expected" the broken
+     `ModuleNotFoundError` and gave a false green).
+  3. Adds `tests/unit/test_gateway_boots.py` (59 lines):
+     a regression test for the entire BBF-38-42
+     missing-dep cascade. Calls
+     `chess_coach.gateway.app.create_app()` -- which
+     imports every router module and registers the
+     FastAPI app. This would have failed during BBF-39
+     and caught the bug locally instead of waiting for
+     a CI smoke run. Runs in 0.08s with no Docker, no
+     real Stockfish, no network.
+
+## BBF-44 — build(deps): add python-multipart>=0.0.9
+
+`d198450`. The PDF ingest route at
+`POST /v1/import/pdf` takes a file upload:
+
+```
+@router.post(...)
+async def import_pdf(
+    file: UploadFile = File(...),
+    ...
+)
+```
+
+FastAPI needs the `python-multipart` package to parse
+`multipart/form-data` requests. When a route signature
+includes `File` or `UploadFile`, FastAPI calls
+`ensure_multipart_is_installed()` at module-load time.
+This dep is **not picked up by static import scanners**
+because `python-multipart` is never imported directly
+-- FastAPI detects the `File` / `UploadFile` /
+`Form` annotations in route signatures and requires it
+implicitly. Added `"python-multipart>=0.0.9"` to
+`[project.dependencies]`. Honest framing: the BBF-43
+boot test catches the failure at runtime, but only when
+run in a clean install. A CI step that does a clean
+`pip install -e .` before running the boot test would
+close this loop (BBF-46).
+
+## BBF-45 — ci(smoke): install pytest for the smoke test runner
+
+`a06905e`. The smoke test file
+`tests/integration/smoke_test.py` is dual-mode: it can
+be invoked as `python tests/integration/smoke_test.py`
+(standalone, what the CI workflow uses) or as
+`pytest tests/integration/smoke_test.py` (the
+pytest-mode entry point with skip-on-no-gateway
+fixtures, used by devs locally). The file does
+`import pytest` near the bottom (around line 194) for
+the pytest-mode fixtures. That import runs even in
+standalone mode because Python parses the whole file
+before executing the top-level `main()` block. The CI
+workflow's step 4 "Install smoke test deps" only
+installed `httpx`, so the import failed with
+`ModuleNotFoundError: No module named 'pytest'` on
+every run since the smoke workflow was introduced
+(BBF-29). This BBF installs `pytest` and
+`pytest-asyncio` alongside `httpx` in the workflow
+step.
+
+## BBF-46 — ci(smoke): SUPERSEDED by BBF-47 (workflow file was committed at pre-BBF-38 content)
+
+`8dd117b` (broken), fixed in `5ae4ca7` (BBF-47). The
+original commit was meant to add a new `gateway-boot`
+job to the smoke workflow that runs the boot
+regression test in a clean venv. Instead, the commit
+regressed the workflow to the pre-BBF-38 / pre-BBF-45
+state: removed the curl-poll loop, removed the
+`pytest` install, and removed the gateway-boot job
+itself. The host file I patched was correct (181 lines,
+with both the new gateway-boot job AND the existing
+BBF-38/45 content preserved), but the next step in my
+workflow overwrote the clean-clone file with the
+agentZero-working-tree copy, which was the stale
+pre-BBF-38 / pre-BBF-45 version (the bind-mount working
+tree had not been kept in sync with the recent
+workflow edits because the bind-mount is one-way
+host-to-container, not the other direction). See BBF-47
+for the proper end state.
+
+## BBF-47 — ci(smoke): fix BBF-46 (file was committed at pre-BBF-38 content)
+
+`5ae4ca7`. Restores the intended BBF-46 content: the
+gateway-boot job from BBF-46 is now present, and the
+smoke job retains the BBF-38 curl-poll loop AND the
+BBF-45 pytest install. 181 lines total, +109/-7
+relative to the BBF-46 (broken) state. The regression
+caught itself cleanly: the smoke workflow went red on
+the BBF-46 push with a clear
+`ModuleNotFoundError: No module named 'pytest'`, the
+same class of error the BBF-38 / BBF-45 changes were
+supposed to eliminate. Total commits in the BBF-38 to
+BBF-47 chain: 10 (38, 39, 40, 41, 42, 43, 44, 45, 46,
+47). All required. Honest framing per BBF-21: I lost
+track of the file's content during the cp chain and
+should have re-read the file in the clean clone BEFORE
+committing, not just after.
+
+## BBF-48 — docs(repo): catchup CHANGELOG + update REPO-READINESS audit section
+
+`5ae4ca7`+docs. Docs-only catchup. The previous CHANGELOG
+entry (BBF-34) jumped straight to the pre-BBF-35
+audit state. This entry adds the BBF-35 to BBF-47
+sprint history so a new dev reading the changelog has
+an accurate picture of the cascade fix. The
+REPO-READINESS doc's "Known issues (BBF-34 audit)"
+section previously listed BBF-35 / BBF-36 / BBF-37 as
+"fix planned" -- that section is updated to
+"Fixed in `24bbb1c`" / "Fixed in `e69fb0c`" /
+"Deferred indefinitely". The "Sprint history" footer
+is updated to "BBF-1..BBF-47" instead of "BBF-1..BBF-26".
+No code touched.
+
+
+
 ## BBF-33 — fix(ci): rebuild image in a step, not as a service
 
 `a6032c4`. The original smoke.yml (BBF-30, commit be24395) used

@@ -97,23 +97,43 @@ Install the Tauri Linux prereqs:
 sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 
+### "Smoke CI workflow goes red on a fresh push"
+
+Two pre-flight checks before debugging the actual error:
+
+1. The `gateway-boot` job in the smoke workflow runs the boot
+   regression test in a fresh venv. If it fails, the runtime
+   has a missing declared dep -- check `pyproject.toml`'s
+   `[project.dependencies]` against the route modules
+   (and any framework-driven implicit deps like
+   `python-multipart` for FastAPI `File`/`UploadFile`).
+2. The `smoke` job has step 7 (Wait for backend, 120s
+   curl-poll), step 8 (Run smoke test). If step 7 fails
+   the container exited on startup; read the backend
+   logs in step 9. If step 8 fails, read the test
+   output directly.
+
+The CI hardening for the missing-dep cascade is what
+catches the "I forgot to declare X" class of bug
+before it ships.
+
 ## Backend architecture overview
 
-- `services/chess_coach/gateway/` — FastAPI app. The lifespan handler in `app.py` reads settings, runs migrations, sets up the engine pool, and mounts routers. Routes are in `gateway/routes/`.
-- `services/chess_coach/engine_orch/pool.py` — Stockfish process pool. N slots (`CHESS_COACH_MAX_WORKERS`), per-slot asyncio.Lock. See BBF-19 for the slot design.
-- `services/chess_coach/gateway/routes/eval_graph.py` — lazy eval-graph. On cache miss (LEFT JOIN finds no analyses row), runs Stockfish inline, caches, returns. See BBF-22 for the design.
-- `services/chess_coach/gateway/routes/pgn_import.py` — pure-insert PGN import. See BBF-22.
-- `services/chess_coach/gateway/routes/backfill_analyses.py` — explicit pre-compute. See BBF-21.
-- `libs/chess_coach/storage/` — SQLite migrations, schema introspection.
+- `services/chess_coach/gateway/` -- FastAPI app. The lifespan handler in `app.py` reads settings, runs migrations, sets up the engine pool, and mounts routers. Routes are in `gateway/routes/`.
+- `services/chess_coach/engine_orch/pool.py` -- Stockfish process pool. N slots (`CHESS_COACH_MAX_WORKERS`), per-slot asyncio.Lock, engine.go() bounded by `_engine_go_timeout_s` (default 30s, BBF-35). See BBF-19 for the slot design and BBF-35 for the timeout.
+- `services/chess_coach/gateway/routes/eval_graph.py` -- lazy eval-graph. On cache miss (LEFT JOIN finds no analyses row), runs Stockfish inline, caches, returns. Concurrent first-viewers on the same `(game_id, ply, engine_id, depth)` key are coalesced via `_coalesce_analyze` (BBF-36). See BBF-22 for the lazy design.
+- `services/chess_coach/gateway/routes/pgn_import.py` -- pure-insert PGN import. See BBF-22.
+- `services/chess_coach/gateway/routes/backfill_analyses.py` -- explicit pre-compute. See BBF-21.
+- `libs/chess_coach/storage/` -- SQLite migrations, schema introspection.
 
 ## Desktop architecture overview
 
-- `apps/desktop/src/routes/games.tsx` — games list page
-- `apps/desktop/src/routes/games.$gameId.tsx` — game detail route
-- `apps/desktop/src/components/panels/games/GamesPage.tsx` — games list panel (import button, backfill button)
-- `apps/desktop/src/components/panels/games/GameDetailPage.tsx` — game detail panel (eval-graph, blunders, "Compute full analysis" button)
-- `apps/desktop/src/bindings/` — generated TypeScript types for the v1.0.0 protocol
-- `apps/desktop/src/components/panels/coach/EvalGraph.tsx` — the eval-graph SVG renderer
+- `apps/desktop/src/routes/games.tsx` -- games list page
+- `apps/desktop/src/routes/games.$gameId.tsx` -- game detail route
+- `apps/desktop/src/components/panels/games/GamesPage.tsx` -- games list panel (import button, backfill button)
+- `apps/desktop/src/components/panels/games/GameDetailPage.tsx` -- game detail panel (eval-graph, blunders, "Compute full analysis" button)
+- `apps/desktop/src/bindings/` -- generated TypeScript types for the v1.0.0 protocol
+- `apps/desktop/src/components/panels/coach/EvalGraph.tsx` -- the eval-graph SVG renderer
 
 ## Common operations
 
@@ -132,9 +152,9 @@ export CHESS_COACH_MAX_WORKERS=2
 python -m chess_coach.gateway
 
 # Curl
-curl -sS http://127.0.0.1:18080/v1/system/health -H "Authorization: Bearer devtoken123"
+curl -sS http://127.0.0.1:18080/v1/system/health -H "Authorization: Bearer ***"
 curl -sS -X POST http://127.0.0.1:18080/v1/import/pgn \
-  -H "Authorization: Bearer devtoken123" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ***" -H "Content-Type: application/json" \
   -d @my_test_pgn.json
 curl -sS http://127.0.0.1:18080/v1/games | head -c 500
 ```
@@ -176,27 +196,42 @@ rm -rf ${CHESS_COACH_DATA_DIR}
 
 ## Known issues (BBF-34 audit, 2026-07-14)
 
-The codebase is shipped with three known real bugs identified by
-the BBF-34 code audit. See
-[`14_adrs/ADR-0006-engine-pool-failure-modes.md`](14_adrs/ADR-0006-engine-pool-failure-modes.md)
-for full details and "Current behavior" impact. Brief summary:
+The BBF-34 code audit identified three real bugs and one
+benign race. Status as of `5ae4ca7` (head of main):
 
-- **BBF-35**: Engine pool has no timeouts on Stockfish calls. A
-  hung Stockfish wedges one slot. Recovery: backend restart.
-  Fix planned (~15 LOC, ~1 day).
-- **BBF-36**: Eval-graph concurrent-request race. Two concurrent
-  requests for the same game's first view both compute (the second
-  is wasted work) but the analyses-table primary key prevents
-  corruption. Fix planned (~15 LOC, ~0.5 day).
-- **BBF-37**: Desktop discovery hardcodes `$HOME/.local/share/...`
-  on macOS and Windows. On those platforms the desktop can't find
-  the backend unless `CHESS_COACH_DATA_DIR` is set explicitly in
-  both shells. Fix needs Tauri env-var read + macOS/Windows
-  validation.
+- **BBF-35**: Engine pool had no timeouts on Stockfish
+  calls. A hung Stockfish wedged one slot forever, and a
+  subprocess that died between requests was silently
+  reused as a dead Popen. **Fixed in `24bbb1c`**
+  (BBF-35, engine go timeout + dead-pid reset).
+  See `services/chess_coach/engine_orch/pool.py`.
+- **BBF-36**: Eval-graph concurrent-request race. Two
+  concurrent first-viewers for the same `(game_id, ply,
+  engine_id, depth)` cache key both computed Stockfish
+  work. **Fixed in `e69fb0c`** (BBF-36, coalesce
+  concurrent first-viewers). The helper lives in
+  `services/chess_coach/gateway/routes/eval_graph.py`
+  (`_coalesce_analyze`); tests in
+  `tests/unit/test_eval_graph_dedup.py`.
+- **BBF-37**: Desktop discovery hardcodes
+  `$HOME/.local/share/...` on macOS and Windows. **Deferred
+  indefinitely** -- needs macOS hardware to verify the
+  macOS leg, and the user has no current path to that
+  hardware. On Windows the fix is also blocked on a Tauri
+  env-var read path that has not been prioritised.
+  Linux dev workflow is unaffected (Linux is the only
+  CI platform).
+- The benign race (ADR-0006 Finding 4) is documented in
+  the ADR but requires no fix -- the analyses table's
+  `INSERT OR IGNORE` already prevents corruption.
 
-None of these bugs are blockers for the typical Linux dev workflow.
+None of the open items are blockers for the typical
+Linux dev workflow. The next planned strategic work
+after this BBF-47 docs catchup is the "where does
+chess-coach go next" take-stock session (per the
+2026-07-14 handoff).
 
 
 ## Sprint history
 
-See `docs/CHANGELOG.md` for the full BBF-1..BBF-26 sprint history. The current strategic focus is repo-readiness (BBF-27 onwards); the next planned work is the 6000-game scaling follow-on (lazy eval-graph was the foundation; we're now in the polish phase).
+See `docs/CHANGELOG.md` for the full BBF-1..BBF-47 sprint history. The post-BBF-34 work (BBF-35..BBF-47) closed the three real bugs from the BBF-34 code audit, fixed the smoke CI workflow that had been red since BBF-32 (the missing-dep cascade was a real one -- 5 separate deps were never declared in `pyproject.toml`), and added CI hardening (a `gateway-boot` job that runs the boot regression test in a fresh venv on every push). The current strategic focus is "where does chess-coach go next" (the take-stock session listed as the next planned work in the 2026-07-14 handoff).
