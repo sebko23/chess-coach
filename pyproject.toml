@@ -75,6 +75,7 @@ packages = [
     "chess_coach.protocol_types",
     "chess_coach.uci",
     "chess_coach.testkit",
+    "chess_coach.datasets",
     "chess_coach.gateway",
     "chess_coach.gateway.routes",
     "chess_coach.engine_orch",
@@ -94,6 +95,7 @@ packages = [
 "chess_coach.protocol_types"     = "libs/chess_coach/protocol_types"
 "chess_coach.uci"                = "libs/chess_coach/uci"
 "chess_coach.testkit"            = "libs/chess_coach/testkit"
+"chess_coach.datasets"            = "libs/chess_coach/datasets"
 "chess_coach.gateway"            = "services/chess_coach/gateway"
 "chess_coach.gateway.routes"     = "services/chess_coach/gateway/routes"
 "chess_coach.engine_orch"        = "services/chess_coach/engine_orch"

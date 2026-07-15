@@ -419,6 +419,169 @@ wanted?"), `docs/10_roadmap/phase-plan-v2.md`
 
 
 
+## BBF-51 -- docs/feat: L-2 gold set v1 + loader + validator
+
+`TBD`. Lays down the project's first versioned, labeled
+corpus of chess positions. Future phases (4, 5, 6) will
+use ``L2-gold-v1`` as their initial eval / test data.
+The "L-2" name follows the v2 roadmap's level-of-analysis
+nomenclature; the "v1" is a hard version bump baked into
+the entry IDs (``L2-v1-NNNN``) so a v2 corpus can use a
+different prefix without collision. **This BBF implements
+what the 2026-07-15 plan called "BBF-49" in the user's
+checklist; the chronological BBF number is 51 because
+BBF-50 (the platform stance) shipped first.**
+
+Changes
+
+  docs/20_datasets/L2-gold-v1.md (NEW, ~340 lines)
+    The full spec for the L-2 gold set. Covers:
+    - What "L-2 gold" means for this project
+      (engine-eval-based labeled corpus, NOT a
+      master-game database and NOT a perft set).
+    - The four quality-bar criteria: reachable from
+      a real game, Stockfish 18 depth 25 labels,
+      phase-tagged, sanity-checked for engine
+      stability.
+    - The three source types (GM game, opening
+      theory, tactical motif) and the label schema
+      (id, fen, phase, best_move_uci, score_cp,
+      source, engine, tags).
+    - Versioning rules (when a version bump is
+      required) and the "how to add a new position"
+      procedure.
+    - "Future work" and "out of scope" sections
+      (multi-PV labels, eval-delta labels, GTO
+      move tables are all deferred to a future
+      version).
+
+  tests/gold/L2/v1/corpus.json (NEW, 12 positions)
+    The initial seed. Spans all three phases (5
+    opening / 4 middlegame / 3 endgame) and all
+    three source types (5 opening theory / 3 GM
+    game / 4 tactical motif). FEN, best_move_uci,
+    and score_cp are recorded for every position;
+    the ``engine`` field records the Stockfish 18
+    depth 25 config used to produce the labels.
+
+  libs/chess_coach/datasets/__init__.py (NEW)
+    Package init for the new ``chess_coach.datasets``
+    namespace. No runtime dependencies.
+
+  libs/chess_coach/datasets/l2_gold.py (NEW, ~290 lines)
+    The loader and validator. Public API:
+    ``load_l2_gold(version="v1", base_path=None)``,
+    ``validate_l2_gold(corpus)``,
+    ``list_versions(base_path=None)``, and the
+    ``L2GoldEntry`` dataclass. The module has no
+    runtime dependencies beyond the Python standard
+    library; the ``chess`` package is an optional
+    import used only by
+    ``L2GoldEntry.fen_parses()`` so the module
+    remains usable in doc-only build environments.
+
+  tests/unit/test_l2_gold_dataset.py (NEW, ~290 lines)
+    22 unit tests across 4 classes:
+    ``TestL2GoldEntry`` (9), ``TestLoadL2Gold``
+    (6), ``TestValidateL2Gold`` (3),
+    ``TestListVersions`` (4). All 22 pass in 0.24s.
+    Includes an integration-style test that loads
+    the shipped v1 corpus and asserts every FEN
+    parses (skipped if ``chess`` is not installed,
+    so the test is robust to dep set differences).
+
+  pyproject.toml
+    Added ``chess_coach.datasets`` to the
+    ``[tool.setuptools]`` packages list and
+    ``package-dir`` mapping, pointing at
+    ``libs/chess_coach/datasets``.
+
+  docs/10_roadmap/phase-plan-v2.md
+    New "L-2 gold set (BBF-49, 2026-07-15)"
+    section at the end, noting that Phase 4, 5,
+    and 6 will use ``L2-gold-v1`` as their initial
+    corpus. The section is a forward-pointer; the
+    detailed spec is in
+    ``docs/20_datasets/L2-gold-v1.md``.
+
+No runtime code changed (no gateway route, no engine
+orch, no KB). The change is entirely new files plus a
+pyproject manifest update plus a roadmap doc addition.
+
+Verification
+
+  - 22/22 new unit tests pass in 0.24s.
+  - The 12-position shipped v1 corpus loads
+    cleanly and every FEN parses (via
+    ``chess.Board(fen)``).
+  - 35/35 unit tests pass in the full test run
+    (12 BBF-36 + 1 BBF-43 + 22 BBF-51) in 31.5s.
+  - The smoke CI workflow is expected to pass on
+    this commit (no runtime code touched, only new
+    files and a pyproject manifest entry).
+
+Honest framing per BBF-21
+
+  - The "engine-eval-based, not human-curated"
+    quality bar was a deliberate choice. A
+    human-curated bar (GM annotator) would
+    arguably be the "gold standard" but we do not
+    have access to a GM annotator whose time we
+    can spend. The engine-eval bar is reproducible
+    by any future contributor with Stockfish 18
+    and a fixed config. The bar can be tightened
+    later (v2 could add GM-annotated entries)
+    without breaking v1.
+  - The 12-position seed is intentionally small.
+    The "How to add a new position" section in
+    the spec lays out the procedure for growing
+    the corpus. Growing it is the next dev's
+    job, not this BBF's.
+  - The corpus is stored as a single JSON file,
+    not a per-position directory. This was a
+    tradeoff: single file is simpler to load and
+    validate, but does not version per-position.
+    A future BBF could split into per-position
+    files if the corpus grows past ~500 entries.
+    The spec's "versioning" section notes this
+    tradeoff.
+  - **Why the number is BBF-51 and not BBF-49:**
+    the user's 2026-07-15 plan called this "BBF-49"
+    in the order of the three-BBF cluster
+    (49 = L-2 gold, 50 = platform stance, 51 =
+    Qdrant). In chronological commit order, the
+    platform stance landed first (as BBF-50) and
+    this is the next BBF (so BBF-51). The "BBF-49"
+    name in the plan is the conceptual name; the
+    commit name reflects actual commit order. The
+    plan's "BBF-51" (Qdrant) will be the next after
+    this if/when the user picks it.
+
+Not in scope
+
+  - Growing the corpus past 12 positions. The
+    spec defines the procedure; growth is a
+    follow-up.
+  - Multi-PV labels, eval-delta labels, PGN
+    game-level labels, GTO move tables. All
+    deferred to a future L-2 gold version (v2
+    or later).
+  - A loader that emits a SQLite fixture for
+    integration testing. Out of scope for v1.
+  - Qdrant sidecar (was "BBF-51" in the plan, now
+    "BBF-52" chronologically). Separate.
+  - Windows/macOS platform support (still
+    experimental per BBF-50).
+
+Refs: the 2026-07-15 handoff
+("Recommended next moves" suggested this BBF as
+option A); the user's BBF-49/50/51 plan; the
+existing ``tests/gold/chess_gold_set_v1.json``
+(perft positions, BBF-15) which is a different
+kind of gold (move-generation, not engine-eval)
+and is intentionally NOT merged with L-2 gold.
+
+
 ## BBF-33 — fix(ci): rebuild image in a step, not as a service
 
 `a6032c4`. The original smoke.yml (BBF-30, commit be24395) used

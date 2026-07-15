@@ -277,3 +277,37 @@ The phases below completed out of the originally planned order:
 **User decisions still open:** U1 (GPL boundary — resolved as "plausibly-NO"), U2 (scope confirmed as coaching not scouting), U8 (Stockfish-only confirmed for Phase 1-5).
 
 **Next priorities:** memory_kb pipeline (Phase 3 gap), architecture doc alignment (this pass), Maia engine adapter, chessboard OCR library investigation (before committing to YOLOv8).
+
+## L-2 gold set (BBF-49, 2026-07-15)
+
+A small, versioned, **labeled** corpus of chess positions is
+now the project's test data for engine-eval work. See
+`docs/20_datasets/L2-gold-v1.md` for the full spec, the
+quality bar, and the label schema. v1 is a 12-position
+corpus (5 opening / 4 middlegame / 3 endgame; 5 opening
+theory / 3 GM game / 4 tactical motif) at
+`tests/gold/L2/v1/corpus.json`. Loader and validator live
+in `chess_coach.datasets.l2_gold` (re-exported from
+`libs/chess_coach/datasets/l2_gold.py`).
+
+**Phase 4, 5, and 6 will use `L2-gold-v1` as their initial
+corpus.** Phase 4 (Playing Style Patterns) needs labeled
+positions to validate metric effect-size thresholds; Phase
+5 (Repertoire + Training) needs eval-delta labels for
+training-data sanity checks; Phase 6 (PDF/Vision) needs
+labeled positions to claim the >= 97% piece placement /
+>= 90% FEN accuracy targets in its gate criteria. A v2
+corpus (multi-PV labels, eval-delta labels, PGN game-level
+labels, etc.) is in scope for a future BBF; the v1 spec
+defines what triggers a v2 bump (label schema change,
+engine config change, or quality-bar change).
+
+The v1 corpus is intentionally **small** (12 positions).
+The bar is engine-eval-based and reproducible: every
+position is a single Stockfish 18 `go depth 25` call, with
+the engine config recorded in the entry's `engine` field,
+so any future contributor can re-run the labels and verify
+they still match. The 12-position seed is a starting point;
+the next BBF that touches a Phase 4/5/6 feature will likely
+extend it.
+
