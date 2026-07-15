@@ -459,22 +459,29 @@ def conversion_ability(
     """
     resolved = _resolve_player(db_path, player)
     with _connect(db_path) as conn:
+        # BBF-60 fix: po.score_cp doesn't exist in the
+        # production schema; the column is an.score_cp
+        # (on the analyses table). JOIN analyses so we
+        # can read the column. (This was masked in BBF-57
+        # tests by inserting the value into BOTH tables.)
         rows = conn.execute(
             """
             WITH positions_at_30 AS (
               SELECT
                 po.game_id,
                 po.ply,
-                po.score_cp,
+                an.score_cp,
                 g.white,
                 g.black,
                 g.result,
-                CASE WHEN g.white = ? THEN po.score_cp ELSE -po.score_cp END
+                CASE WHEN g.white = ? THEN an.score_cp ELSE -an.score_cp END
                   AS side_cp
-              FROM positions po JOIN games g ON po.game_id = g.id
+              FROM positions po
+              JOIN analyses an ON an.position_id = po.id
+              JOIN games g ON po.game_id = g.id
               WHERE (g.white = ? OR g.black = ?)
                 AND po.ply >= 30
-                AND po.score_cp IS NOT NULL
+                AND an.score_cp IS NOT NULL
                 AND po.is_mainline = 1
             )
             SELECT game_id, side_cp, result, white, black

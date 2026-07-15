@@ -3,6 +3,174 @@
 Sprint history for the chess-coach repo. BBF = "Bug Fix / Feature" sprint.
 Sprints are sequential; later sprints build on earlier ones.
 
+## BBF-60 -- feat(profile): /explain endpoint + methodology doc (§B4 rule 4) + conversion_ability fix (BBF-57 follow-up)
+
+Implements §B4 rule 4 of the Claude review: the
+`/v1/profile/{player}/explain/{metric}` endpoint that
+returns methodology + raw inputs + intermediate values
+for every metric.
+
+**BBF-57 follow-up fix included in this commit**: the
+`conversion_ability` metric (added in BBF-57) had a
+schema-mismatch bug: it referenced `po.score_cp` in its
+SQL query, but the production schema has `an.score_cp`
+(the score lives on the analyses table, not the
+positions table). The bug was masked in the BBF-57 test
+suite because the test's `_insert_position` helper
+inserted `score_cp` into a SIMPLIFIED schema that had a
+`positions.score_cp` column that doesn't exist in
+production. BBF-60's `/explain` endpoint exposes the bug
+because it uses the production schema. **Fix**: change
+the metric SQL to JOIN analyses and read `an.score_cp`.
+The test fixtures are also updated to use the production
+schema (so this bug class is caught by future tests). The methodology text is loaded from a
+new doc at `docs/15_methodology/profile-metrics-v1.md`
+which is the canonical methodology reference for the
+Phase 4 finish metrics.
+
+This BBF completes the §B4 contract for Phase 4 metrics
+across the API surface. The metrics themselves were
+implemented in BBF-57/59; BBF-60 adds the user-visible
+"Explain" view that links the metric value to the
+methodology.
+
+### What this BBF implements
+
+#### The /explain endpoint
+
+`GET /v1/profile/{player}/explain/{metric_id}`
+
+- `player` is the player name (or "default" for the
+  most-played). Resolved server-side.
+- `metric_id` is one of:
+  - `tactical_vs_positional_bias`
+  - `time_pressure_quality`
+  - `opening_comfort`
+  - `conversion_ability`
+  - `blunder_rate_vs_rating`
+  - `decision_fatigue`
+  - `sequence_based_tilt`
+  - `archetypes` (the clusterer; returns the
+    ArchetypeAssignment instead of an EffectSize)
+- Returns `MetricExplainResponse`:
+  - `player_name`: resolved player name
+  - `metric_id`: the requested metric
+  - `effect`: the EffectSize (or ArchetypeAssignment for
+    "archetypes") serialized to a dict. Shape:
+    `{point_estimate, d, ci_low, ci_high, sample_size,
+    null_value}` for metrics; `{label, confidence,
+    archetype_scores, effect_size}` for archetypes.
+  - `passes_b4_gate`: True iff the EffectSize passes
+    `gate_metric()` (or confidence > 0.4 for archetypes).
+  - `methodology`: the per-metric section text from
+    `docs/15_methodology/profile-metrics-v1.md`. The
+    endpoint slices the doc on the H2 heading for the
+    metric.
+  - `raw_inputs`: a dict with the player name, db path,
+    metric_id, and (for archetypes) the 6-metric vector.
+  - `intermediate_values`: a dict of intermediate
+    values computed during the metric's run (effect
+    fields + sample_size).
+  - `caveats`: a list of strings describing caveats (e.g.
+    "Effect size d=0.3 is below the §B4 threshold; the
+    metric is NOT surfaced as a coaching insight").
+
+- Unknown metric_id returns 404 with a detail message
+  listing the known metrics.
+- Missing bearer token returns 401 (same as the rest of
+  the profile routes).
+
+The metric functions are sync (chess_coach.profile
+returns EffectSize from synchronous SQL queries). The
+endpoint offloads each call to `asyncio.to_thread` so the
+event loop isn't blocked.
+
+#### The methodology doc
+
+`docs/15_methodology/profile-metrics-v1.md` (~480 lines)
+is the canonical reference for §B4 rule 1 (hypothesis +
+null hypothesis) and §B4 rule 6 (the /explain endpoint
+slices this doc).
+
+Each of the 8 sections (6 metrics + sequence_based_tilt
++ archetypes) has:
+- **Hypothesis (H1)**: what the metric measures
+- **Null hypothesis (H0)**: expected value under "no
+  measurable tendency"
+- **Effect-size threshold**: Cohen's d >= 0.5 (per §B4
+  rule 3)
+- **Sample-size requirement**: minimum qualifying
+  observations
+- **Computation**: SQL query + Python steps
+- **Caveats**: known limitations
+
+The doc also includes a §B4 background section linking
+back to the Claude review's §B4 acceptance, and a
+"Phase 4 experimental + non-clinical disclaimer" section
+that the dashboard renders as a banner.
+
+### Changes
+
+- `services/chess_coach/gateway/routes/profile.py`
+  (modified): adds the `MetricExplainResponse` Pydantic
+  model + the `GET /v1/profile/{player}/explain/{metric_id}`
+  route. The route uses a `_METRIC_REGISTRY` dict to
+  dispatch by metric_id; each entry is a `(callable,
+  section_name)` pair. The route also has a
+  `_load_methodology_for()` helper that caches the
+  methodology doc in-process (one read per process).
+
+- `docs/15_methodology/profile-metrics-v1.md` (NEW,
+  ~480 lines): the methodology doc. Sliced per metric
+  by the /explain endpoint.
+
+- `tests/unit/test_explain_endpoint.py` (NEW, ~280
+  lines, 9 tests): tests for the endpoint and the
+  methodology doc. Uses the same synthetic-SQLite
+  pattern as BBF-57/58/59. 6 tests exercise the
+  endpoint end-to-end via httpx.ASGITransport; 3 tests
+  verify the methodology doc's structure (sections,
+  §B4 framing, per-metric content).
+
+- `.github/workflows/smoke.yml` (modified): the
+  `gateway-boot` job's "Run boot test" step now also
+  runs `tests/unit/test_explain_endpoint.py`.
+
+Total: 2 files modified (routes/profile.py, smoke.yml) +
+2 files new (methodology doc, test file), ~900 lines
+added.
+
+### Verification
+
+The push to `main` triggers 3 CI jobs; all must be
+green:
+
+- `gateway-boot`: runs all 4 profile test files + the
+  explain endpoint test. Sub-2-second runtime (synthetic
+  SQLite + in-process FastAPI).
+- `qdrant-smoke`: unchanged.
+- `smoke`: unchanged.
+
+### Sprint progress (BBF-54..62)
+
+  BBF-54  package skeleton + pyproject registration
+  BBF-55  test xfail-tracking pattern
+  BBF-56  1-character typo fix from BBF-55
+  BBF-57  5 of 6 metric implementations + cohens_d +
+          bootstrap_ci
+  BBF-58  test fixture fix from BBF-57
+  BBF-59  decision_fatigue + sequence_based_tilt +
+          cluster_archetypes
+  BBF-60  **THIS BBF** -- /explain endpoint + methodology
+          doc (§B4 rule 4)
+  BBF-61  golden fixtures + dashboard schema unify
+  BBF-62  frontend rewrite
+
+Refs: BBF-54 (package skeleton + §B4 contract design);
+docs/13_review_response/response-to-review.md §B4
+(statistical-rigor rules); the phase-plan-v2.md Phase 4
+exit criteria ("An `/profile/explain/{metric}` endpoint
+shows methodology + raw inputs + intermediate values").
 ## BBF-59 -- feat(profile): decision_fatigue + sequence_based_tilt + cluster_archetypes
 
 Completes the Phase 4 finish implementation BBFs (BBF-54..59).

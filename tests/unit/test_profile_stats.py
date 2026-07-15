@@ -27,41 +27,64 @@ import pytest
 
 @pytest.fixture
 def sqlite_db(tmp_path: Path) -> str:
-    """Build a synthetic SQLite DB matching the production schema.
+    """Build a synthetic SQLite DB matching the PRODUCTION schema.
 
-    Schema (extracted from routes/profile_analysis.py SQL):
-      games(id, white, black, result, white_elo, black_elo)
-      positions(id, game_id, ply, move_san, score_cp,
-                is_mainline)
-      analyses(id, position_id, score_cp)
+    Production schema (from migrations/0001..0007):
+      games(id, white, black, result, date, white_elo,
+            black_elo, created_at, ...)
+      positions(id, game_id, fen, move_uci, move_san, ply,
+                is_mainline, parent_id, ...)
+      analyses(id, position_id, engine_id, depth, score_cp,
+               score_mate, best_move, pv_moves, result_json,
+               created_at, classification, cp_delta, ...)
 
     The fixtures populate the DB with a known set of
     positions/analyses/games so each metric has a
     deterministic answer.
+
+    BBF-60: the previous fixture had a SIMPLIFIED schema
+    (positions.score_cp existed; analyses had only score_cp).
+    This masked a real bug in conversion_ability where the
+    production SQL references po.score_cp (a column that
+    doesn't exist in production). The production-schema
+    fixture exposes the bug.
     """
     db_path = str(tmp_path / "metrics.db")
     conn = sqlite3.connect(db_path)
     conn.executescript("""
         CREATE TABLE games (
-            id INTEGER PRIMARY KEY,
+            id TEXT NOT NULL PRIMARY KEY,
             white TEXT NOT NULL,
             black TEXT NOT NULL,
             result TEXT NOT NULL,
+            date TEXT,
             white_elo INTEGER,
-            black_elo INTEGER
+            black_elo INTEGER,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
         );
         CREATE TABLE positions (
-            id INTEGER PRIMARY KEY,
-            game_id INTEGER NOT NULL,
-            ply INTEGER NOT NULL,
+            id TEXT NOT NULL PRIMARY KEY,
+            game_id TEXT NOT NULL,
+            parent_id TEXT,
+            fen TEXT NOT NULL,
+            move_uci TEXT,
             move_san TEXT,
-            score_cp INTEGER,
+            ply INTEGER NOT NULL DEFAULT 0,
             is_mainline INTEGER NOT NULL DEFAULT 1
         );
         CREATE TABLE analyses (
-            id INTEGER PRIMARY KEY,
-            position_id INTEGER NOT NULL,
-            score_cp INTEGER
+            id TEXT NOT NULL PRIMARY KEY,
+            position_id TEXT NOT NULL,
+            engine_id TEXT NOT NULL,
+            depth INTEGER NOT NULL,
+            score_cp INTEGER,
+            score_mate INTEGER,
+            best_move TEXT,
+            pv_moves TEXT,
+            result_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+            classification TEXT,
+            cp_delta REAL
         );
     """)
     conn.commit()
@@ -77,17 +100,26 @@ def _insert_game(conn, gid, white, black, result, white_elo=1500, black_elo=1500
     )
 
 
-def _insert_position(conn, pid, gid, ply, move_san, score_cp, is_mainline=1):
+def _insert_position(conn, pid, gid, ply, move_san, score_cp=None, is_mainline=1, fen=None):
+    # Production schema: positions has no score_cp column
+    # (the score is on analyses.score_cp). The score_cp
+    # parameter is kept for backward-compat with older
+    # tests that passed it positionally; it's IGNORED.
+    if fen is None:
+        fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1"
     conn.execute(
-        "INSERT INTO positions(id, game_id, ply, move_san, score_cp, is_mainline) "
+        "INSERT INTO positions(id, game_id, ply, move_san, fen, is_mainline) "
         "VALUES(?, ?, ?, ?, ?, ?)",
-        (pid, gid, ply, move_san, score_cp, is_mainline),
+        (pid, gid, ply, move_san, fen, is_mainline),
     )
 
 
 def _insert_analysis(conn, aid, pid, score_cp):
+    # Production schema requires engine_id + depth +
+    # result_json (NOT NULL). score_cp is the actual data.
     conn.execute(
-        "INSERT INTO analyses(id, position_id, score_cp) VALUES(?, ?, ?)",
+        "INSERT INTO analyses(id, position_id, engine_id, depth, score_cp, result_json) "
+        "VALUES(?, ?, 'sf18', 25, ?, '{}')",
         (aid, pid, score_cp),
     )
 
