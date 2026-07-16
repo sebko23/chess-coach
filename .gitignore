@@ -82,3 +82,9 @@ chess_coach.egg-info/
 .pytest_cache/
 _editable_impl_*.pth
 .a0proj/memory/*.bak
+
+# One-shot BBF regen input scaffolds (staging files used during BBF-63+ regen scripts)
+# These are tracked in container-only /tmp paths during regen; if they leak into the
+# working tree, they should not be committed. Match prefix `_bbfN` and include
+# the canonical "input" / "input.json" / ".json" patterns we use.
+_bb*_input*.json
