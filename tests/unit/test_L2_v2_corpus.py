@@ -24,5 +24,14 @@ def test_v1_corpus_is_dict_when_wrapped():
     import pathlib, json
     path = pathlib.Path('tests/gold/L2/v1/corpus.json')
     raw = json.loads(path.read_text())
-    assert 'schema_version' in raw and raw['schema_version'] == '1.0'
+    assert 'schema_version' in raw and raw['schema_version'] == '2.0'
     assert 'positions' in raw and len(raw['positions']) == 12
+
+def test_v1_positions_have_eval_deltas_after_bbf63():
+    corpus = load_corpus("v1")
+    for entry in corpus:
+        assert "eval_deltas" in entry, f"{entry['id']} missing eval_deltas after BBF-63.4"
+        assert isinstance(entry["eval_deltas"], list)
+        assert len(entry["eval_deltas"]) >= 1
+        # best move stays best (delta 0)
+        assert entry["eval_deltas"][0]["delta_cp"] == 0

@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "positions": [
     {
       "id": "L2-v1-0001",
@@ -24,6 +24,23 @@
         "opening",
         "castling",
         "development"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "d2d3",
+          "score_cp": 29,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "d1e2",
+          "score_cp": 11,
+          "delta_cp": -18
+        },
+        {
+          "move_uci": "f3g5",
+          "score_cp": 8,
+          "delta_cp": -21
+        }
       ]
     },
     {
@@ -48,6 +65,23 @@
       "tags": [
         "opening",
         "development"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "f6e4",
+          "score_cp": 57,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "d7d6",
+          "score_cp": 11,
+          "delta_cp": -46
+        },
+        {
+          "move_uci": "e8g8",
+          "score_cp": 10,
+          "delta_cp": -47
+        }
       ]
     },
     {
@@ -72,6 +106,23 @@
       "tags": [
         "opening",
         "pin"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "c1g5",
+          "score_cp": 91,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "c1e3",
+          "score_cp": 90,
+          "delta_cp": -1
+        },
+        {
+          "move_uci": "f2f3",
+          "score_cp": 86,
+          "delta_cp": -5
+        }
       ]
     },
     {
@@ -99,6 +150,23 @@
         "middlegame",
         "pawn_break",
         "gm_game"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "d1c2",
+          "score_cp": 707,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "c4d5",
+          "score_cp": 700,
+          "delta_cp": -7
+        },
+        {
+          "move_uci": "c4c5",
+          "score_cp": 691,
+          "delta_cp": -16
+        }
       ]
     },
     {
@@ -127,6 +195,23 @@
         "castling",
         "tension",
         "gm_game"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "f3e5",
+          "score_cp": -633,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "h2h4",
+          "score_cp": -636,
+          "delta_cp": -3
+        },
+        {
+          "move_uci": "g2g4",
+          "score_cp": -650,
+          "delta_cp": -17
+        }
       ]
     },
     {
@@ -152,6 +237,23 @@
         "endgame",
         "rook_endgame",
         "activation"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "a1a8",
+          "score_cp": 0,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "f2f3",
+          "score_cp": 665,
+          "delta_cp": 665
+        },
+        {
+          "move_uci": "a1d1",
+          "score_cp": 633,
+          "delta_cp": 633
+        }
       ]
     },
     {
@@ -179,6 +281,23 @@
         "pawn_endgame",
         "opposition",
         "gm_game"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "d5d6",
+          "score_cp": 619,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "e6d6",
+          "score_cp": 516,
+          "delta_cp": -103
+        },
+        {
+          "move_uci": "e6f6",
+          "score_cp": 0,
+          "delta_cp": -619
+        }
       ]
     },
     {
@@ -203,6 +322,23 @@
       "tags": [
         "opening",
         "bishop_development"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "d2d4",
+          "score_cp": 38,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "f1b5",
+          "score_cp": 35,
+          "delta_cp": -3
+        },
+        {
+          "move_uci": "b1c3",
+          "score_cp": 18,
+          "delta_cp": -20
+        }
       ]
     },
     {
@@ -228,6 +364,23 @@
         "middlegame",
         "pin",
         "queen"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "f1e2",
+          "score_cp": 569,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "f1b5",
+          "score_cp": 566,
+          "delta_cp": -3
+        },
+        {
+          "move_uci": "f1d3",
+          "score_cp": 562,
+          "delta_cp": -7
+        }
       ]
     },
     {
@@ -253,6 +406,23 @@
         "endgame",
         "king_and_rook_vs_king",
         "opposition"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "d2d1",
+          "score_cp": 507,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "d3c3",
+          "score_cp": 507,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "d2e2",
+          "score_cp": 504,
+          "delta_cp": -3
+        }
       ]
     },
     {
@@ -278,6 +448,23 @@
         "opening",
         "bishop_development",
         "pin"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "c1d2",
+          "score_cp": 570,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "f1d3",
+          "score_cp": 560,
+          "delta_cp": -10
+        },
+        {
+          "move_uci": "a2a3",
+          "score_cp": 556,
+          "delta_cp": -14
+        }
       ]
     },
     {
@@ -304,6 +491,23 @@
         "tactics",
         "mate_threat",
         "queen"
+      ],
+      "eval_deltas": [
+        {
+          "move_uci": "f3f7",
+          "score_cp": 0,
+          "delta_cp": 0
+        },
+        {
+          "move_uci": "b2b4",
+          "score_cp": 322,
+          "delta_cp": 322
+        },
+        {
+          "move_uci": "d2d4",
+          "score_cp": 267,
+          "delta_cp": 267
+        }
       ]
     }
   ]
