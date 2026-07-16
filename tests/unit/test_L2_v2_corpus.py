@@ -67,3 +67,26 @@ def test_v2_has_at_least_1_negative_and_1_positive_outlier():
     pos = [x for x in corpus if x["score_cp"] > 200]
     assert neg, "v2 must include at least 1 losing-error position for eval-delta interest"
     assert pos, "v2 must include at least 1 winning position (>200 cp) for eval-delta spread"
+
+def test_gm_positions_have_pgn_game_ids():
+    import json, pathlib
+    corpus = load_corpus("v2")
+    gm_positions = [p for p in corpus if p["source"]["type"] == "gm_game"]
+    for entry in gm_positions:
+        assert "pgn_game_id" in entry, f"{entry['id']} missing pgn_game_id"
+    game_ids = {e["pgn_game_id"] for e in gm_positions}
+    labels_path = pathlib.Path("tests/gold/L2/v2/game_labels.jsonl")
+    assert labels_path.exists(), "game_labels.jsonl not yet created"
+    labels = {json.loads(l)["pgn_game_id"] for l in open(labels_path) if l.strip()}
+    assert game_ids.issubset(labels), f"Labels missing for: {game_ids - labels}"
+
+
+def test_game_labels_jsonl_has_required_fields():
+    import json
+    required = {"pgn_game_id", "white", "black", "event", "year", "round", "result", "eco"}
+    for line in open("tests/gold/L2/v2/game_labels.jsonl"):
+        if not line.strip():
+            continue
+        label = json.loads(line)
+        missing = required - label.keys()
+        assert not missing, f"Label {label.get('pgn_game_id')} missing {missing}"

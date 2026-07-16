@@ -243,7 +243,8 @@
       "tags": [
         "gm_game",
         "opening"
-      ]
+      ],
+      "pgn_game_id": "WC-1984-G9"
     },
     {
       "id": "L2-v2-0007",
@@ -282,7 +283,8 @@
       "tags": [
         "gm_game",
         "opening"
-      ]
+      ],
+      "pgn_game_id": "WCh-1972-G13"
     },
     {
       "id": "L2-v2-0008",
@@ -321,7 +323,8 @@
       "tags": [
         "gm_game",
         "opening"
-      ]
+      ],
+      "pgn_game_id": "OPERA-1858"
     },
     {
       "id": "L2-v2-0009",
@@ -360,7 +363,8 @@
       "tags": [
         "gm_game",
         "middlegame"
-      ]
+      ],
+      "pgn_game_id": "WCh-2014-G6"
     },
     {
       "id": "L2-v2-0010",
@@ -399,7 +403,8 @@
       "tags": [
         "gm_game",
         "middlegame"
-      ]
+      ],
+      "pgn_game_id": "WCh-1969-G9"
     },
     {
       "id": "L2-v2-0011",
@@ -438,7 +443,8 @@
       "tags": [
         "gm_game",
         "middlegame"
-      ]
+      ],
+      "pgn_game_id": "WCh-1961-G7"
     },
     {
       "id": "L2-v2-0012",
@@ -477,7 +483,8 @@
       "tags": [
         "gm_game",
         "middlegame"
-      ]
+      ],
+      "pgn_game_id": "US-1963-R6"
     },
     {
       "id": "L2-v2-0013",
@@ -516,7 +523,8 @@
       "tags": [
         "gm_game",
         "middlegame"
-      ]
+      ],
+      "pgn_game_id": "NY-1918"
     },
     {
       "id": "L2-v2-0014",
@@ -555,7 +563,8 @@
       "tags": [
         "gm_game",
         "middlegame"
-      ]
+      ],
+      "pgn_game_id": "ONLINE-2023-CARLSEN"
     },
     {
       "id": "L2-v2-0015",
