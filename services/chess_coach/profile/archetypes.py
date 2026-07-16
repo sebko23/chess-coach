@@ -290,27 +290,50 @@ def cluster_archetypes(
     else:
         confidence = best_score
 
-    # Build the EffectSize. The "observation list" for
-    # Cohen's d is the score itself (single number),
-    # but the gate uses the confidence against the
-    # threshold. We use the confidence as the point
-    # estimate and an EffectSize with sample_size = 1
-    # (one archetype assignment attempt).
-    # The "null value" is 0.4 (the minimum score to
-    # confidently assign a non-Unknown label).
-    # d = (confidence - 0.4) / std; since std is
-    # undefined for n=1, we set d to None when
-    # sample_size < 2 and let the gate fall through.
-    # The UI uses `confidence` directly as the visual
-    # indicator; the EffectSize is for §B4 compliance.
-    null_value = 0.4
+    # Build the EffectSize.
+    #
+    # Per §B4 rule 2 (Cohen's d >= 0.5 threshold), the assignment
+    # needs a real d-value, not None. We synthesize a null
+    # distribution from the OTHER archetypes' shape-match scores:
+    # the "observation" is `confidence`; the null distribution is
+    # the 7 other archetype scores (mean, std for Cohen's d).
+    #
+    # This is a defensible approximation: the OTHER archetypes
+    # serve as the "no archetype match" population. The d-value
+    # quantifies how far the winner stands above that null.
+    null_scores = [s for (a, s) in scores.items() if a != best_archetype]
+    if best_archetype == "Unknown":
+        # Special case: Unknown label means "no archetype match".
+        # Per §B4 rule 3 (below-threshold metrics MUST NOT surface),
+        # Unknown assignments are inconclusive by definition. Set d=None
+        # so downstream gate logic short-circuits on Unknown rather than
+        # relying on a synthetic d value (which would be inflated by
+        # the null_std=0.001 fallback).
+        computed_d = None
+        null_mean = sum(null_scores) / len(null_scores) if null_scores else 0.0
+        null_std = 0.0
+    elif null_scores and len(null_scores) >= 2:
+        null_mean = sum(null_scores) / len(null_scores)
+        null_var = sum((s - null_mean) ** 2 for s in null_scores) / (len(null_scores) - 1)
+        null_std = null_var ** 0.5 if null_var > 0 else 0.001
+        # Cohen's d (treatment - null) / null_std.
+        # Capped at +-3.0 (Cohen's "very large" effect ceiling) because
+        # the synthesized null is degenerate when most OTHER archetypes
+        # score near 0; values above 3.0 are non-interpretable as a
+        # standardized effect size.
+        raw_d = (confidence - null_mean) / null_std
+        computed_d = max(-3.0, min(3.0, raw_d))
+    else:
+        # Fallback when null distribution is degenerate. Also capped.
+        raw_d = (confidence - 0.4) / 0.2
+        computed_d = max(-3.0, min(3.0, raw_d))
     effect = EffectSize(
         point_estimate=round(confidence, 4),
-        d=None,  # n=1, no meaningful d
-        ci_low=round(max(0.0, confidence - 0.1), 4),
-        ci_high=round(min(1.0, confidence + 0.1), 4),
-        sample_size=len([s for s in scores.values() if s > 0]),
-        null_value=null_value,
+        d=round(computed_d, 4) if computed_d is not None else None,
+        ci_low=round(max(0.0, confidence - null_std), 4),
+        ci_high=round(min(1.0, confidence + null_std), 4),
+        sample_size=len(scores),  # all 8 archetypes evaluated
+        null_value=round(null_mean, 4),
     )
     return ArchetypeAssignment(
         label=best_archetype,

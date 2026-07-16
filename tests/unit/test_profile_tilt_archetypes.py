@@ -387,3 +387,95 @@ def test_decision_fatigue_submodule_importable() -> None:
     from chess_coach.profile.stats import decision_fatigue
     from chess_coach.profile.tilt import sequence_based_tilt
     from chess_coach.profile.archetypes import cluster_archetypes
+
+# --- BBF-65 rigor tests (Task 1: Cohen's d on winner archetype) ---
+
+
+def test_archetypes_winner_d_uses_other_archetype_distribution():
+    """Cohen's d for the winner should be computed against the OTHER
+    archetypes' scores as the null distribution.
+
+    Setup: a strong Tactician vector (Tactician scores high, others
+    score low). The d value should be > 0 (effect present) and not None.
+    """
+    from chess_coach.profile import cluster_archetypes
+    result = cluster_archetypes({
+        "tactical_vs_positional_bias": 0.70,
+        "conversion_ability": 0.60,
+        "opening_comfort": 8,
+    })
+    assert result.label == "Tactician"
+    # d should now be a real number, not None
+    assert result.effect_size.d is not None, (
+        f"effect_size.d should be computed (not None) for a strong Tactician vector; "
+        f"winner_score={result.effect_size.point_estimate}, scores={result.archetype_scores}"
+    )
+    # Strong signal: d > 0 means Tactician's confidence is meaningfully
+    # higher than the null distribution.
+    assert result.effect_size.d > 0.5, (
+        f"expected d > 0.5 (medium effect), got {result.effect_size.d}"
+    )
+
+
+def test_archetypes_unknown_label_sets_d_to_none():
+    """When cluster_archetypes returns label='Unknown', the effect_size.d
+    should be None (per §B4 rule 3: no archetype match = inconclusive).
+
+    Setup: a vector that triggers the "Unknown" branch. The only
+    archetype that uses sequence_based_tilt is Tilter (ideal = 0.20);
+    a value of 0.01 is far enough from 0.20 that no archetype scores
+    above 0.4. Heuristic returns label="Unknown".
+    """
+    from chess_coach.profile import cluster_archetypes
+    result = cluster_archetypes({"sequence_based_tilt": 0.01})
+    assert result.label == "Unknown", (
+        f"test setup broken: heuristic returned {result.label!r} "
+        f"with conf={result.confidence}, expected 'Unknown'"
+    )
+    # d should be None for Unknown (gate logic short-circuits)
+    assert result.effect_size.d is None, (
+        f"Unknown label should have d=None (gate short-circuits on Unknown), "
+        f"got d={result.effect_size.d}"
+    )
+
+
+def test_archetypes_d_capped_under_synthesized_null():
+    """When the synthesized null distribution has very low std (e.g.
+    most other archetypes score ~0), the Cohen's d computation can
+    blow up to large values. BBF-65 caps at 3.0 (Cohen's "very large
+    effect" ceiling) -- above that, the d is non-interpretable.
+
+    Setup: confident assignment where other archetypes score near 0.
+    Any strong signal input works.
+    """
+    from chess_coach.profile import cluster_archetypes
+    result = cluster_archetypes({
+        "tactical_vs_positional_bias": 0.70,
+        "conversion_ability": 0.60,
+        "opening_comfort": 8,
+    })
+    if result.effect_size.d is not None:
+        # Cap is 3.0 either way
+        assert -3.0 <= result.effect_size.d <= 3.0, (
+            f"Cohen's d should be capped at +-3.0, got {result.effect_size.d}"
+        )
+
+
+def test_archetypes_explain_endpoint_includes_archetype_scores():
+    """The ArchetypeAssignment carries archetype_scores; the /explain
+    endpoint uses this to render the top-3 nearest. The existing
+    function already returns archetype_scores; verify it's intact
+    (no regression) AND that it carries scores in 0..1.
+    """
+    from chess_coach.profile import cluster_archetypes
+    result = cluster_archetypes({
+        "tactical_vs_positional_bias": 0.65,
+        "conversion_ability": 0.55,
+        "opening_comfort": 8,
+    })
+    assert isinstance(result.archetype_scores, dict)
+    assert len(result.archetype_scores) == 8  # 7 archetypes + Unknown
+    for archetype_name, score in result.archetype_scores.items():
+        assert 0.0 <= score <= 1.0, (
+            f"score for {archetype_name} out of range: {score}"
+        )
