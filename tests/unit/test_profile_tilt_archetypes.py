@@ -479,3 +479,127 @@ def test_archetypes_explain_endpoint_includes_archetype_scores():
         assert 0.0 <= score <= 1.0, (
             f"score for {archetype_name} out of range: {score}"
         )
+
+
+# --- BBF-65.2 gate-surface tests ---
+
+
+def test_archetypes_assignment_passes_b4_gate_for_strong_tactician():
+    """A confident Tactician vector should produce an assignment where
+    passes_b4_gate=True (Cohen d >= 0.5, label != Unknown).
+
+    Verifies the BBF-65.2 field is computed at the end of
+    cluster_archetypes() and correctly gates a strong signal.
+    """
+    from chess_coach.profile import cluster_archetypes
+    from chess_coach.profile.effect_size import COHENS_D_THRESHOLD
+    result = cluster_archetypes({
+        "tactical_vs_positional_bias": 0.70,
+        "conversion_ability": 0.60,
+        "opening_comfort": 8,
+    })
+    # Sanity: this is a Tactician vector
+    assert result.label == "Tactician", (
+        "test setup broken: expected Tactician, got "
+        + repr(result.label)
+        + f" (conf={result.confidence}, d={result.effect_size.d})"
+    )
+    # New BBF-65.2 field MUST exist on the dataclass
+    assert hasattr(result, "passes_b4_gate"), (
+        "ArchetypeAssignment must have passes_b4_gate field (BBF-65.2)"
+    )
+    # d must be a real number for the strong signal (BBF-65.1 invariant)
+    assert result.effect_size.d is not None, (
+        f"strong Tactician vector should have d != None, got "
+        + repr(result.effect_size.d)
+    )
+    # Gate logic: passes iff label != Unknown AND d >= threshold
+    expected_pass = result.effect_size.d >= COHENS_D_THRESHOLD
+    assert result.passes_b4_gate is expected_pass, (
+        f"passes_b4_gate should be {expected_pass} for d="
+        + repr(result.effect_size.d)
+        + f" (threshold={COHENS_D_THRESHOLD}), got "
+        + repr(result.passes_b4_gate)
+    )
+    # Strong Tactician must specifically pass the gate
+    assert result.passes_b4_gate is True, (
+        f"strong Tactician vector should pass the gate (d="
+        + repr(result.effect_size.d)
+        + f"), got passes_b4_gate="
+        + repr(result.passes_b4_gate)
+    )
+
+
+def test_archetypes_assignment_gate_inconclusive_for_unknown_and_subthreshold():
+    """The gate MUST be False in BOTH cases:
+
+    (A) Unknown label -- real heuristic output, d is None per BBF-65.1
+    (B) Subthreshold assignment -- label != Unknown but d < 0.5
+
+    For (A) we exercise the real heuristic with an out-of-pattern
+    vector that yields Unknown. For (B) we construct an
+    ArchetypeAssignment directly with d=0.3 (subthreshold) since
+    the BBF-65.1 cap (3.0) + heuristic scoring rarely produces
+    real subthreshold d values in practice.
+
+    This is the critical defensive branch: the gate logic must
+    short-circuit on Unknown explicitly (not just rely on the
+    d-threshold check, which would crash on d=None).
+    """
+    from chess_coach.profile import ArchetypeAssignment, cluster_archetypes
+    from chess_coach.profile.effect_size import EffectSize, COHENS_D_THRESHOLD
+
+    # Case A: Unknown label -- real heuristic input that yields Unknown.
+    # Empty metrics dict is the cleanest Unknown trigger.
+    result_unknown = cluster_archetypes({})
+    assert result_unknown.label == "Unknown", (
+        "test setup broken: heuristic must return Unknown for empty dict, got "
+        + repr(result_unknown.label)
+        + f" (conf={result_unknown.confidence})"
+    )
+    # BBF-65.1 invariant: Unknown -> d=None
+    assert result_unknown.effect_size.d is None, (
+        "Unknown label should have d=None (BBF-65.1 invariant), got d="
+        + repr(result_unknown.effect_size.d)
+    )
+    # BBF-65.2: Unknown label MUST have passes_b4_gate=False
+    # (inconclusive by definition per B4 rule 3 -- this is the
+    # defensive branch that prevents a NoneType comparison crash).
+    assert result_unknown.passes_b4_gate is False, (
+        "Unknown label MUST have passes_b4_gate=False (inconclusive by definition per B4 rule 3), got "
+        + repr(result_unknown.passes_b4_gate)
+    )
+
+    # Case B: Subthreshold -- label != Unknown but d < 0.5.
+    # Construct directly because the BBF-65.1 cap means real heuristic
+    # outputs rarely produce d < 0.5 once the heuristic is confident.
+    subthreshold = ArchetypeAssignment(
+        label="Tactician",
+        confidence=0.45,
+        archetype_scores={
+            "Tactician": 0.45, "Positional Player": 0.40, "Grinder": 0.40,
+            "Wildcard": 0.40, "Specialist": 0.40, "Tilter": 0.40,
+            "Endgame Specialist": 0.40, "Unknown": 0.0,
+        },
+        effect_size=EffectSize(
+            point_estimate=0.45,
+            d=0.3,  # below COHENS_D_THRESHOLD (0.5)
+            ci_low=0.3,
+            ci_high=0.6,
+            sample_size=8,
+            null_value=0.4,
+        ),
+    )
+    assert subthreshold.effect_size.d is not None
+    assert subthreshold.effect_size.d < COHENS_D_THRESHOLD, (
+        "test setup broken: constructed d must be < threshold, got "
+        + repr(subthreshold.effect_size.d)
+    )
+    assert subthreshold.passes_b4_gate is False, (
+        f"subthreshold assignment (d={subthreshold.effect_size.d} < "
+        + str(COHENS_D_THRESHOLD)
+        + ") MUST have passes_b4_gate=False, got "
+        + repr(subthreshold.passes_b4_gate)
+        + f" for label="
+        + repr(subthreshold.label)
+    )

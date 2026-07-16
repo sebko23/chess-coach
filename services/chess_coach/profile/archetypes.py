@@ -108,6 +108,7 @@ class ArchetypeAssignment:
     confidence: float
     archetype_scores: dict[str, float]
     effect_size: EffectSize
+    passes_b4_gate: bool = False  # §B4 gate: True iff the assignment is surfacable. Default False.
 
 
 # Standard archetype labels. Defined here so BBF-59
@@ -335,11 +336,28 @@ def cluster_archetypes(
         sample_size=len(scores),  # all 8 archetypes evaluated
         null_value=round(null_mean, 4),
     )
+    # Apply the §B4 surfacing gate. Unknown labels are inconclusive
+    # by definition (rule 3: below-threshold metrics MUST NOT surface),
+    # so we explicitly set False there. For other labels, gate_metric
+    # returns True iff effect.d >= COHENS_D_THRESHOLD (0.5).
+    if best_archetype == "Unknown":
+        # Per §B4 rule 3, Unknown labels are inconclusive by definition.
+        passes_gate = False
+    else:
+        # gate_metric with min_sample_size=1 because archetype
+        # assignment is a per-player single observation, not a time-
+        # series of 30 data points. The default min_sample_size=30 in
+        # gate_metric is calibrated for time-series metrics; cluster
+        # assignments use sample_size=len(archetype_scores)=8 which
+        # doesn't represent data points but archetype-options. Pass
+        # 1 so the gate only checks the d-threshold condition.
+        passes_gate = gate_metric(effect, min_sample_size=1)
     return ArchetypeAssignment(
         label=best_archetype,
         confidence=round(confidence, 4),
         archetype_scores={k: round(v, 4) for k, v in scores.items()},
         effect_size=effect,
+        passes_b4_gate=passes_gate,
     )
 
 
