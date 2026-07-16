@@ -55,6 +55,7 @@ from .routes import (
     kb_router,
     pgn_import_router,
     backfill_analyses_router,
+    eval_verifier_router,
 )
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.kb.pipeline import index_positions
@@ -299,6 +300,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(kb_router)
     app.include_router(pgn_import_router)
     app.include_router(backfill_analyses_router)
+    app.include_router(eval_verifier_router)
 
     return app
 

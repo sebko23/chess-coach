@@ -22,6 +22,7 @@ from .training_planner import router as training_planner_router
 from .kb import kb_router
 from .pgn_import import router as pgn_import_router
 from .backfill_analyses import router as backfill_analyses_router
+from .eval_verifier import router as eval_verifier_router  # BBF-64
 # system.py uses a builder pattern (build_system_router); kept as-is.
 
 __all__ = [
@@ -43,4 +44,5 @@ __all__ = [
     "kb_router",
     "pgn_import_router",
     "backfill_analyses_router",
+    "eval_verifier_router",
 ]
