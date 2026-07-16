@@ -141,15 +141,28 @@ class TestLoadL2Gold:
         with pytest.raises(FileNotFoundError, match="L-2 gold corpus not found"):
             load_l2_gold(version="v1", base_path=tmp_path)
 
-    def test_load_l2_gold_must_be_array(self, tmp_path: Path):
-        """A corpus file that is not a JSON array raises ValueError."""
+    def test_load_l2_gold_must_be_array_or_wrapper(self, tmp_path: Path):
+        """A corpus file that is not an array or wrapper raises ValueError."""
         version_dir = tmp_path / "v1"
         version_dir.mkdir()
         (version_dir / "corpus.json").write_text(
-            json.dumps({"not": "an array"}), encoding="utf-8"
+            json.dumps("not an array"), encoding="utf-8"
         )
         with pytest.raises(ValueError, match="must be a JSON array"):
             load_l2_gold(version="v1", base_path=tmp_path)
+
+    def test_load_l2_gold_accepts_wrapper_dict(self, tmp_path: Path) -> None:
+        """BBF-63.2: v2-style wrapped corpora {schema_version, positions} load."""
+        wrapper_path = tmp_path / "v2" / "corpus.json"
+        wrapper_path.parent.mkdir(parents=True, exist_ok=True)
+        # Minimal valid entry (mirrors _valid_entry)
+        entry = _valid_entry()
+        wrapper_path.write_text(
+            json.dumps({"schema_version": "2.0", "positions": [entry]})
+        )
+        corpus = load_l2_gold(version="v2", base_path=tmp_path)
+        assert len(corpus) == 1
+        assert corpus[0].id == entry["id"]
 
     def test_load_l2_gold_happy_path(self, tmp_path: Path):
         """A valid corpus file loads into L2GoldEntry objects."""

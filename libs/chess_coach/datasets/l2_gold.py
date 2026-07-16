@@ -238,6 +238,17 @@ def load_l2_gold(
     with open(corpus_path, encoding="utf-8") as f:
         raw_corpus = json.load(f)
 
+    # BBF-63.2: support the v2 wrapped shape `{schema_version, positions}`.
+    # v1 corpora are top-level JSON lists; v2 wraps them to carry
+    # metadata. Mirror the unwrap pattern in tests/gold/L2/__init__.py.
+    if isinstance(raw_corpus, dict):
+        if "positions" not in raw_corpus:
+            raise ValueError(
+                f"L-2 gold corpus at {corpus_path} is a dict but missing the "
+                f"'positions' key; got keys: {sorted(raw_corpus.keys())}"
+            )
+        raw_corpus = raw_corpus["positions"]
+
     if not isinstance(raw_corpus, list):
         raise ValueError(
             f"L-2 gold corpus at {corpus_path} must be a JSON array of "

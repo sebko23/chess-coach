@@ -1,259 +1,310 @@
-[
-  {
-    "id": "L2-v1-0001",
-    "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
-    "phase": "opening",
-    "best_move_uci": "e1g1",
-    "score_cp": 28,
-    "source": {
-      "type": "opening_theory",
-      "name": "Four Knights, Italian Variation",
-      "eco": "C50",
-      "move_sequence": "1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.O-O"
+{
+  "schema_version": "1.0",
+  "positions": [
+    {
+      "id": "L2-v1-0001",
+      "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+      "phase": "opening",
+      "best_move_uci": "e1g1",
+      "score_cp": 28,
+      "source": {
+        "type": "opening_theory",
+        "name": "Four Knights, Italian Variation",
+        "eco": "C50",
+        "move_sequence": "1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.O-O"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "opening",
+        "castling",
+        "development"
+      ]
     },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
+    {
+      "id": "L2-v1-0002",
+      "fen": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4",
+      "phase": "opening",
+      "best_move_uci": "b8c6",
+      "score_cp": 18,
+      "source": {
+        "type": "opening_theory",
+        "name": "Italian Game, Giuoco Piano",
+        "eco": "C53",
+        "move_sequence": "1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.O-O Nf6"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "opening",
+        "development"
+      ]
     },
-    "tags": ["opening", "castling", "development"]
-  },
-  {
-    "id": "L2-v1-0002",
-    "fen": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 b kq - 5 4",
-    "phase": "opening",
-    "best_move_uci": "b8c6",
-    "score_cp": 18,
-    "source": {
-      "type": "opening_theory",
-      "name": "Italian Game, Giuoco Piano",
-      "eco": "C53",
-      "move_sequence": "1.e4 e5 2.Nf3 Nc6 3.Bc4 Bc5 4.O-O Nf6"
+    {
+      "id": "L2-v1-0003",
+      "fen": "rnbqkb1r/pp2pppp/3p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 4",
+      "phase": "opening",
+      "best_move_uci": "c1g5",
+      "score_cp": 22,
+      "source": {
+        "type": "opening_theory",
+        "name": "Sicilian Defense, Open Variation",
+        "eco": "B23",
+        "move_sequence": "1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "opening",
+        "pin"
+      ]
     },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
+    {
+      "id": "L2-v1-0004",
+      "fen": "r1b2rk1/pp1n1ppp/2pbpn2/3p4/2PP4/2N1PN2/PP3PPP/R1BQKB1R w KQ - 0 8",
+      "phase": "middlegame",
+      "best_move_uci": "d4d5",
+      "score_cp": 12,
+      "source": {
+        "type": "gm_game",
+        "name": "Karpov vs. Kasparov, World Championship 1984, Game 9",
+        "event": "WCh",
+        "year": 1984,
+        "round": 9,
+        "move_sequence": "1.Nf3 Nf6 2.c4 e6 3.Nc3 d5 4.d4 Be7 5.Bg5 O-O 6.e3 b6 7.Bd3 Bb7 8.O-O Nbd7"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "middlegame",
+        "pawn_break",
+        "gm_game"
+      ]
     },
-    "tags": ["opening", "development"]
-  },
-  {
-    "id": "L2-v1-0003",
-    "fen": "rnbqkb1r/pp2pppp/3p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 4",
-    "phase": "opening",
-    "best_move_uci": "c1g5",
-    "score_cp": 22,
-    "source": {
-      "type": "opening_theory",
-      "name": "Sicilian Defense, Open Variation",
-      "eco": "B23",
-      "move_sequence": "1.e4 c5 2.Nf3 d6 3.d4 cxd4 4.Nxd4 Nf6 5.Nc3"
+    {
+      "id": "L2-v1-0005",
+      "fen": "r4rk1/pp1q1ppp/2p2n2/3p4/3P4/2N1PN2/PP3PPP/2R1K2R w K - 0 12",
+      "phase": "middlegame",
+      "best_move_uci": "e1g1",
+      "score_cp": 35,
+      "source": {
+        "type": "gm_game",
+        "name": "Carlsen vs. Caruana, World Championship 2018, Game 1",
+        "event": "WCh",
+        "year": 2018,
+        "round": 1,
+        "move_sequence": "1.c4 e5 2.Nc3 Nf6 3.Nf3 Nc6 4.g3 d5 5.cxd5 Nxd5 6.Bg2 Bc5 7.O-O O-O 8.d3 Re8 9.Bd2 Nxc3 10.bxc3 e4 11.dxe4 Bxf2+ 12.Kxf2 Ng4+ 13.Kg1 Qd5"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "middlegame",
+        "castling",
+        "tension",
+        "gm_game"
+      ]
     },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
+    {
+      "id": "L2-v1-0006",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
+      "phase": "endgame",
+      "best_move_uci": "a1a8",
+      "score_cp": 0,
+      "source": {
+        "type": "tactical_motif",
+        "name": "Rook and pawn vs rook, basic activation",
+        "motif": "rook_lift",
+        "move_sequence": "starting position with rook on a1, king on g1"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "endgame",
+        "rook_endgame",
+        "activation"
+      ]
     },
-    "tags": ["opening", "pin"]
-  },
-  {
-    "id": "L2-v1-0004",
-    "fen": "r1b2rk1/pp1n1ppp/2pbpn2/3p4/2PP4/2N1PN2/PP3PPP/R1BQKB1R w KQ - 0 8",
-    "phase": "middlegame",
-    "best_move_uci": "d4d5",
-    "score_cp": 12,
-    "source": {
-      "type": "gm_game",
-      "name": "Karpov vs. Kasparov, World Championship 1984, Game 9",
-      "event": "WCh",
-      "year": 1984,
-      "round": 9,
-      "move_sequence": "1.Nf3 Nf6 2.c4 e6 3.Nc3 d5 4.d4 Be7 5.Bg5 O-O 6.e3 b6 7.Bd3 Bb7 8.O-O Nbd7"
+    {
+      "id": "L2-v1-0007",
+      "fen": "4k3/8/4K3/3P4/8/8/8/8 w - - 0 1",
+      "phase": "endgame",
+      "best_move_uci": "d5d6",
+      "score_cp": 0,
+      "source": {
+        "type": "gm_game",
+        "name": "Capablanca vs. Tartakower, New York 1927, endgame study",
+        "event": "New York",
+        "year": 1927,
+        "move_sequence": "endgame position with White king on e6, pawn on d5, Black king on e8"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "endgame",
+        "pawn_endgame",
+        "opposition",
+        "gm_game"
+      ]
     },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
+    {
+      "id": "L2-v1-0008",
+      "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
+      "phase": "opening",
+      "best_move_uci": "f1c4",
+      "score_cp": 28,
+      "source": {
+        "type": "opening_theory",
+        "name": "Ruy Lopez, Morphy Defense",
+        "eco": "C70",
+        "move_sequence": "1.e4 e5 2.Nf3 Nc6 3.Bc4"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "opening",
+        "bishop_development"
+      ]
     },
-    "tags": ["middlegame", "pawn_break", "gm_game"]
-  },
-  {
-    "id": "L2-v1-0005",
-    "fen": "r4rk1/pp1q1ppp/2p2n2/3p4/3P4/2N1PN2/PP3PPP/2R1K2R w K - 0 12",
-    "phase": "middlegame",
-    "best_move_uci": "e1g1",
-    "score_cp": 35,
-    "source": {
-      "type": "gm_game",
-      "name": "Carlsen vs. Caruana, World Championship 2018, Game 1",
-      "event": "WCh",
-      "year": 2018,
-      "round": 1,
-      "move_sequence": "1.c4 e5 2.Nc3 Nf6 3.Nf3 Nc6 4.g3 d5 5.cxd5 Nxd5 6.Bg2 Bc5 7.O-O O-O 8.d3 Re8 9.Bd2 Nxc3 10.bxc3 e4 11.dxe4 Bxf2+ 12.Kxf2 Ng4+ 13.Kg1 Qd5"
+    {
+      "id": "L2-v1-0009",
+      "fen": "r3k2r/pp3ppp/2nq1n2/2pp4/3P4/2N1PN2/PP3PPP/R2QKB1R w KQkq - 0 8",
+      "phase": "middlegame",
+      "best_move_uci": "d1a4",
+      "score_cp": 5,
+      "source": {
+        "type": "tactical_motif",
+        "name": "Pin along the a4-e8 diagonal",
+        "motif": "pin",
+        "move_sequence": "constructed from a Nimzo-Indian position with the Black queen on d6"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "middlegame",
+        "pin",
+        "queen"
+      ]
     },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
+    {
+      "id": "L2-v1-0010",
+      "fen": "8/8/8/3k4/8/3K4/3R4/8 w - - 0 1",
+      "phase": "endgame",
+      "best_move_uci": "d3c3",
+      "score_cp": 0,
+      "source": {
+        "type": "tactical_motif",
+        "name": "Rook and king vs king, opposition",
+        "motif": "opposition",
+        "move_sequence": "starting position with White king on d3, rook on d2, Black king on d5"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "endgame",
+        "king_and_rook_vs_king",
+        "opposition"
+      ]
     },
-    "tags": ["middlegame", "castling", "tension", "gm_game"]
-  },
-  {
-    "id": "L2-v1-0006",
-    "fen": "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1",
-    "phase": "endgame",
-    "best_move_uci": "a1a8",
-    "score_cp": 0,
-    "source": {
-      "type": "tactical_motif",
-      "name": "Rook and pawn vs rook, basic activation",
-      "motif": "rook_lift",
-      "move_sequence": "starting position with rook on a1, king on g1"
+    {
+      "id": "L2-v1-0011",
+      "fen": "r2qkb1r/ppp2ppp/2n2n2/3p4/3P4/2N1PN2/PPP2PPP/R1BQKB1R w KQkq - 0 5",
+      "phase": "opening",
+      "best_move_uci": "f1d3",
+      "score_cp": 22,
+      "source": {
+        "type": "opening_theory",
+        "name": "Queen's Gambit Declined, Orthodox Defense",
+        "eco": "D62",
+        "move_sequence": "1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Nbd7 5.e3"
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "opening",
+        "bishop_development",
+        "pin"
+      ]
     },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
-    },
-    "tags": ["endgame", "rook_endgame", "activation"]
-  },
-  {
-    "id": "L2-v1-0007",
-    "fen": "4k3/8/4K3/3P4/8/8/8/8 w - - 0 1",
-    "phase": "endgame",
-    "best_move_uci": "d5d6",
-    "score_cp": 0,
-    "source": {
-      "type": "gm_game",
-      "name": "Capablanca vs. Tartakower, New York 1927, endgame study",
-      "event": "New York",
-      "year": 1927,
-      "move_sequence": "endgame position with White king on e6, pawn on d5, Black king on e8"
-    },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
-    },
-    "tags": ["endgame", "pawn_endgame", "opposition", "gm_game"]
-  },
-  {
-    "id": "L2-v1-0008",
-    "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3",
-    "phase": "opening",
-    "best_move_uci": "f1c4",
-    "score_cp": 28,
-    "source": {
-      "type": "opening_theory",
-      "name": "Ruy Lopez, Morphy Defense",
-      "eco": "C70",
-      "move_sequence": "1.e4 e5 2.Nf3 Nc6 3.Bc4"
-    },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
-    },
-    "tags": ["opening", "bishop_development"]
-  },
-  {
-    "id": "L2-v1-0009",
-    "fen": "r3k2r/pp3ppp/2nq1n2/2pp4/3P4/2N1PN2/PP3PPP/R2QKB1R w KQkq - 0 8",
-    "phase": "middlegame",
-    "best_move_uci": "d1a4",
-    "score_cp": 5,
-    "source": {
-      "type": "tactical_motif",
-      "name": "Pin along the a4-e8 diagonal",
-      "motif": "pin",
-      "move_sequence": "constructed from a Nimzo-Indian position with the Black queen on d6"
-    },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
-    },
-    "tags": ["middlegame", "pin", "queen"]
-  },
-  {
-    "id": "L2-v1-0010",
-    "fen": "8/8/8/3k4/8/3K4/3R4/8 w - - 0 1",
-    "phase": "endgame",
-    "best_move_uci": "d3c3",
-    "score_cp": 0,
-    "source": {
-      "type": "tactical_motif",
-      "name": "Rook and king vs king, opposition",
-      "motif": "opposition",
-      "move_sequence": "starting position with White king on d3, rook on d2, Black king on d5"
-    },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
-    },
-    "tags": ["endgame", "king_and_rook_vs_king", "opposition"]
-  },
-  {
-    "id": "L2-v1-0011",
-    "fen": "r2qkb1r/ppp2ppp/2n2n2/3p4/3P4/2N1PN2/PPP2PPP/R1BQKB1R w KQkq - 0 5",
-    "phase": "opening",
-    "best_move_uci": "f1d3",
-    "score_cp": 22,
-    "source": {
-      "type": "opening_theory",
-      "name": "Queen's Gambit Declined, Orthodox Defense",
-      "eco": "D62",
-      "move_sequence": "1.d4 d5 2.c4 e6 3.Nc3 Nf6 4.Bg5 Nbd7 5.e3"
-    },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
-    },
-    "tags": ["opening", "bishop_development", "pin"]
-  },
-  {
-    "id": "L2-v1-0012",
-    "fen": "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
-    "phase": "middlegame",
-    "best_move_uci": "f3f7",
-    "score_cp": 35,
-    "source": {
-      "type": "tactical_motif",
-      "name": "Scholar's mate attempt, defended by Knight",
-      "motif": "mate_threat",
-      "move_sequence": "1.e4 e5 2.Bc4 Nc6 3.Qf3 Nf6 4."
-    },
-    "engine": {
-      "name": "Stockfish",
-      "version": "18",
-      "depth": 25,
-      "multipv": 1,
-      "hash_mb": 64
-    },
-    "tags": ["middlegame", "tactics", "mate_threat", "queen"]
-  }
-]
+    {
+      "id": "L2-v1-0012",
+      "fen": "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
+      "phase": "middlegame",
+      "best_move_uci": "f3f7",
+      "score_cp": 35,
+      "source": {
+        "type": "tactical_motif",
+        "name": "Scholar's mate attempt, defended by Knight",
+        "motif": "mate_threat",
+        "move_sequence": "1.e4 e5 2.Bc4 Nc6 3.Qf3 Nf6 4."
+      },
+      "engine": {
+        "name": "Stockfish",
+        "version": "18",
+        "depth": 25,
+        "multipv": 1,
+        "hash_mb": 64
+      },
+      "tags": [
+        "middlegame",
+        "tactics",
+        "mate_threat",
+        "queen"
+      ]
+    }
+  ]
+}
