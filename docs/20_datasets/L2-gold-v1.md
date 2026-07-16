@@ -262,3 +262,20 @@ test data, not production data. It is checked into git so
 the corpus is versioned alongside the code that uses it.
 It is read-only at runtime (the loader reads it but never
 writes to it).
+
+## Calibration tooling
+
+The `GET /v1/eval/verify/{version}` route (BBF-64) runs the engine
+against each position in this corpus and reports per-position accuracy.
+This is the calibration baseline for Phase 6 model work and the
+regression test for engine eval drift. See:
+
+- Route module: `services/chess_coach/gateway/routes/eval_verifier.py`
+- Unit tests: `tests/unit/test_eval_verifier.py`
+- Integration tests: `tests/integration/test_eval_verifier_integration.py`
+- Plan: `.hermes/plans/2026-07-16_163115-bbf64-phase5-eval-delta-verifier.md`
+
+**Response shape** (from BBF-64): `VerifyResponse` with `corpus_version`,
+`summary` (total / top1_hits / top3_hits / score_within_50cp / mean_delta_cp_abs / max_delta_cp_abs),
+and a `positions` list of `PositionReport` (id, fen, gold_move_uci, gold_score_cp,
+engine_top_move_uci, engine_top_score_cp, delta_cp, status).

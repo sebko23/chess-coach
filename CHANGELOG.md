@@ -1,5 +1,22 @@
 
 
+
+## [unreleased] - BBF-64 (2026-07-16)
+
+### Added
+- `GET /v1/eval/verify/{version}` route at `services/chess_coach/gateway/routes/eval_verifier.py`.
+- Phase 5 eval-delta verifier: runs the engine against each gold position in L-2 v1/v2 and returns a per-position accuracy report (top-1 hits, top-N hits, score-within-50cp count, mean + max |delta_cp|).
+- 8 unit tests at `tests/unit/test_eval_verifier.py` (dataclass shape + engine-loop behavior).
+- 4 integration tests at `tests/integration/test_eval_verifier_integration.py` (in-process FastAPI + mocked engine).
+
+### Cross-references
+- `docs/20_datasets/L2-gold-v1.md` now cross-references the verifier as the calibration tooling.
+- Phase 5 exit criterion: "Adding a few games surfaces real gaps in a sample repertoire" remains open; the verifier is a prerequisite for it (validates that engine eval matches gold before training lessons reference it).
+
+### Backward compatibility
+- No existing route behavior changed.
+- `app.py` `include_router` registration of the new route at module-load time; smoke CI's `gateway-boot` job exercises the import path so a registration regression trips CI.
+
 ## [unreleased] - BBF-63 (2026-07-16)
 
 ### Changed
