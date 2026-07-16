@@ -367,13 +367,14 @@ async def explain_metric(player: str, metric_id: str, request: Request):
             cluster_archetypes, metric_values
         )
         raw_inputs["metric_values"] = metric_values
-        # Bypass EffectSize for archetypes -- use the
-        # assignment's effect_size field for the gate.
-        from chess_coach.profile import COHENS_D_THRESHOLD
-        passes_gate = (
-            assignment.effect_size.d is not None
-            and abs(assignment.effect_size.d) >= COHENS_D_THRESHOLD
-        )
+        # Defer to the canonical BBF-65.2 gate field on the assignment.
+        # The cluster_archetypes() function (in services/chess_coach/profile/archetypes.py)
+        # computes passes_b4_gate correctly per §B4 rules: False for Unknown labels
+        # (rule 3: below-threshold MUST NOT surface), otherwise gate_metric(effect)
+        # with min_sample_size=1 (cluster assignments are single observations,
+        # not 30-datapoint time-series metrics).
+        from chess_coach.profile import COHENS_D_THRESHOLD  # used by the §B4 caveat text below
+        passes_gate = assignment.passes_b4_gate
         if not passes_gate:
             caveats.append(
                 f"Archetype assignment confidence "
