@@ -417,3 +417,48 @@ are rendered as "Inconclusive".
 - The canonical shape definitions were hand-coded for
   BBF-59. Empirical validation against the L-2 v2
   corpus is a future work item.
+
+## Archetype cluster (BBF-65)
+
+**Hypothesis.** A player's 6-metric vector places them in one of a small
+number of stylistic archetypes (Tactician, Positional Player, Grinder,
+Wildcard, Specialist, Tilter, Endgame Specialist). This is a CLUSTERING
+result, not a measurement.
+
+**Null hypothesis.** A player's metric vector is no closer to any
+archetype shape than the population of archetypes treats as typical.
+
+**Effect-size threshold.** Cohen's d >= 0.5 against the OTHER
+archetypes' score distribution (synthesized null). Below-threshold
+assignments surface as `passes_b4_gate=False` so the UI can render
+"Inconclusive" instead of a confident false-label.
+
+**Sample-size requirement.** The cluster uses the 6 available
+metric-vector components. If fewer than 2 metrics are present,
+the cluster falls back to "Unknown" without surfacing a label.
+
+**Confidence band.** `archetype_scores` carries the full top-N
+score vector (one entry per `STANDARD_ARCHETYPES` archetype, plus
+"Unknown"). The `/explain` endpoint renders the top-3 nearest.
+
+**Note.** The current implementation is heuristic shape-matching
+against canonical archetype signatures (BBF-59). The methodology doc
+describes the future kNN implementation (BBF-66+): replace the
+heuristic with kNN against an archetype-labelled reference corpus
+at `tests/gold/archetypes/v*/corpus.json` (not yet built; the v2 chess
+corpus is chess-position data, not archetype labels).
+
+Implementation:
+
+- `services/chess_coach/profile/archetypes.py` (BBF-59 ship; BBF-65
+  patches Cohen's d computation + `passes_b4_gate` field).
+- Route handler `services/chess_coach/gateway/routes/profile.py`'s
+  `explain_metric(metric_id="archetypes")` branch -- the BBF-65.3
+  route patch reads the canonical `assignment.passes_b4_gate` field
+  instead of re-deriving.
+- Tests:
+  - `tests/unit/test_profile_tilt_archetypes.py` (22 tests: 6 heuristic
+    shape-match + 4 BBF-65.1 d/cap tests + 2 BBF-65.2 gate tests + 10 misc).
+  - `tests/integration/test_profile_archetypes_integration.py`
+    (2 route-level integration tests, ~3 min real-DB latency).
+

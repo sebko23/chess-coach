@@ -1,6 +1,52 @@
 
 
 
+
+## [unreleased] - BBF-65 (2026-07-16)
+
+### Changed
+- `services/chess_coach/profile/archetypes.py`: `ArchetypeAssignment.effect_size.d`
+  is now a real Cohen's d (capped at +-3.0) computed against the OTHER 7
+  archetypes' scores as a synthesized null. Was `None` (sample-size-1 dodge).
+- `ArchetypeAssignment` gains a `passes_b4_gate: bool` field (default
+  `False`). For Unknown labels, the field is `False` directly (§B4 rule 3:
+  below-threshold MUST NOT surface). For labeled archetypes, it's set via
+  `gate_metric(effect, min_sample_size=1)` (the gate's default `30` is
+  calibrated for time-series metrics, not cluster assignments).
+- Route `services/chess_coach/gateway/routes/profile.py`'s archetypes
+  branch now reads `assignment.passes_b4_gate` (canonical BBF-65.2 field)
+  instead of re-deriving from `effect.d`. Fixes a real double-source-of-truth
+  inconsistency where the route would emit a `passes_b4_gate` value that
+  disagreed with the function's canonical value for some inputs.
+
+### Added
+- 4 new unit tests at `tests/unit/test_profile_tilt_archetypes.py`:
+  - `test_archetypes_winner_d_uses_other_archetype_distribution`
+  - `test_archetypes_unknown_label_sets_d_to_none`
+  - `test_archetypes_d_capped_under_synthesized_null`
+  - `test_archetypes_assignment_passes_b4_gate_for_strong_tactician`
+  - `test_archetypes_assignment_gate_inconclusive_for_unknown_and_subthreshold`
+- 2 integration tests at `tests/integration/test_profile_archetypes_integration.py`
+  exercising the route via `httpx.ASGITransport` + mocked `cluster_archetypes`.
+
+### Documentation
+- `docs/15_methodology/profile-metrics-v1.md` now has an
+  "Archetype cluster (BBF-65)" §H2 section parallel to the 6 player metrics.
+
+### Future work (deferred)
+- **BBF-66**: build a real archetype-labelled reference corpus at
+  `tests/gold/archetypes/v1/corpus.json` (~30 player-metric vectors,
+  one per `STANDARD_ARCHETYPES` archetype + Unknown). The v2 chess
+  corpus is chess-position data, not archetype-labelled reference vectors;
+  a separate artefact is needed. BBF-66 swaps heuristic shape-matching
+  for kNN against this corpus.
+
+### Test count
+- 22 tests in `test_profile_tilt_archetypes.py` (6 existing heuristic +
+  4 BBF-65.1 d/cap + 2 BBF-65.2 gate + 10 misc structural).
+- 2 tests in `test_profile_archetypes_integration.py` (route-level).
+- No regressions in the 6 BBF-65.0 heuristic shape-match tests.
+
 ## [unreleased] - BBF-64 (2026-07-16)
 
 ### Added
