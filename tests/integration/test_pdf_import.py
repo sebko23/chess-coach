@@ -52,4 +52,4 @@ class TestPdfImport:
         assert "import_id" in data
         assert "pages_processed" in data
         assert "diagrams_found" in data
-        assert "results" in data
+        assert "diagrams" in data

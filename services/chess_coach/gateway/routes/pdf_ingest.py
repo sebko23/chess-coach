@@ -50,7 +50,7 @@ class PdfImportResponse(BaseModel):
     pages_processed: int
     diagrams_found: int
     diagrams_valid: int
-    results: list[DiagramResult]
+    diagrams: list[DiagramResult]
 
 
 async def _predict_fen(image_png_bytes: bytes) -> tuple[str | None, float, str | None]:
@@ -171,5 +171,5 @@ async def import_pdf(
         pages_processed=len(pages),
         diagrams_found=len(valid_diagrams),
         diagrams_valid=len(valid_diagrams),
-        results=results,
+        diagrams=results,
     )
