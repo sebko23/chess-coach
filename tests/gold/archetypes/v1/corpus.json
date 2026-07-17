@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "_metadata": {
+    "WARNING": "SYNTHETIC PLACEHOLDER. This corpus is a placeholder for the kNN algorithm implementation in BBF-66. Real, hand-labelled entries replace these placeholders. The labels here are STUB -- they only test that the algorithm picks SOMETHING from the corpus, not that the labels are correct. Replace each entry with a real one before relying on archetype assignments in production.",
+    "generated_for": "BBF-66 kNN cluster swap",
+    "expected_real_corpus_size": 30,
+    "labels_use": "one entry per (archetype, vector) -- the kNN picks the label of the nearest reference vector"
+  },
+  "entries": [
+    {
+      "id": "AG-v1-0001",
+      "archetype_label": "Tactician",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.70,
+        "time_pressure_quality": 0.10,
+        "opening_comfort": 5,
+        "conversion_ability": 0.65,
+        "blunder_rate_vs_rating": 0.15,
+        "decision_fatigue": 0.05,
+        "sequence_based_tilt": 0.05
+      }
+    },
+    {
+      "id": "AG-v1-0002",
+      "archetype_label": "Tactician",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.65,
+        "time_pressure_quality": 0.12,
+        "opening_comfort": 8,
+        "conversion_ability": 0.60,
+        "blunder_rate_vs_rating": 0.18,
+        "decision_fatigue": 0.07,
+        "sequence_based_tilt": 0.04
+      }
+    },
+    {
+      "id": "AG-v1-0003",
+      "archetype_label": "Positional Player",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.40,
+        "time_pressure_quality": 0.08,
+        "opening_comfort": 30,
+        "conversion_ability": 0.55,
+        "blunder_rate_vs_rating": 0.10,
+        "decision_fatigue": 0.05,
+        "sequence_based_tilt": 0.03
+      }
+    },
+    {
+      "id": "AG-v1-0004",
+      "archetype_label": "Positional Player",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.38,
+        "time_pressure_quality": 0.10,
+        "opening_comfort": 35,
+        "conversion_ability": 0.50,
+        "blunder_rate_vs_rating": 0.12,
+        "decision_fatigue": 0.06,
+        "sequence_based_tilt": 0.04
+      }
+    },
+    {
+      "id": "AG-v1-0005",
+      "archetype_label": "Grinder",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.50,
+        "time_pressure_quality": 0.10,
+        "opening_comfort": 20,
+        "conversion_ability": 0.70,
+        "blunder_rate_vs_rating": 0.12,
+        "decision_fatigue": 0.05,
+        "sequence_based_tilt": 0.04
+      }
+    },
+    {
+      "id": "AG-v1-0006",
+      "archetype_label": "Grinder",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.52,
+        "time_pressure_quality": 0.08,
+        "opening_comfort": 22,
+        "conversion_ability": 0.75,
+        "blunder_rate_vs_rating": 0.14,
+        "decision_fatigue": 0.04,
+        "sequence_based_tilt": 0.03
+      }
+    },
+    {
+      "id": "AG-v1-0007",
+      "archetype_label": "Wildcard",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.55,
+        "time_pressure_quality": 0.15,
+        "opening_comfort": 50,
+        "conversion_ability": 0.35,
+        "blunder_rate_vs_rating": 0.20,
+        "decision_fatigue": 0.15,
+        "sequence_based_tilt": 0.10
+      }
+    },
+    {
+      "id": "AG-v1-0008",
+      "archetype_label": "Wildcard",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.60,
+        "time_pressure_quality": 0.18,
+        "opening_comfort": 55,
+        "conversion_ability": 0.30,
+        "blunder_rate_vs_rating": 0.22,
+        "decision_fatigue": 0.18,
+        "sequence_based_tilt": 0.12
+      }
+    },
+    {
+      "id": "AG-v1-0009",
+      "archetype_label": "Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.55,
+        "time_pressure_quality": 0.10,
+        "opening_comfort": 3,
+        "conversion_ability": 0.65,
+        "blunder_rate_vs_rating": 0.13,
+        "decision_fatigue": 0.06,
+        "sequence_based_tilt": 0.04
+      }
+    },
+    {
+      "id": "AG-v1-0010",
+      "archetype_label": "Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.58,
+        "time_pressure_quality": 0.12,
+        "opening_comfort": 2,
+        "conversion_ability": 0.70,
+        "blunder_rate_vs_rating": 0.15,
+        "decision_fatigue": 0.08,
+        "sequence_based_tilt": 0.05
+      }
+    },
+    {
+      "id": "AG-v1-0011",
+      "archetype_label": "Tilter",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.50,
+        "time_pressure_quality": 0.20,
+        "opening_comfort": 15,
+        "conversion_ability": 0.40,
+        "blunder_rate_vs_rating": 0.25,
+        "decision_fatigue": 0.20,
+        "sequence_based_tilt": 0.20
+      }
+    },
+    {
+      "id": "AG-v1-0012",
+      "archetype_label": "Tilter",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.48,
+        "time_pressure_quality": 0.22,
+        "opening_comfort": 18,
+        "conversion_ability": 0.38,
+        "blunder_rate_vs_rating": 0.28,
+        "decision_fatigue": 0.22,
+        "sequence_based_tilt": 0.25
+      }
+    },
+    {
+      "id": "AG-v1-0013",
+      "archetype_label": "Endgame Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.50,
+        "time_pressure_quality": 0.05,
+        "opening_comfort": 12,
+        "conversion_ability": 0.60,
+        "blunder_rate_vs_rating": 0.08,
+        "decision_fatigue": 0.05,
+        "sequence_based_tilt": 0.03
+      }
+    },
+    {
+      "id": "AG-v1-0014",
+      "archetype_label": "Endgame Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.48,
+        "time_pressure_quality": 0.04,
+        "opening_comfort": 10,
+        "conversion_ability": 0.65,
+        "blunder_rate_vs_rating": 0.07,
+        "decision_fatigue": 0.04,
+        "sequence_based_tilt": 0.02
+      }
+    }
+  ]
+}
