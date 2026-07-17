@@ -83,6 +83,7 @@ packages = [
     "chess_coach.narration",
     "chess_coach.llm_router",
     "chess_coach.kb",
+    "chess_coach.pdf_ocr",
     "chess_coach.profile",
     "chess_coach.debug",
     "chess_coach.jobs",
@@ -104,6 +105,7 @@ packages = [
 "chess_coach.narration"          = "services/chess_coach/narration"
 "chess_coach.llm_router"         = "services/chess_coach/llm_router"
 "chess_coach.kb"                 = "services/chess_coach/kb"
+"chess_coach.pdf_ocr"            = "services/chess_coach/pdf_ocr"
 "chess_coach.profile"            = "services/chess_coach/profile"
 "chess_coach.debug"              = "services/chess_coach/debug"
 "chess_coach.jobs"               = "services/chess_coach/jobs"
