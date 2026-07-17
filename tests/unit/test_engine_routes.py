@@ -23,11 +23,17 @@ def app_with_mock():
         EngineSpec(engine_id="sf", path="/mock/stockfish"),
     ])
 
-    async def mock_acquire(spec, options):
+    async def mock_acquire(spec, slot, options):
+        # BBF-65.5: match the production EnginePool._acquire signature
+        # (services/chess_coach/engine_orch/pool.py:327 -- BBF-36 added slot).
+        # slot is unused by the mock but must be accepted so the bound method
+        # matches the real _acquire call arity.
         await mock.start(options=options)
         return mock
 
-    async def mock_release(engine, engine_id):
+    async def mock_release(engine, engine_id, slot):
+        # BBF-65.5: match EnginePool._release signature
+        # (services/chess_coach/engine_orch/pool.py:396 -- BBF-36 added slot).
         pass
 
     async def _engine_info_async(engine_id):
