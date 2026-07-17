@@ -172,3 +172,51 @@ the 3-minute archetype route integration test was a CI feedback-loop
 liability. Marking it `@pytest.mark.slow` keeps PR CI under 1 minute
 while still exercising the route nightly.
 
+## Static-import scanner
+
+A Python-based scanner at `scripts/dev/check_frontend_imports.py` greps
+`apps/desktop/src/` for usage patterns of frontend-library APIs and
+verifies the corresponding npm package is declared in
+`apps/desktop/package.json`.
+
+**When to run it:**
+- After adding a new dependency to `apps/desktop/src/` (e.g. a new
+  `import { useForm } from "@mantine/form"`).
+- Before submitting a PR that touches frontend code.
+
+**How to run it:**
+```bash
+python3 scripts/dev/check_frontend_imports.py
+```
+
+**Output:**
+- `OK: all N pattern usages match declared packages (M distinct).` -- no
+  warnings, scanner passed.
+- `WARNING: K npm package(s) used in apps/desktop/src but NOT declared
+  in apps/desktop/package.json:` followed by a list of package names.
+
+**Why this exists:**
+Per the user's 2026-07-17 Q3 strategic decision, the static-import
+scanner is dev-loop polish. Runtime CI catches missing dependencies in
+production; this catches them at write-time. The script is currently
+advisory (exits 0 even on warnings). Future BBF flips it to exit 1 once
+the codebase is known clean.
+
+**Pattern table:**
+The script's `PATTERN_TABLE` maps frontend-library API identifiers
+(e.g. `useForm`, `UploadFile`, `useEditor`) to the npm package(s) that
+export them. To extend coverage: add a new entry to `PATTERN_TABLE`
+in `scripts/dev/check_frontend_imports.py` with the pattern and the
+expected npm package(s). Then add a unit test in
+`tests/unit/test_check_frontend_imports.py`.
+
+**Current status (BBF-67.1):**
+- 22 patterns in the table covering Mantine + Tauri + Tiptap APIs.
+- Real codebase scan returns: "OK: all 253 pattern usages match
+  declared packages (12 distinct)."
+
+**Future BBF (BBF-67.2 or later):** wire into `lint:ci` so the scanner
+runs on every PR. This is intentionally deferred until the script has
+been reviewed by the user (so a bug in the script doesn't fail every
+PR).
+
