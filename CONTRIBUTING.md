@@ -133,3 +133,42 @@ verification via `tests/integration/smoke_test.py` is the gate.
 
 Open an issue or contact the maintainers via the channels listed on
 the repo's social page.
+
+## Pytest markers
+
+### `@pytest.mark.slow`
+
+Tests marked `@pytest.mark.slow` are excluded from the default PR CI run
+because they take a long time (typically > 30 seconds, often > 2 minutes).
+They run on nightly CI instead.
+
+**When to use it:**
+- Tests that hit a real database with many games (the profile integration
+  tests run 6 upstream metric computations against the real DB per route
+  invocation; this can take 2-3 minutes per test).
+- Tests that exercise real engine calls with multipv > 1 or depth > 20.
+- Tests that load large fixtures or run end-to-end pipelines.
+
+**How to apply:**
+```python
+import pytest
+
+# At module level (all tests in the file inherit):
+pytestmark = pytest.mark.slow
+
+# Or per-test:
+@pytest.mark.slow
+def test_expensive_thing():
+    ...
+```
+
+**Local development:** to run slow tests locally:
+```bash
+pytest tests/integration/ -m slow
+```
+
+**Why this matters:** Per the user's Q3 strategic decision (2026-07-17),
+the 3-minute archetype route integration test was a CI feedback-loop
+liability. Marking it `@pytest.mark.slow` keeps PR CI under 1 minute
+while still exercising the route nightly.
+

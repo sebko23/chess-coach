@@ -154,6 +154,7 @@ markers = [
     "e2e: GUI<->Backend roundtrip tests.",
     "perf: performance budgets.",
     "golden: golden-output regression tests.",
+    "slow: tests excluded from PR CI (~2-3 min each); run on nightly.",
 ]
 
 [tool.coverage.run]

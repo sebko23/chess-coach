@@ -441,12 +441,16 @@ the cluster falls back to "Unknown" without surfacing a label.
 score vector (one entry per `STANDARD_ARCHETYPES` archetype, plus
 "Unknown"). The `/explain` endpoint renders the top-3 nearest.
 
-**Note.** The current implementation is heuristic shape-matching
-against canonical archetype signatures (BBF-59). The methodology doc
-describes the future kNN implementation (BBF-66+): replace the
-heuristic with kNN against an archetype-labelled reference corpus
-at `tests/gold/archetypes/v*/corpus.json` (not yet built; the v2 chess
-corpus is chess-position data, not archetype labels).
+**Note.** The current implementation is kNN classification (k=3,
+z-scored Euclidean) against the archetype-labelled reference corpus at
+`tests/gold/archetypes/v*/corpus.json` (BBF-66). Heuristic shape-matching
+(BBF-59) is RETIRED -- not kept as a fallback -- per the Q1 strategic
+decision. Single source of truth.
+
+The v1 corpus is a **SYNTHETIC PLACEHOLDER** (see the
+`_metadata.WARNING` block in the corpus file). Confidence values from
+kNN against this corpus are NOT validated against real chess data.
+A follow-on BBF replaces placeholders with real hand-labelled entries.
 
 Implementation:
 
@@ -460,5 +464,21 @@ Implementation:
   - `tests/unit/test_profile_tilt_archetypes.py` (22 tests: 6 heuristic
     shape-match + 4 BBF-65.1 d/cap tests + 2 BBF-65.2 gate tests + 10 misc).
   - `tests/integration/test_profile_archetypes_integration.py`
-    (2 route-level integration tests, ~3 min real-DB latency).
+    (2 route-level integration tests, marked `@pytest.mark.slow`,
+    ~3 min real-DB latency).
+- `tests/gold/archetypes/v1/corpus.json` (SYNTHETIC PLACEHOLDER corpus,
+    14 entries / 2 per `STANDARD_ARCHETYPES` archetype).
+- `libs/chess_coach/datasets/archetype_gold.py` (corpus loader +
+    validator mirroring `l2_gold.py` shape).
+- `tests/unit/test_archetype_knn.py` (6 kNN unit tests).
+- `tests/unit/test_archetype_gold_corpus.py` (5 loader unit tests).
+
+**Distance metric (kNN):** z-scored Euclidean on the 7 metric
+dimensions (`tactical_vs_positional_bias`, `time_pressure_quality`,
+`opening_comfort`, `conversion_ability`, `blunder_rate_vs_rating`,
+`decision_fatigue`, `sequence_based_tilt`). Per-dimension z-scores are
+computed from the corpus mean/std. Distance is restricted to dimensions
+present in BOTH the input and each reference vector (so missing metrics
+don't penalize distance). k=3 nearest neighbours vote on the label;
+mean distance > 2.0 z-score units returns "Unknown".
 

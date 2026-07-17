@@ -17,6 +17,11 @@ from unittest.mock import patch
 import httpx
 import pytest
 
+# BBF-66: mark all tests in this file as slow (~3 min each due to real DB +
+# 6 upstream metric computations per route invocation). Excluded from PR CI;
+# runs nightly. See CONTRIBUTING.md for marker semantics.
+pytestmark = pytest.mark.slow
+
 from chess_coach.gateway.app import create_app
 from chess_coach.profile import ArchetypeAssignment
 from chess_coach.profile.effect_size import EffectSize

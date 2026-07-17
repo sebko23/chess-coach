@@ -2,6 +2,60 @@
 
 
 
+
+## [unreleased] - BBF-66 (2026-07-17)
+
+### Changed
+- `services/chess_coach/profile/archetypes.py`: `cluster_archetypes()`
+  replaced with kNN classification (k=3, z-scored Euclidean) against the
+  v1 archetype gold corpus. The BBF-59 heuristic shape-matching is
+  RETIRED entirely (not kept as a fallback) per the Q1 strategic decision
+  (single source of truth).
+- `cluster_archetypes(metrics: dict[str, float]) -> ArchetypeAssignment`
+  signature; the `l2_gold_version` parameter is removed.
+- `CLUSTER_MIN_SAMPLE_SIZE = 1` lifted to a module-level constant in
+  `archetypes.py`; the gate_metric call reads this constant (BBF-66 Q4).
+
+### Added
+- `tests/gold/archetypes/v1/corpus.json` (NEW artefact; 14 entries
+  / 2 per `STANDARD_ARCHETYPES` archetype). SYNTHETIC PLACEHOLDER
+  with an explicit `_metadata.WARNING` block per Rule #4.
+- `libs/chess_coach/datasets/archetype_gold.py` (NEW; Pydantic-flavoured
+  loader mirroring `l2_gold.py` shape).
+- `tests/unit/test_archetype_gold_corpus.py` (5 unit tests).
+- `tests/unit/test_archetype_knn.py` (6 kNN unit tests).
+- `@pytest.mark.slow` marker on integration tests
+  (`test_profile_archetypes_integration.py`) per Q3; documented in
+  `CONTRIBUTING.md`.
+- `slow` marker registered in `pyproject.toml [tool.pytest.ini_options]`.
+
+### Changed (tests)
+- 6 heuristic-shape tests in `tests/unit/test_profile_tilt_archetypes.py`
+  CONVERTED to behavioral assertions (test names preserved; assertion
+  bodies changed). The kNN against the SYNTHETIC corpus may pick
+  different labels for inputs the heuristic hardcoded; the contract is
+  that the label is one of `STANDARD_ARCHETYPES` with valid confidence.
+
+### Documentation
+- `docs/15_methodology/profile-metrics-v1.md` updated: the BBF-65.4
+  archetype §section now describes the kNN approach (was "this is
+  heuristic, not kNN"). Added distance-metric detail (z-scored Euclidean,
+  k=3, 2.0 z-score Unknown threshold).
+
+### Future work (deferred)
+- **BBF-66.x or BBF-68**: replace SYNTHETIC PLACEHOLDER entries in
+  `tests/gold/archetypes/v1/corpus.json` with real hand-labelled
+  player-metric vectors. Domain expert (the user) curates ~30 entries
+  with one per archetype.
+
+### Test count
+- 5 new tests in `test_archetype_gold_corpus.py` (all green).
+- 6 new tests in `test_archetype_knn.py` (all green).
+- 22 tests in `test_profile_tilt_archetypes.py` (6 converted to behavioral;
+  was 20 passed + 2 failed pre-BBF-66.5; now 22 passed + 0 failed).
+- 2 integration tests marked `@pytest.mark.slow`.
+- 252 passed in total unit sweep (was 241 pre-BBF-66; +5 +6 = +11 net).
+
 ## [unreleased] - BBF-65 (2026-07-16)
 
 ### Changed
