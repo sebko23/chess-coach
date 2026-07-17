@@ -11,7 +11,6 @@ chessvision.ai API: POST http://app.chessvision.ai/predict
 """
 from __future__ import annotations
 
-import base64
 import io
 import json
 import logging
@@ -19,20 +18,18 @@ import uuid
 from datetime import datetime, timezone
 
 import aiosqlite
-import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pdf2image import convert_from_bytes
 from pydantic import BaseModel
 
+from ...pdf_ocr import predict_fen
 from ..auth import require_bearer
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/import", tags=["import"])
 
-CHESSVISION_URL = "http://app.chessvision.ai/predict"
 DPI = 200
 MAX_PAGES = 50
-TIMEOUT = 30
 
 
 def _db_path(request: Request) -> str:
@@ -57,27 +54,16 @@ class PdfImportResponse(BaseModel):
 
 
 async def _predict_fen(image_png_bytes: bytes) -> tuple[str | None, float, str | None]:
-    """Submit PNG to chessvision.ai, return (fen, confidence, error)."""
-    b64 = base64.b64encode(image_png_bytes).decode()
-    payload = {
-        "board_orientation": "predict",
-        "cropped": False,
-        "current_player": "white",
-        "image": f"data:image/png;base64,{b64}",
-        "predict_turn": False,
-    }
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-            resp = await client.post(CHESSVISION_URL, json=payload)
-        if resp.status_code != 200:
-            return None, 0.0, f"HTTP {resp.status_code}"
-        data = resp.json()
-        if not data.get("success"):
-            return None, 0.0, "chessvision returned success=false"
-        fen = data.get("result", "").replace("_", " ").strip()
-        return (fen or None), 0.9, None
-    except Exception as exc:
-        return None, 0.0, str(exc)
+    """Thin delegator to the OCR backend dispatcher.
+
+    The actual backend is selected at call time by the
+    ``CHESS_COACH_OCR_BACKEND`` environment variable, see
+    ``chess_coach.pdf_ocr.adapter``. Backends MUST return ``OcrResult``
+    tuples; this function exists only so ``import_pdf`` keeps its existing
+    call shape and existing route-integration tests stay green.
+    """
+    result = await predict_fen(image_png_bytes)
+    return (result.fen, result.confidence, result.error)
 
 
 def _validate_fen(fen: str | None) -> bool:
