@@ -15,7 +15,8 @@ import io
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Annotated
 
 import aiosqlite
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
@@ -83,7 +84,7 @@ def _validate_fen(fen: str | None) -> bool:
     dependencies=[Depends(require_bearer)],
 )
 async def import_pdf(
-    file: UploadFile = File(...),
+    file: Annotated[UploadFile, File(...)],
     max_pages: int = Query(MAX_PAGES, ge=1, le=200),
     db_path: str = Depends(_db_path),
 ) -> PdfImportResponse:
@@ -100,7 +101,7 @@ async def import_pdf(
             pdf_bytes, dpi=DPI, first_page=1, last_page=max_pages
         )
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"PDF conversion failed: {exc}")
+        raise HTTPException(status_code=422, detail=f"PDF conversion failed: {exc}") from exc
 
     logger.info("pdf_import %s: %d pages from %s", import_id, len(pages), filename)
 
@@ -126,7 +127,7 @@ async def import_pdf(
             valid_diagrams.append((page_num, fen))
             logger.info("page %d: valid FEN %s", page_num, fen[:50])
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
