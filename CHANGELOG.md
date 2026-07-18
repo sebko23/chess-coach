@@ -3,6 +3,78 @@
 
 
 
+## [unreleased] - BBF-69.1 (2026-07-18)
+
+### Added
+- `libs/chess_coach/datasets/narrative_gold.py` (NEW, ~345 lines):
+  narrative gold corpus loader for the BBF-69.1/69.2/69.3 chain.
+  Mirrors the L-2 gold (`libs/chess_coach/datasets/l2_gold.py`) and
+  archetype gold (`libs/chess_coach/datasets/archetype_gold.py`)
+  shape so future BBFs that consume narrative gold can use the
+  same loader idioms.
+  - `NarrativeGoldEntry` dataclass: one FEN + a 50-200 word
+    coaching paragraph + a provenance `source` dict + optional
+    `tags` list. The loader's `narrative_explanation` minimum-length
+    floor (50 chars) protects against accidental stubs sneaking
+    into a future BBF-69.2 hand-curated corpus.
+  - `load_narrative_gold(version, base_path=None)` loader.
+  - `load_narrative_gold_with_metadata(version, base_path=None)`
+    loader that returns the full dict (preserves `_metadata` and
+    `schema_version`). Useful for tooling that wants to surface
+    corpus provenance (e.g. the SYNTHETIC PLACEHOLDER warning).
+  - `validate_narrative_gold(corpus)` cross-entry validator
+    (checks unique IDs + unique FENs).
+  - `list_versions(base_path=None)` version enumerator.
+  - Env-var-free; corpus path resolved relative to the module
+    location (`_default_base_path`), with `base_path` override
+    for tests.
+- `tests/gold/narrative/v1/corpus.json` (NEW): SYNTHETIC PLACEHOLDER
+  v1 corpus with 5 entries (King's Pawn, Italian Game, Four Knights,
+  Najdorf Sicilian, Ruy Lopez Four Knights). Each entry carries a
+  `_metadata.WARNING` field flagging the narrative_explanation as
+  STUB. Real hand-curated entries with provenance citations from
+  chess books (Logical Chess Move by Move, Reassessing Your Chess,
+  etc.) replace placeholders in BBF-69.2 (domain-expert work, not
+  the agent's).
+- `tests/unit/test_narrative_gold.py` (NEW, 26 tests): full unit
+  coverage of the public API including in-memory validation,
+  on-disk loading, version validation, malformed-corpus error
+  paths, and shipped-corpus regression checks.
+
+### Rationale
+- The narration pipeline can produce *grounded* coaching prose,
+  but grounding requires a corpus of well-explained positions
+  (per the BBF-69 plan in
+  docs/16_audit/BBF-68.1-candidate-survey-2026-07-17.md §"Narrative
+  grounding corpus"). The L-2 corpus (`tests/gold/L2/`) is
+  chess-position data for engine eval validation -- it does not
+  have the coaching prose that grounds narration output.
+- This BBF is the LOADER ONLY. BBF-69.2 (hand-curate 20-30
+  narrative entries with provenance citations) and BBF-69.3
+  (wire the loader into `services/chess_coach/narration/pipeline.py`
+  so each generation cites the closest narrative corpus entry as
+  the grounding source) are follow-up BBFs.
+
+### Verification
+- Local: ruff clean on the 2 changed files.
+- Local pytest: 26 passed (narrative) + 12 passed (l2) + 16 passed
+  (archetype) = 54 passed on the focused + regression scope.
+- Mypy: zero errors in the loader; 13 pre-existing
+  `no-untyped-def` errors for pytest fixture parameters in the
+  test file (project-wide pattern: `tests/unit/test_l2_gold_dataset.py`
+  has 25, `tests/unit/test_archetype_gold_corpus.py` has 15; not
+  CI-gated, see `.github/workflows/smoke.yml`).
+- The shipped v1 corpus loads cleanly and validates without errors
+  (`TestShippedCorpus`).
+
+### Cross-references
+- BBF-69 plan: `docs/16_audit/BBF-68.1-candidate-survey-2026-07-17.md`
+  §"Narrative grounding corpus" (Gap 2)
+- L-2 gold shape: `libs/chess_coach/datasets/l2_gold.py`
+- Archetype gold shape: `libs/chess_coach/datasets/archetype_gold.py`
+
+---
+
 ## [unreleased] - BBF-68.2 (2026-07-18)
 
 ### Added

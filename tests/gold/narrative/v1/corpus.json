@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "_metadata": {
+    "WARNING": "SYNTHETIC PLACEHOLDER. This corpus is a placeholder for the narrative_gold loader shipped in BBF-69.1. Real, hand-curated entries with provenance citations from chess books (Logical Chess Move by Move, Reassessing Your Chess, etc.) replace these placeholders in BBF-69.2 (domain-expert work, not the agent's). The placeholder FENs below are real starting positions; the narrative_explanation fields are STUB text that exists only to satisfy the loader's >=50-char validation floor -- they should be REPLACED before relying on this corpus for narration grounding.",
+    "generated_for": "BBF-69.1 narrative_gold loader scaffold",
+    "expected_real_corpus_size": "20-30 entries",
+    "id_pattern": "NG-v1-NNNN (e.g. NG-v1-0001)",
+    "source_types": ["book", "gm_game", "online_article"],
+    "spec_reference": "docs/16_audit/BBF-68.1-candidate-survey-2026-07-17.md (Gap 2: Narrative grounding corpus)"
+  },
+  "entries": [
+    {
+      "id": "NG-v1-0001",
+      "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+      "narrative_explanation": "STUB: This placeholder narrative must be replaced with a real explanation of the King's Pawn Opening (1.e4) and its strategic aims -- central pawn control, rapid piece development, and kingside castling. BBF-69.2 should source this from Chernev's 'Logical Chess: Move by Move' or similar.",
+      "source": {
+        "type": "book",
+        "title": "PLACEHOLDER BOOK (replace via BBF-69.2)",
+        "author": "n/a",
+        "chapter": "n/a",
+        "page": "n/a"
+      },
+      "tags": ["opening", "kings_pawn"]
+    },
+    {
+      "id": "NG-v1-0002",
+      "fen": "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 4 3",
+      "narrative_explanation": "STUB: This placeholder narrative must be replaced with a real explanation of the Italian Game setup after 3.Nf3 -- White's classical development with Bc4, Nf3, and a pending d3/d4 central break. BBF-69.2 should explain why this is the model opening for the 'logical first move' tradition.",
+      "source": {
+        "type": "book",
+        "title": "PLACEHOLDER BOOK (replace via BBF-69.2)",
+        "author": "n/a",
+        "chapter": "n/a",
+        "page": "n/a"
+      },
+      "tags": ["opening", "italian_game"]
+    },
+    {
+      "id": "NG-v1-0003",
+      "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+      "narrative_explanation": "STUB: This placeholder narrative must be replaced with a real explanation of the Four Knights position with both sides fully developed. The thematic tension is the d4 break for White vs the d5 break for Black; whoever plays their central break first typically gains the initiative.",
+      "source": {
+        "type": "book",
+        "title": "PLACEHOLDER BOOK (replace via BBF-69.2)",
+        "author": "n/a",
+        "chapter": "n/a",
+        "page": "n/a"
+      },
+      "tags": ["opening", "four_knights"]
+    },
+    {
+      "id": "NG-v1-0004",
+      "fen": "rnbqkb1r/pp2pppp/3p1n2/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 4",
+      "narrative_explanation": "STUB: This placeholder narrative must be replaced with a real explanation of the Sicilian Najdorf setup after 4.Nxd4 -- Black's sharpest reply to 1.e4. The position is rich with tactical and strategic tension: the open c-file, White's two bishops, Black's central pawn majority.",
+      "source": {
+        "type": "book",
+        "title": "PLACEHOLDER BOOK (replace via BBF-69.2)",
+        "author": "n/a",
+        "chapter": "n/a",
+        "page": "n/a"
+      },
+      "tags": ["opening", "sicilian", "najdorf"]
+    },
+    {
+      "id": "NG-v1-0005",
+      "fen": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 5",
+      "narrative_explanation": "STUB: This placeholder narrative must be replaced with a real explanation of the Ruy Lopez Four Knights after 3...Bc5 (the classical / Italian hybrid). The bishop on c5 invites a future Nd5 sacrifice; this tension is the heart of the position.",
+      "source": {
+        "type": "gm_game",
+        "title": "PLACEHOLDER GM GAME (replace via BBF-69.2)",
+        "author": "n/a",
+        "year": "n/a",
+        "event": "n/a"
+      },
+      "tags": ["opening", "ruy_lopez"]
+    }
+  ]
+}
