@@ -18,6 +18,13 @@ Backend interface contract:
     ``OcrResult`` is a tuple ``(fen | None, confidence: float, error: str | None)``.
     Backends MUST NOT raise; they MUST return ``error`` instead so the route
     can produce structured ``DiagramResult`` rows.
+
+Network-bound backends (currently just ``chessvision``) are additionally
+wrapped by :mod:`chess_coach.pdf_ocr.protection` -- a per-process token
+bucket for rate limiting and a 3-state circuit breaker that opens after
+N consecutive failures and half-opens after a cooldown. See that module
+for env-var configuration. The protections NEVER raise; they produce
+structured ``OcrResult`` errors prefixed ``rate_limit:`` or ``circuit_open:``.
 """
 from __future__ import annotations
 
@@ -28,6 +35,8 @@ from collections.abc import Awaitable, Callable
 from typing import NamedTuple
 
 import httpx
+
+from .protection import get_protection_registry
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +128,34 @@ async def _predict_chessvision(image_png_bytes: bytes) -> OcrResult:
         return OcrResult(None, 0.0, str(exc))
 
 
+async def _predict_chessvision_protected(image_png_bytes: bytes) -> OcrResult:
+    """Wrap :func:`_predict_chessvision` with rate limit + circuit breaker.
+
+    Order of checks (rate limit first, breaker second) matches the
+    "shed load before testing upstream" pattern: if the bucket is empty,
+    there's no point probing the breaker. The protections NEVER raise;
+    a denied request becomes an ``OcrResult`` with a structured error
+    string that the route surface as ``DiagramResult.issue``.
+
+    Error-string conventions (the route may pattern-match these):
+        ``rate_limit:<backend>:bucket_empty``
+        ``circuit_open:<backend>:cooldown``
+    """
+    registry = get_protection_registry()
+    if not registry.bucket_try_acquire("chessvision"):
+        logger.info("chessvision: rate-limited (bucket empty)")
+        return OcrResult(None, 0.0, "rate_limit:chessvision:bucket_empty")
+    if not registry.breaker_should_allow("chessvision"):
+        logger.info("chessvision: circuit open, short-circuit")
+        return OcrResult(None, 0.0, "circuit_open:chessvision:cooldown")
+    result = await _predict_chessvision(image_png_bytes)
+    if result.error is None:
+        registry.breaker_record_success("chessvision")
+    else:
+        registry.breaker_record_failure("chessvision")
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Local OCR backend (BBF-68.1 follow-up; raises a structured 501 today).
 #
@@ -148,6 +185,6 @@ async def _predict_local(image_png_bytes: bytes) -> OcrResult:
 
 
 _REGISTRY: dict[str, Predicter] = {
-    "chessvision": _predict_chessvision,
+    "chessvision": _predict_chessvision_protected,
     "local": _predict_local,
 }
