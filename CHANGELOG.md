@@ -3,6 +3,267 @@
 
 
 
+## [unreleased] - BBF-68.2 (2026-07-18)
+
+### Added
+- `services/chess_coach/pdf_ocr/protection.py` (NEW, ~225 lines):
+  per-process rate-limit + circuit-breaker primitives for OCR backends.
+  - `TokenBucket`: classic refill-bucket; non-blocking `try_acquire()`;
+    starts full, drains on call, refills at configured rate.
+  - `CircuitBreaker`: 3-state (CLOSED -> OPEN -> HALF_OPEN -> CLOSED).
+    Trips OPEN after N consecutive failures, holds for `cooldown_seconds`,
+    then admits a single HALF_OPEN probe before resuming normal traffic.
+  - `ProtectionRegistry`: per-backend (bucket, breaker) singleton
+    instances; module-level, in-process, resets on container restart.
+  - Env-var configuration per backend (all optional, all
+    `CHESS_COACH_OCR_<BACKEND>_*`). Defaults: 1 RPS / 5 burst /
+    5-failure threshold / 120s cooldown for chessvision.
+  - Garbage env values fall back to defaults with a WARNING log so a
+    typo in an env var does NOT brick OCR.
+- `tests/unit/test_ocr_protection.py` (NEW): 17 unit tests for the
+  protection primitives (TokenBucket behavior, CircuitBreaker state
+  machine incl. HALF_OPEN recovery, ProtectionRegistry per-backend
+  isolation + env-var wiring + invalid-env fallback).
+
+### Changed
+- `services/chess_coach/pdf_ocr/adapter.py`: the chessvision.ai backend
+  is now wrapped by a new `_predict_chessvision_protected` that gates
+  calls through the bucket and breaker. The underlying httpx POST body
+  is unchanged. `_REGISTRY["chessvision"]` points to the protected
+  wrapper; `_predict_local` is unchanged (no network, no protection).
+  Module docstring updated to document the protection contract and the
+  `rate_limit:` / `circuit_open:` error-string conventions.
+- `tests/integration/test_ocr_backend.py`: extended with a new
+  `TestOcrProtection` class (3 tests) exercising the end-to-end path
+  through the dispatcher: rate-limit returns structured error without
+  invoking the network; circuit breaker opens after N consecutive
+  failures; breaker recovers on HALF_OPEN probe success after cooldown.
+
+### Rationale
+- The chessvision.ai default backend is a public endpoint with no API
+  key, no SLA, and a documented history of throttling (see BBF-68.1
+  spike report). Production traffic to `/v1/import/pdf` could easily
+  exceed what chessvision serves, making the route a SPOF. The
+  wrapper produces structured `OcrResult` errors prefixed `rate_limit:`
+  or `circuit_open:` so the route surfaces them as per-page
+  `DiagramResult.issue` without HTTP 5xx-ing the entire PDF.
+- Per-backend isolation: future BBF-68.1 (local model) can have its
+  own RPS / burst / breaker config without affecting chessvision.
+
+### Env vars added
+- `CHESS_COACH_OCR_CHESSVISION_RPS` (default `1.0`)
+- `CHESS_COACH_OCR_CHESSVISION_BURST` (default `5`)
+- `CHESS_COACH_OCR_CHESSVISION_CB_THRESHOLD` (default `5`)
+- `CHESS_COACH_OCR_CHESSVISION_CB_COOLDOWN` (default `120.0`)
+
+### Cross-references
+- Spike report motivating the pivot:
+  `docs/16_audit/BBF-68.1-spike-report-2026-07-18.md`.
+- Decision packet: `C:\chess-i3\bbf68-1-decision-packet-2026-07-17.md`
+  (fallback d, explicitly chosen by the user).
+- BBF-68.0 (the OCR seam this wraps): `47feaea`.
+
+### Verification
+- Local: ruff + mypy clean on the 4 changed files (strict mode).
+- Local pytest: 29 passed (17 new unit + 7 BBF-68.2 integration +
+  5 regression on `tests/integration/test_pdf_import.py` +
+  `tests/unit/test_gateway_boots.py`).
+- CI run `29646097746` on the PR-2 merge SHA (`e3bb918`):
+  - gateway boot (clean install): `81 passed in 8.98s`
+  - qdrant sidecar smoke: `qdrant is healthy after 1s`
+  - lazy eval-graph smoke test: `[4/4] OK smoke_test passed: 7 positions, all with score_cp`
+
+---
+
+## [unreleased] - BBF-68.1 (2026-07-18, spike-only — pivoted)
+
+### Status
+- **UNMEASURED, not shipped.** Per project Rule 4, the spike's acceptance
+  bar (>=80% FEN accuracy, <=5 s warm latency, <=2 GB disk) was not
+  measured. No result was fabricated.
+- Per the user-signed-off decision packet fallback (d), BBF-68.1
+  measurement was deprioritized and BBF-68.2 (chessvision.ai rate
+  limiting + circuit breaker) shipped instead.
+
+### Infrastructure that did get installed (verified)
+- `torch==2.12.0+cpu`, `torchvision==0.27.0+cpu` (corrected pin from
+  the prior handoff's inverted `0.21.0` claim) — in
+  `/tmp/bbf68-tsoj-venv/` on the agentZero container.
+- 27 runtime deps from Tsinghua + PyTorch CPU index.
+- Full tsoj source at `/tmp/bbf68-tsoj-src/` (301 MB git history).
+- Full 824 MB chess model bundle extracted to
+  `/tmp/bbf68-tsoj-src/models/chess/` (5 `.pth` files).
+- 2 of 5 torchvision backbones downloaded into
+  `/root/.cache/torch/hub/checkpoints/` (`regnet_x_800mf` 29 MB,
+  `lraspp_mobilenet_v3_large` 13 MB); 3 remaining (`convnext_tiny`,
+  `mobilenet_v3_large`, and one more) failed to complete due to
+  CDN throttling.
+
+### Two real blockers that prevented measurement
+1. **Off-by-one in unzip extraction path.** The spike install script
+   ran `unzip -d /tmp/bbf68-tsoj-src/models/`, but `models.zip`
+   already contains a top-level `models/` directory, producing
+   `models/models/chess/` (one level too deep). The tsoj
+   `_find_latest_model()` looks one level above and raised
+   `FileNotFoundError: No model file found
+   'models/chess/best_model_existence_*.pth'` on every page of the
+   first spike run.
+2. **CDN throttle on `convnext_tiny` backbone.** The same
+   `release-assets.githubusercontent.com` throttle that affected the
+   824 MB model bundle also throttled
+   `download.pytorch.org/models/convnext_tiny-...`. The download
+   stalled indefinitely at 68/110 MB after 8 minutes. Torch hub's
+   default retry policy silently gives up.
+
+### Corrections to the prior handoff
+- The handoff's pip line `torchvision==0.21.0` is **WRONG**. The
+  correct pin for `torch==2.12.0` on the PyTorch CPU index is
+  `torchvision==0.27.0` (paired). Verified via
+  `pip install --dry-run` against the index.
+- The handoff's 2 GB disk budget is **WRONG**. Measured install
+  footprint alone is 3.0 GB (venv 1.5 GB + src 1.2 GB + extracted
+  models 891 MB + partial torch hub cache ~120 MB), exceeding the
+  budget before any spike inference runs.
+- The handoff's "5-10 minute spike if mirrors cooperate" estimate
+  is **WRONG**. Real-world elapsed time for the infrastructure
+  stages was ~80 minutes just for the model bundle (Stages 1-3
+  took ~28 minutes total, Stage 4 alone took ~80 minutes).
+- A future BBF-68.1 integration MUST address all three: corrected
+  torchvision pin, higher disk budget (or lazy-download on first use
+  with a configurable model dir), and either pre-baked torchvision
+  backbones or a host with unthrottled egress to
+  `download.pytorch.org`.
+
+### Cross-references
+- Full report: `docs/16_audit/BBF-68.1-spike-report-2026-07-18.md`
+  (committed on `main` at `442978c`).
+- Skill capturing the corrected install pipeline:
+  `chess-coach-bbf68-spike-runner` (Hermes desktop skills system).
+
+---
+
+## [unreleased] - BBF-68.0.1 (2026-07-17)
+
+### Changed
+- `services/chess_coach/gateway/routes/pdf_ingest.py`:
+  `PdfImportResponse` field renamed `results: list[DiagramResult]`
+  -> `diagrams: list[DiagramResult]`; matching return-kwarg
+  `results=results` -> `diagrams=results`.
+- `tests/integration/test_pdf_import.py`: assertion
+  `assert "results" in data` -> `assert "diagrams" in data`.
+
+### Rationale
+- The desktop `PdfIngestPage.tsx` (326 LOC, fully wired) already
+  reads from `result.diagrams` — the prior BBF-68.0 backend was
+  returning `results`, so the frontend panel silently rendered an
+  empty list. This BBF closes that GUI/backend drift BEFORE the
+  BBF-68.1 spike so the end-to-end flow would work once the spike
+  landed.
+
+### Verification
+- Local: ruff + mypy unchanged on the affected files (3+8
+  pre-existing ruff errors, NOT introduced by this BBF).
+- Local pytest: 8 passed on focused
+  `tests/integration/test_pdf_import.py +
+  tests/integration/test_ocr_backend.py`.
+- CI run `29611366000` on the push (`d5cf262`): 3/3 jobs green.
+
+---
+
+## [unreleased] - BBF-68.0 (2026-07-17)
+
+### Added
+- `services/chess_coach/pdf_ocr/` package (NEW): env-only OCR backend
+  dispatcher. Default backend is `chessvision` (HTTP); `local` is a
+  structured-error placeholder pending BBF-68.1.
+  - `OcrResult` NamedTuple: `(fen | None, confidence, error | None)`.
+  - `UnknownOcrBackend(ValueError)`: raised on misconfigured backend
+    name; the route propagates as 500 (server-side misconfiguration,
+    not a per-page failure).
+  - `predict_fen()`: reads `CHESS_COACH_OCR_BACKEND` on every call;
+    dispatches to the registered predicter.
+  - `_predict_chessvision()`: verbatim copy of the prior
+    `pdf_ingest._predict_fen` body so existing route-level mocks keep
+    working.
+  - `_predict_local()`: returns structured error pointing at BBF-68.1
+    follow-up and the candidate-survey doc.
+- `tests/integration/test_ocr_backend.py` (NEW): 4 tests covering
+  default-is-chessvision, `local` returns a structured error pointing
+  at BBF-68.1, `nonexistent` raises `UnknownOcrBackend`, and the
+  chessvision path still goes through `httpx.AsyncClient.post`
+  (mocked).
+- `docs/16_audit/BBF-68.1-candidate-survey-2026-07-17.md` (NEW,
+  190 lines): candidate model survey. Audits the prior handoff's
+  claim that `bersisyan/chess-diagram-recognizer` exists on
+  Hugging Face (it does NOT — 404). Concludes the strongest live
+  candidate is `tsoj/Chess_diagram_to_FEN` (GitHub, MIT).
+
+### Changed
+- `services/chess_coach/gateway/routes/pdf_ingest.py`: `_predict_fen`
+  reduced to a 3-line delegator to `chess_coach.pdf_ocr.predict_fen`.
+  Removed `httpx`, `base64`, the original `CHESSVISION_URL`, and the
+  original `TIMEOUT` constant (all moved to `pdf_ocr.adapter`).
+- `pyproject.toml`: added `chess_coach.pdf_ocr` to both
+  `[tool.setuptools].packages` and `[tool.setuptools.package-dir`.
+  No new runtime dep.
+
+### Rationale
+- The chessvision.ai public endpoint has no API key, no rate
+  limiting, and no SLA. A swap to a local model is multi-BBF and
+  involves a model-bundle download + torch stack. This BBF ships
+  the minimum viable seam: env-var dispatcher + structured-error
+  placeholder, so future BBFs only need to register a new backend.
+
+### Verification
+- Local: ruff + mypy clean on the changed files.
+- Local pytest: 9 passed on focused
+  `tests/unit/test_gateway_boots.py +
+  tests/integration/test_ocr_backend.py +
+  tests/integration/test_pdf_import.py`.
+- CI run `29609499303` on the squash-merge SHA (`47feaea`):
+  3/3 jobs green.
+
+### Future work (deferred)
+- **BBF-68.1**: implement `_predict_local` with a real local OCR
+  model. Spike must complete first; see
+  `docs/16_audit/BBF-68.1-candidate-survey-2026-07-17.md` and the
+  BBF-68.1 spike report.
+
+---
+
+## [unreleased] - BBF-67 (2026-07-17)
+
+### Added
+- `scripts/static_import_scanner.py` (NEW; BBF-67.1): static-import
+  scanner for `apps/desktop/src/`. Walks the desktop source tree,
+  parses `import` statements, cross-references against the backend
+  route registry (`gateway/routes/`), and emits an advisory report
+  of dead imports and missing references. Exits 0 always; output
+  is for human review (no CI gate yet).
+- `CONTRIBUTING.md` §"Static-import scanner" (BBF-67.2): section
+  explaining the scanner's purpose, usage, output formats, and how
+  to extend the pattern table. Notes that wiring into `lint:ci`
+  is intentionally deferred to a future BBF until the script is
+  reviewed.
+
+### Rationale
+- The prior BBF-26 closed a frontend Import PGN button that 404'd
+  against a non-existent route (`/v1/import/pgn-database` instead of
+  `/v1/import/pgn`). The class of bug ("GUI wired to a backend
+  symbol that doesn't exist") was detected by code review, not by
+  any automated check. The scanner is the long-term defense.
+
+### Verification
+- Local: scanner runs against the BBF-67.1 commit and reports zero
+  mismatches.
+- CI: no new workflow; `lint:ci` wiring deferred per BBF-67.2.
+
+### Future work (deferred)
+- Wire the scanner into `lint:ci` as an advisory step (non-blocking)
+  after a few weeks of human review of its output.
+
+---
+
 ## [unreleased] - BBF-66 (2026-07-17)
 
 ### Changed
