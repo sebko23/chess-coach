@@ -8,6 +8,9 @@ chessvision.ai API: POST http://app.chessvision.ai/predict
 - No API key required (public endpoint)
 - Accepts base64-encoded PNG images
 - Returns FEN string with underscores instead of spaces
+- Returns exactly one FEN per page (success: true) or no FEN (success: false).
+  Multi-board pages are NOT supported by the public endpoint. See BBF-68.3
+  for the probe that established this and the doc-only contract change.
 """
 from __future__ import annotations
 
@@ -21,7 +24,7 @@ from typing import Annotated
 import aiosqlite
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pdf2image import convert_from_bytes
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ...pdf_ocr import predict_fen
 from ..auth import require_bearer
@@ -39,6 +42,17 @@ def _db_path(request: Request) -> str:
 
 class DiagramResult(BaseModel):
     page: int
+    diagram_index: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "0-based index of this diagram within the page. The public "
+            "chessvision.ai /predict endpoint returns at most one FEN per "
+            "page, so the route always emits 0 for valid responses. A "
+            "future multi-board backend (or a local page-segmentation "
+            "model) would emit 0, 1, 2, ... in reading order."
+        ),
+    )
     fen: str | None
     valid: bool
     confidence: float

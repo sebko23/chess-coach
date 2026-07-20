@@ -56,6 +56,9 @@ data/qdrant/*.log
 !data/**/.gitkeep
 !data/**/README.md
 
+# Hermes desktop session attachments
+.hermes/
+
 # Logs
 *.log
 logs/
