@@ -3,6 +3,26 @@
 
 
 
+## [unreleased] - BBF-74 Qdrant smoke fixture (2026-07-20)
+
+### Fixed
+- `tests/integration/conftest.py` now creates a deterministic five-position
+  SQLite fixture and points `GatewaySettings.sqlite_path` at it.
+- `tests/integration/test_kb_qdrant_live.py` fails hard on every KB index
+  error instead of converting broken database/embedder paths into a skip.
+- `.github/workflows/smoke.yml` points the in-process integration test at
+  the runner-visible Qdrant URL (`127.0.0.1:6333`). The test has no
+  runtime skip path, so future index failures make the job red.
+
+### Root cause
+- The green qdrant-sidecar job was not a real pass: its only integration
+  test skipped after `/v1/kb/index` returned `unable to open database file`.
+  The in-process test created a private `tmp_path` data directory but never
+  populated its SQLite database. The test then explicitly tolerated every
+  index error via `pytest.skip`, hiding the broken prerequisite.
+
+---
+
 ## [unreleased] - BBF-69.2 curation kit (2026-07-20)
 
 ### Added

@@ -6,7 +6,7 @@ changes). This test exercises the sidecar code path
 (`QdrantClient(url=qdrant_url)`) end-to-end: a real gateway app
 with lifespan, real /v1/kb/index and /v1/kb/similar routes, and
 a live Qdrant at CHESS_COACH_QDRANT_URL (set by the qdrant-smoke
-job to http://qdrant:6333).
+job to http://127.0.0.1:6333).
 
 Why live and not mocked: the persistent-path unit test in
 tests/unit/test_kb_persistent_path.py exercises the
@@ -33,11 +33,11 @@ Requires:
 from __future__ import annotations
 
 import os
+import sqlite3
 
 import pytest
 
 from chess_coach.gateway.auth import set_active_token
-
 
 pytestmark = pytest.mark.integration
 
@@ -60,6 +60,19 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def test_qdrant_sqlite_fixture_matches_gateway_path(
+    settings, qdrant_sqlite_path
+) -> None:
+    """The integration settings must point at the populated deterministic DB."""
+    assert settings.sqlite_path == qdrant_sqlite_path
+    assert settings.qdrant_url == "http://127.0.0.1:6333"
+    with sqlite3.connect(qdrant_sqlite_path) as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM positions WHERE ply BETWEEN 4 AND 40"
+        ).fetchone()[0]
+    assert count == 5
+
+
 async def test_index_and_query_against_live_qdrant(client):
     """End-to-end: POST /v1/kb/index, then POST /v1/kb/similar.
 
@@ -67,11 +80,11 @@ async def test_index_and_query_against_live_qdrant(client):
     creates a collection, upserts vectors. We then query a FEN
     that is in the corpus and assert a non-empty hit list.
 
-    Note: the embedder requires sentence-transformers + the model
-    download. If the index call fails because the model can't
-    load, this test fails -- which is the right signal: BBF-52's
-    persistent path requires the embedder to be functional.
+    The embedder is a required runtime dependency in this CI job.
+    Any index error is a hard failure; skipping would turn a broken
+    end-to-end path into a green workflow.
     """
+
     set_active_token("devtoken123")
     headers = {"Authorization": "Bearer devtoken123"}
 
@@ -83,13 +96,7 @@ async def test_index_and_query_against_live_qdrant(client):
     )
     assert idx_resp.status_code == 200, idx_resp.text
     body = idx_resp.json()
-    # status should be "ok" or "error" (with detail). The embedder
-    # may fail to load the model in a sandbox without network; we
-    # tolerate that by reporting the failure shape rather than
-    # asserting success unconditionally.
-    assert body["status"] in ("ok", "error"), body
-    if body["status"] == "error":
-        pytest.skip(f"KB index failed (embedder/model unavailable?): {body.get('detail')}")
+    assert body["status"] == "ok", body
 
     indexed = int(body["indexed"])
     assert indexed > 0, "index returned 0 positions"

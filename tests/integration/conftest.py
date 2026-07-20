@@ -19,26 +19,29 @@ marker will be rejected.
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator, Iterator
+import sqlite3
+from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
+_QDRANT_URL = os.environ.get("CHESS_COACH_QDRANT_URL")
+_QDRANT_API_KEY = os.environ.get("CHESS_COACH_QDRANT_API_KEY")
 
 # Tests in tests/integration/ that need a live Qdrant set the env
 # var CHESS_COACH_QDRANT_URL before invoking pytest. The autouse
 # _isolate_env fixture in tests/conftest.py would strip it; this
 # fixture re-installs the pre-test value into the monkeypatch'd env.
 #
-# The `request` fixture lets us read the captured value and re-set
-# it after _isolate_env runs. Without this, the GatewaySettings()
-# call inside tests/integration/test_kb_qdrant_live.py reads from
-# the (now-stripped) env and returns qdrant_url=":memory:".
+# Without this, the GatewaySettings() call inside
+# tests/integration/test_kb_qdrant_live.py reads from the
+# (now-stripped) env and returns qdrant_url=":memory:".
 
 @pytest.fixture(autouse=True)
-def _restore_qdrant_env(request, monkeypatch) -> Iterator[None]:
+def _restore_qdrant_env(monkeypatch) -> None:
     """Re-install CHESS_COACH_QDRANT_URL after tests/conftest.py strips it.
 
     The pytest CLI is invoked with `CHESS_COACH_QDRANT_URL=...` set in
@@ -46,32 +49,70 @@ def _restore_qdrant_env(request, monkeypatch) -> Iterator[None]:
     autouse fixture wipes it before the test body runs; we put it back
     so the test can actually use the sidecar.
     """
-    saved = getattr(request, "config", None)
-    # The env var that was set before pytest's collection phase
-    # is captured by monkeypatch automatically -- but the top-level
-    # _isolate_env has already called delenv on it. We re-set it
-    # from os.environ (which still has the pre-test value because
-    # monkeypatch.delenv doesn't touch the parent process env).
-    qdrant_url = os.environ.get("CHESS_COACH_QDRANT_URL")
-    if qdrant_url:
-        monkeypatch.setenv("CHESS_COACH_QDRANT_URL", qdrant_url)
-    qdrant_key = os.environ.get("CHESS_COACH_QDRANT_API_KEY")
-    if qdrant_key is not None:
-        monkeypatch.setenv("CHESS_COACH_QDRANT_API_KEY", qdrant_key)
-    yield
+    # The env var is captured from the pytest process before the
+    # top-level _isolate_env fixture deletes it; this fixture then
+    # restores the captured value before GatewaySettings is built.
+    if _QDRANT_URL:
+        monkeypatch.setenv("CHESS_COACH_QDRANT_URL", _QDRANT_URL)
+    if _QDRANT_API_KEY is not None:
+        monkeypatch.setenv("CHESS_COACH_QDRANT_API_KEY", _QDRANT_API_KEY)
+    return
 
 
 @pytest.fixture
-def settings():
-    """GatewaySettings that reads CHESS_COACH_QDRANT_URL from env.
+def qdrant_sqlite_path(tmp_path: Path) -> Path:
+    """Create a deterministic SQLite fixture with five indexable positions."""
+    db_path = tmp_path / "data" / "sqlite" / "chess_coach.db"
+    db_path.parent.mkdir(parents=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE positions (
+                fen TEXT NOT NULL,
+                ply INTEGER NOT NULL,
+                game_id TEXT NOT NULL
+            )
+            """
+        )
+        conn.executemany(
+            "INSERT INTO positions(fen, ply, game_id) VALUES (?, ?, ?)",
+            [
+                (
+                    "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+                    4,
+                    "qdrant-game-1",
+                ),
+                (
+                    "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq d3 0 1",
+                    5,
+                    "qdrant-game-2",
+                ),
+                (
+                    "rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2",
+                    6,
+                    "qdrant-game-3",
+                ),
+                (
+                    "r1bq1rk1/pp2bppp/2n1pn2/3p4/3P4/2NBPN2/PP3PPP/R1BQR1K1 w - - 4 10",
+                    20,
+                    "qdrant-game-4",
+                ),
+                (
+                    "2r2rk1/pp1b1ppp/2n1pn2/q2p4/3P4/2PBPN2/PPQ2PPP/R1B2RK1 w - - 8 12",
+                    24,
+                    "qdrant-game-5",
+                ),
+            ],
+        )
+    return db_path
 
-    The qdrant-smoke CI job sets this env var via the `env:` block
-    on the pytest step. Local `pytest tests/integration/` runs will
-    see the default (":memory:") unless the dev sets the var.
-    """
+
+@pytest.fixture
+def settings(qdrant_sqlite_path: Path):
+    """GatewaySettings wired to the live Qdrant URL and deterministic SQLite fixture."""
     from chess_coach.gateway.config import GatewaySettings
 
-    return GatewaySettings()
+    return GatewaySettings(data_dir=qdrant_sqlite_path.parents[1])
 
 
 @pytest.fixture
