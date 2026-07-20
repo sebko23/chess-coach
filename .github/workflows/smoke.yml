@@ -206,11 +206,14 @@ jobs:
 
       - name: Run qdrant integration test
         # The integration test exercises /v1/kb/index and
-        # /v1/kb/similar against the live gateway + live Qdrant.
-        # It skips itself when CHESS_COACH_QDRANT_URL is unset,
-        # but we set it here so it runs.
+        # /v1/kb/similar in-process against the live Qdrant sidecar.
+        # It builds a deterministic five-position SQLite fixture,
+        # points GatewaySettings.sqlite_path at that fixture, and
+        # fails hard on every index error. The test contains no
+        # runtime pytest.skip path; any broken prerequisite fails
+        # this required integration job.
         env:
-          CHESS_COACH_QDRANT_URL: http://qdrant:6333
+          CHESS_COACH_QDRANT_URL: http://127.0.0.1:6333
           CHESS_COACH_BACKEND_TOKEN: devtoken123
         run: |
           pytest tests/integration/test_kb_qdrant_live.py \
