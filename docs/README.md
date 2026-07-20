@@ -40,6 +40,7 @@ If you're **looking up something specific**:
 | [REPO-READINESS.md](REPO-READINESS.md) | "I just cloned this repo, what do I do?" — quick start, common pitfalls, ops guide | 5 min |
 | [VERIFICATION.md](VERIFICATION.md) | Step-by-step instructions for closing the BBF-28/30 verification gaps | 5 min |
 | [CHANGELOG.md](CHANGELOG.md) | BBF-18 → current sprint history with commit SHAs | 10 min |
+| [20_datasets/narrative-gold-v1.md](20_datasets/narrative-gold-v1.md) | BBF-69.2 human curation guide, schema, provenance rules, and completion gate | 10 min |
 | [14_adrs/README.md](14_adrs/README.md) | Architecture Decision Records — *why*, not *what* | 15 min |
 | [17_lazy_eval_graph/SPEC.md](17_lazy_eval_graph/SPEC.md) | The strategic pivot: lazy eval-graph architecture | 15 min |
 | [17_lazy_eval_graph/RESULTS.md](17_lazy_eval_graph/RESULTS.md) | The 6000-game stress test that verified the pivot | 5 min |
