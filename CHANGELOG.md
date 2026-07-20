@@ -3,6 +3,41 @@
 
 
 
+## [unreleased] - BBF-75 archetype curation kit (2026-07-20)
+
+### Added
+- `docs/20_datasets/archetype-gold-v1.md`: human curation guide for the
+  20-40 entry archetype corpus, including the entry schema, the 7-label
+  `STANDARD_ARCHETYPES` enumeration, the 6 required metric dimensions,
+  placeholder and provenance boundaries, a balanced-seed acceptance bar
+  (≥ 2 entries per non-Unknown label), and the final review checklist.
+- `scripts/validate_archetype_gold.py`: strict BBF-75 completion gate.
+  It checks corpus size (20-40 entries), dense IDs, parseable metric
+  values, the full 6 required metrics, the 7-label contract (no `Unknown`
+  in the corpus, ≥ 2 per non-Unknown label), placeholder-marker removal,
+  and `_metadata.WARNING` removal. `--json` emits the same diagnostics
+  for external curation tools.
+- `tests/unit/test_validate_archetype_gold_script.py`: focused coverage
+  for a completion-ready 28-entry fixture and the current placeholder
+  failure state.
+
+### Scope
+- This BBF does **not** invent the 20-40 curated player vectors or
+  archetype labels. The user/domain expert still owns that work. The
+  shipped 14-entry placeholder corpus remains unchanged and the strict
+  validator intentionally exits 1 until the real entries replace it.
+- Modifying the kNN algorithm or the `STANDARD_ARCHETYPES` enumeration
+  is out of scope for this BBF.
+
+### Verification
+- Ruff: clean on the validator and its tests.
+- Pytest: 14 passed (9 validator tests + 5 pre-existing archetype_gold_corpus
+  regressions).
+- Placeholder baseline: validator exits 1 with explicit corpus-size,
+  metadata-warning, and placeholder-marker diagnostics.
+
+---
+
 ## [unreleased] - BBF-74 Qdrant smoke fixture (2026-07-20)
 
 ### Fixed
