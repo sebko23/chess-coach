@@ -3,6 +3,36 @@
 
 
 
+## [unreleased] - BBF-69.2 curation kit (2026-07-20)
+
+### Added
+- `docs/20_datasets/narrative-gold-v1.md`: human curation guide for the
+  20-30 entry narrative corpus, including source schemas, provenance and
+  copyright boundaries, a balanced-seed acceptance bar, and the final
+  review checklist.
+- `scripts/validate_narrative_gold.py`: strict BBF-69.2 completion gate.
+  It checks corpus size, dense IDs, parseable FENs, 50-200 word
+  explanations, source-specific fields, duplicate IDs/FENs, placeholder
+  removal, and minimum phase/source diversity. `--json` emits the same
+  diagnostics for external curation tools.
+- `tests/unit/test_validate_narrative_gold_script.py`: focused coverage
+  for a completion-ready fixture and the current placeholder failure state.
+
+### Scope
+- This BBF does **not** invent the 20-30 curated explanations or citations.
+  The user/domain expert still owns that work. The shipped placeholder
+  corpus remains unchanged and the strict validator intentionally exits 1
+  until the real entries replace it.
+- Narration-pipeline integration remains BBF-69.3.
+
+### Verification
+- Ruff: clean on the validator and its tests.
+- Pytest: 36 passed (10 validator tests + 26 narrative-loader tests).
+- Placeholder baseline: validator exits 1 with explicit corpus-size,
+  metadata-warning, placeholder-marker, and word-count diagnostics.
+
+---
+
 ## [unreleased] - BBF-69.1 (2026-07-18)
 
 ### Added
