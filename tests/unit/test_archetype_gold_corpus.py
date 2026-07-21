@@ -1,7 +1,7 @@
 """Tests for BBF-66 archetype-gold corpus loader (mirrors test_l2_gold_dataset.py)."""
+
 import pytest
-from pathlib import Path
-import json
+
 
 # 1. Loader returns list[ArchetypeGoldEntry] from the v1 corpus.
 def test_v1_corpus_loads_as_list():
