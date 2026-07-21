@@ -126,14 +126,13 @@ def test_decision_fatigue_returns_effect_size(sqlite_db: str) -> None:
     _insert_game(conn, "g1", "testplayer", "opp1", "1-0", "2026-01-01")
     for i in range(60):
         ply = i + 1
-        if i < 30:
-            score_cp = 50 + (i % 10) * 5  # 50-95, safe moves
-        else:
-            # Last 30: mix of safe and blunders
-            if i % 3 == 0:
-                score_cp = -150  # blunder
-            else:
-                score_cp = 30 + (i % 5) * 10  # 30-70, safe
+        # First 30 moves are safe (50-95 cp). Last 30: blunder every 3rd move;
+        # otherwise safe (30-70 cp).
+        score_cp = (
+            50 + (i % 10) * 5
+            if i < 30
+            else -150 if i % 3 == 0 else 30 + (i % 5) * 10
+        )
         pid = i + 100
         _insert_position_with_score(conn, pid, "g1", ply, score_cp)
     conn.commit()
@@ -211,10 +210,11 @@ def test_sequence_tilt_detects_tilt_pattern(sqlite_db: str) -> None:
     for i, res in enumerate(sequence):
         # testplayer is white on even indices, black on odd
         is_white = i % 2 == 0
-        if res == "W":
-            pgn_result = "1-0" if is_white else "0-1"
-        else:
-            pgn_result = "0-1" if is_white else "1-0"
+        pgn_result = (
+            ("1-0" if is_white else "0-1")
+            if res == "W"
+            else ("0-1" if is_white else "1-0")
+        )
         _insert_game(
             conn, f"g{i}",
             "testplayer" if is_white else f"opp{i}",
@@ -276,7 +276,7 @@ def test_archetypes_tactician_shape() -> None:
     confidence 0.755 in today's data. A future corpus rebalancing
     under BBF-75.1 may need new inputs.
     """
-    from chess_coach.profile import cluster_archetypes, STANDARD_ARCHETYPES
+    from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
     result = cluster_archetypes({
         "tactical_vs_positional_bias": 0.70,
@@ -300,7 +300,7 @@ def test_archetypes_specialist_shape() -> None:
     in the current corpus (kNN confidence 0.913). A future corpus
     rebalancing under BBF-75.1 may need new inputs.
     """
-    from chess_coach.profile import cluster_archetypes, STANDARD_ARCHETYPES
+    from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
     result = cluster_archetypes({
         "opening_comfort": 2,
@@ -325,7 +325,7 @@ def test_archetypes_wildcard_shape() -> None:
     neighbor. A future corpus rebalancing under BBF-75.1 may
     need new inputs.
     """
-    from chess_coach.profile import cluster_archetypes, STANDARD_ARCHETYPES
+    from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
     result = cluster_archetypes({
         "opening_comfort": 60,
@@ -348,7 +348,7 @@ def test_archetypes_tilter_shape() -> None:
     than nearest neighbor. kNN confidence 0.435. A future corpus
     rebalancing under BBF-75.1 may need new inputs.
     """
-    from chess_coach.profile import cluster_archetypes, STANDARD_ARCHETYPES
+    from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
     result = cluster_archetypes({
         "sequence_based_tilt": 0.30,
@@ -436,7 +436,8 @@ def test_cluster_archetypes_docstring_section_b4() -> None:
     assert "kNN" in fn_doc or "k-NN" in fn_doc or "knn" in fn_doc.lower()
     # Module docstring has the B4 contract framing (was "experimental"
     # in the heuristic version; the kNN module uses "B4 contract" instead).
-    assert "B4" in mod_doc and "contract" in mod_doc.lower()
+    assert "B4" in mod_doc
+    assert "contract" in mod_doc.lower()
 
 
 def test_decision_fatigue_submodule_importable() -> None:
@@ -487,7 +488,19 @@ def test_archetypes_unknown_label_sets_d_to_none():
     fake_unknown = ArchetypeAssignment(
         label="Unknown",
         confidence=0.5,
-        archetype_scores=dict.fromkeys(["Tactician", "Positional Player", "Grinder", "Wildcard", "Specialist", "Tilter", "Endgame Specialist", "Unknown"], 0.0),
+        archetype_scores=dict.fromkeys(
+            [
+                "Tactician",
+                "Positional Player",
+                "Grinder",
+                "Wildcard",
+                "Specialist",
+                "Tilter",
+                "Endgame Specialist",
+                "Unknown",
+            ],
+            0.0,
+        ),
         effect_size=EffectSize(
             point_estimate=0.5,
             d=None,
@@ -635,7 +648,8 @@ def test_archetypes_assignment_gate_inconclusive_for_unknown_and_subthreshold():
     # (inconclusive by definition per B4 rule 3 -- this is the
     # defensive branch that prevents a NoneType comparison crash).
     assert result_unknown.passes_b4_gate is False, (
-        "Unknown label MUST have passes_b4_gate=False (inconclusive by definition per B4 rule 3), got "
+        "Unknown label MUST have passes_b4_gate=False "
+        "(inconclusive by definition per B4 rule 3), got "
         + repr(result_unknown.passes_b4_gate)
     )
 
