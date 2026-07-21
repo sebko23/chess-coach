@@ -3,6 +3,43 @@
 
 
 
+## [unreleased] - BBF-68.3 PDF multi-board contract (2026-07-20)
+
+### Added
+- `DiagramResult.diagram_index: int = Field(default=0, ge=0)` exposes a
+  0-based per-page diagram index on the wire. The route always emits
+  0 today (chessvision's public `/predict` is single-FEN-by-API-contract);
+  a future multi-board backend would emit 0, 1, 2, ... in reading order.
+- `tests/unit/test_pdf_ingest_route.py` pins the contract: at most one
+  diagram per page, `diagram_index=0` for the public chessvision path,
+  the field is non-negative, and the module docstring declares the
+  multi-board limitation.
+
+### Honored limitation
+- The public `chessvision.ai /predict` endpoint returns exactly one FEN
+  per page, not a list. A live probe (real `Sicilian Defense Cheat
+  Sheet.pdf` via PyMuPDF rasterization at 200 dpi) confirmed:
+  - `success: true, result: "r1b2rk1/.../0 1"` — page 1 returned one FEN.
+  - `success: false, result: null` — page 2 returned nothing (chessvision
+    could not resolve multiple boards on that page).
+- The route's module docstring now states the single-FEN-per-page
+  contract explicitly so a future "multi-board" attempt cannot silently
+  regress it. Real multi-board support requires either (a) a chessvision
+  commercial endpoint that emits a list, (b) a local page-segmentation
+  model, or (c) a different OCR service. None of these is in scope for
+  this BBF.
+
+### Out of scope
+- The BBF-68.1 spike thread stays closed. No local OCR model was
+  benchmarked or wired in.
+
+### Verification
+- Ruff: clean on the route and the new test.
+- Pytest: 6 passed (route-level unit tests).
+- Regression scope unchanged; no other tests touched.
+
+---
+
 ## [unreleased] - BBF-75 archetype curation kit (2026-07-20)
 
 ### Added
