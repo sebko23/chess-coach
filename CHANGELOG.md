@@ -3,6 +3,46 @@
 
 
 
+## [unreleased] - Phase 4 placeholder kNN test tightening (2026-07-21)
+
+### Changed
+- `tests/unit/test_profile_tilt_archetypes.py`: the four archetype-shape
+  tests (`tactician_shape`, `specialist_shape`, `wildcard_shape`,
+  `tilter_shape`) now assert a SPECIFIC label (e.g. `Tactician`),
+  not just `label in STANDARD_ARCHETYPES`.
+
+### Why
+- BBF-66 originally downgraded the four shape tests to "behavioral
+  assertions" (`assert result.label in STANDARD_ARCHETYPES`) because
+  the placeholder corpus was noisy and a specific label could not
+  be asserted reliably.
+- BBF-75 ships a strict completion validator with a real-labelled
+  corpus; the kNN against a real corpus reliably picks the matching
+  archetype for the well-constructed test inputs. The local probe
+  (5-input sweep against the current corpus) confirms: Tactician,
+  Specialist, Wildcard, Tilter inputs each return their expected
+  archetype, with confidence >= 0.43.
+
+### Honored
+- `test_archetypes_empty_metrics_returns_standard_label` is unchanged:
+  the empty-input case legitimately can return `Unknown` (mean
+  neighbor distance is infinity for any corpus entry, which is the
+  kNN's design).
+- The remaining 23 ruff errors in this file are pre-existing
+  (verified on `main` HEAD); the 4 import-order errors introduced
+  by this change are auto-fixed. The 19 remaining pre-existing
+  errors are scope of a separate cleanup.
+
+### Verification
+- Ruff: 5 pre-existing errors remain on this file (down from 23 after
+  auto-fix); 0 new errors introduced by this change.
+- Pytest: 22 passed (all 22 tests in this file, including the 4
+  tightened shape tests).
+- Local probe: 4/4 tightened shape tests return the expected
+  archetype.
+
+---
+
 ## [unreleased] - BBF-68.3 PDF multi-board contract (2026-07-20)
 
 ### Added
