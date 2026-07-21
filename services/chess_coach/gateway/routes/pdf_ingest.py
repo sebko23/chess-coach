@@ -65,7 +65,31 @@ class PdfImportResponse(BaseModel):
     pages_processed: int
     diagrams_found: int
     diagrams_valid: int
-    diagrams: list[DiagramResult]
+    # Single-FEN-per-page contract (BBF-68.3). The public
+    # chessvision.ai /predict endpoint returns at most one FEN per page,
+    # so len(diagrams) <= pages_processed and the per-page count is <= 1.
+    # A future multi-board backend (or local page-segmentation model)
+    # would either drop this field or raise the bound.
+    max_diagrams_per_page: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Upper bound on the number of DiagramResult entries produced "
+            "from a single PDF page. The public chessvision.ai /predict "
+            "endpoint emits at most one FEN per page, so this constant is "
+            "1 today. A future multi-board backend (or local "
+            "page-segmentation model) would raise this bound."
+        ),
+    )
+    diagrams: list[DiagramResult] = Field(
+        description=(
+            "One DiagramResult per OCR'd page. With the chessvision "
+            "default backend, at most one DiagramResult is produced per "
+            "page (max_diagrams_per_page=1). Pages where the OCR backend "
+            "returned success=false emit a DiagramResult with fen=None "
+            "and a populated issue field; they do not produce a FEN."
+        ),
+    )
 
 
 async def _predict_fen(image_png_bytes: bytes) -> tuple[str | None, float, str | None]:
@@ -186,5 +210,6 @@ async def import_pdf(
         pages_processed=len(pages),
         diagrams_found=len(valid_diagrams),
         diagrams_valid=len(valid_diagrams),
+        max_diagrams_per_page=1,
         diagrams=results,
     )

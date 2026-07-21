@@ -1,4 +1,4 @@
-"""Unit tests for the BBF-68.3 doc-only contract change.
+"""Unit tests for the BBF-68.3 doc-only contract change + max_diagrams_per_page.
 
 The public chessvision.ai /predict endpoint returns exactly one FEN per
 page, not a list. The route must therefore emit at most one
@@ -148,10 +148,84 @@ def test_module_re_exports_diagram_index_constant() -> None:
     Pinning the constant at the module level ensures a future change
     to the Pydantic Field default cannot silently flip the wire shape.
     """
-
-    # The class itself is the source of truth, but we also assert the
-    # default-construction contract so a Field(default=...) change is
-    # caught by this test.
     from services.chess_coach.gateway.routes.pdf_ingest import DiagramResult
 
     assert DiagramResult(page=1, fen=MOCK_FEN, valid=True, confidence=0.9).diagram_index == 0
+
+
+def test_pdf_import_response_exposes_max_diagrams_per_page_field() -> None:
+    """The PdfImportResponse carries a max_diagrams_per_page constant.
+
+    The default chessvision.ai /predict path returns at most one FEN
+    per page, so max_diagrams_per_page defaults to 1 and the value is
+    surfaced in the wire shape so clients (and OpenAPI tooling) can
+    verify the contract. A future multi-board backend would either
+    drop this field or raise the bound.
+    """
+    from services.chess_coach.gateway.routes.pdf_ingest import (
+        DiagramResult,
+        PdfImportResponse,
+    )
+
+    # Model defaults: no explicit value, single-diagram response.
+    payload = PdfImportResponse(
+        import_id="00000000-0000-0000-0000-000000000000",
+        filename="single.pdf",
+        pages_processed=1,
+        diagrams_found=1,
+        diagrams_valid=1,
+        diagrams=[
+            DiagramResult(
+                page=1, diagram_index=0, fen=MOCK_FEN, valid=True, confidence=0.9
+            )
+        ],
+    )
+    json_str = payload.model_dump_json()
+    decoded = json.loads(json_str)
+    assert decoded["max_diagrams_per_page"] == 1
+
+
+def test_max_diagrams_per_page_field_has_correct_constraints() -> None:
+    """max_diagrams_per_page must be an int, default 1, and ge=1."""
+    from pydantic import ValidationError
+    from services.chess_coach.gateway.routes.pdf_ingest import (
+        DiagramResult,
+        PdfImportResponse,
+    )
+
+    fields = PdfImportResponse.model_fields
+    assert "max_diagrams_per_page" in fields, (
+        "PdfImportResponse must carry max_diagrams_per_page "
+        "(BBF-68.3 OpenAPI surface)."
+    )
+
+    payload = PdfImportResponse(
+        import_id="00000000-0000-0000-0000-000000000000",
+        filename="x.pdf",
+        pages_processed=1,
+        diagrams_found=1,
+        diagrams_valid=1,
+        max_diagrams_per_page=2,
+        diagrams=[
+            DiagramResult(
+                page=1, diagram_index=0, fen=MOCK_FEN, valid=True, confidence=0.9
+            )
+        ],
+    )
+    assert payload.max_diagrams_per_page == 2
+
+    # ge=1 rejects 0 and negatives.
+    with pytest.raises(ValidationError):
+        PdfImportResponse(
+            import_id="00000000-0000-0000-0000-000000000000",
+            filename="y.pdf",
+            pages_processed=1,
+            diagrams_found=1,
+            diagrams_valid=1,
+            max_diagrams_per_page=0,
+            diagrams=[
+                DiagramResult(
+                    page=1, diagram_index=0, fen=MOCK_FEN, valid=True, confidence=0.9
+                )
+            ],
+        )
