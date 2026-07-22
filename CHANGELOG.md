@@ -1,9 +1,34 @@
+## [unreleased]
+
+Unreleased changes accumulated since the start of the BBF-sprint cadence
+(2026-07-16). Items are listed in reverse-chronological order (newest
+first). This block is collapsed by BBF-76 (CHANGELOG consolidation);
+each BBF entry preserves its original body verbatim.
+
+### Index
+
+- [Phase 4 placeholder kNN test tightening (2026-07-21)](#phase-4-placeholder-knn-test-tightening-(2026-07-21))
+- [BBF-68.3 PDF multi-board contract (2026-07-20)](#bbf-683-pdf-multi-board-contract-(2026-07-20))
+- [BBF-75 archetype curation kit (2026-07-20)](#bbf-75-archetype-curation-kit-(2026-07-20))
+- [BBF-74 Qdrant smoke fixture (2026-07-20)](#bbf-74-qdrant-smoke-fixture-(2026-07-20))
+- [BBF-69.2 curation kit (2026-07-20)](#bbf-692-curation-kit-(2026-07-20))
+- [BBF-69.1 (2026-07-18)](#bbf-691-(2026-07-18))
+- [BBF-68.2 (2026-07-18)](#bbf-682-(2026-07-18))
+- [BBF-68.1 (2026-07-18, spike-only — pivoted)](#bbf-681-(2026-07-18-spike-only-—-pivoted))
+- [BBF-68.0.1 (2026-07-17)](#bbf-6801-(2026-07-17))
+- [BBF-68.0 (2026-07-17)](#bbf-680-(2026-07-17))
+- [BBF-67 (2026-07-17)](#bbf-67-(2026-07-17))
+- [BBF-66 (2026-07-17)](#bbf-66-(2026-07-17))
+- [BBF-65 (2026-07-16)](#bbf-65-(2026-07-16))
+- [BBF-64 (2026-07-16)](#bbf-64-(2026-07-16))
+- [BBF-63 (2026-07-16)](#bbf-63-(2026-07-16))
 
 
 
 
 
-## [unreleased] - Phase 4 placeholder kNN test tightening (2026-07-21)
+
+### Phase 4 placeholder kNN test tightening (2026-07-21)
 
 ### Changed
 - `tests/unit/test_profile_tilt_archetypes.py`: the four archetype-shape
@@ -43,7 +68,7 @@
 
 ---
 
-## [unreleased] - BBF-68.3 PDF multi-board contract (2026-07-20)
+### BBF-68.3 PDF multi-board contract (2026-07-20)
 
 ### Added
 - `DiagramResult.diagram_index: int = Field(default=0, ge=0)` exposes a
@@ -80,7 +105,7 @@
 
 ---
 
-## [unreleased] - BBF-75 archetype curation kit (2026-07-20)
+### BBF-75 archetype curation kit (2026-07-20)
 
 ### Added
 - `docs/20_datasets/archetype-gold-v1.md`: human curation guide for the
@@ -115,7 +140,7 @@
 
 ---
 
-## [unreleased] - BBF-74 Qdrant smoke fixture (2026-07-20)
+### BBF-74 Qdrant smoke fixture (2026-07-20)
 
 ### Fixed
 - `tests/integration/conftest.py` now creates a deterministic five-position
@@ -135,7 +160,7 @@
 
 ---
 
-## [unreleased] - BBF-69.2 curation kit (2026-07-20)
+### BBF-69.2 curation kit (2026-07-20)
 
 ### Added
 - `docs/20_datasets/narrative-gold-v1.md`: human curation guide for the
@@ -165,7 +190,7 @@
 
 ---
 
-## [unreleased] - BBF-69.1 (2026-07-18)
+### BBF-69.1 (2026-07-18)
 
 ### Added
 - `libs/chess_coach/datasets/narrative_gold.py` (NEW, ~345 lines):
@@ -237,7 +262,7 @@
 
 ---
 
-## [unreleased] - BBF-68.2 (2026-07-18)
+### BBF-68.2 (2026-07-18)
 
 ### Added
 - `services/chess_coach/pdf_ocr/protection.py` (NEW, ~225 lines):
@@ -309,7 +334,7 @@
 
 ---
 
-## [unreleased] - BBF-68.1 (2026-07-18, spike-only — pivoted)
+### BBF-68.1 (2026-07-18, spike-only — pivoted)
 
 ### Status
 - **UNMEASURED, not shipped.** Per project Rule 4, the spike's acceptance
@@ -376,7 +401,7 @@
 
 ---
 
-## [unreleased] - BBF-68.0.1 (2026-07-17)
+### BBF-68.0.1 (2026-07-17)
 
 ### Changed
 - `services/chess_coach/gateway/routes/pdf_ingest.py`:
@@ -404,7 +429,7 @@
 
 ---
 
-## [unreleased] - BBF-68.0 (2026-07-17)
+### BBF-68.0 (2026-07-17)
 
 ### Added
 - `services/chess_coach/pdf_ocr/` package (NEW): env-only OCR backend
@@ -465,7 +490,7 @@
 
 ---
 
-## [unreleased] - BBF-67 (2026-07-17)
+### BBF-67 (2026-07-17)
 
 ### Added
 - `scripts/static_import_scanner.py` (NEW; BBF-67.1): static-import
@@ -498,7 +523,7 @@
 
 ---
 
-## [unreleased] - BBF-66 (2026-07-17)
+### BBF-66 (2026-07-17)
 
 ### Changed
 - `services/chess_coach/profile/archetypes.py`: `cluster_archetypes()`
@@ -551,7 +576,7 @@
 - 2 integration tests marked `@pytest.mark.slow`.
 - 252 passed in total unit sweep (was 241 pre-BBF-66; +5 +6 = +11 net).
 
-## [unreleased] - BBF-65 (2026-07-16)
+### BBF-65 (2026-07-16)
 
 ### Changed
 - `services/chess_coach/profile/archetypes.py`: `ArchetypeAssignment.effect_size.d`
@@ -596,7 +621,7 @@
 - 2 tests in `test_profile_archetypes_integration.py` (route-level).
 - No regressions in the 6 BBF-65.0 heuristic shape-match tests.
 
-## [unreleased] - BBF-64 (2026-07-16)
+### BBF-64 (2026-07-16)
 
 ### Added
 - `GET /v1/eval/verify/{version}` route at `services/chess_coach/gateway/routes/eval_verifier.py`.
@@ -612,7 +637,7 @@
 - No existing route behavior changed.
 - `app.py` `include_router` registration of the new route at module-load time; smoke CI's `gateway-boot` job exercises the import path so a registration regression trips CI.
 
-## [unreleased] - BBF-63 (2026-07-16)
+### BBF-63 (2026-07-16)
 
 ### Changed
 - L-2 chess corpus grown with new `tests/gold/L2/v2/corpus.json` (18 new positions).
