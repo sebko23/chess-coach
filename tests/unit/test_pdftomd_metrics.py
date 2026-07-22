@@ -13,15 +13,36 @@ migration planning. See idea memo §32 for the freeze declaration.
 import importlib.util
 import os
 import sys
+from pathlib import Path
 
-# Locate the pdftomd_probe.py script
-_SCRIPT = os.path.join(
-    "/a0/usr/projects/chess_coach/scripts",
-    "pdftomd_probe.py",
+# Locate the pdftomd_probe.py script.
+#
+# Resolution order (matches the script's own PDTM_PROJECT_ROOT convention):
+#   1. PDFTOMD_PROBE_PATH env var (full path to the script itself)
+#   2. PDTM_PROJECT_ROOT env var (project root containing scripts/pdftomd_probe.py)
+#   3. Default: <repo root>/scripts/pdftomd_probe.py, where repo root is
+#      the test file's parents[2] (tests/unit/<file> -> tests/ -> repo).
+#
+# This replaces the prior hardcoded /a0/usr/projects/chess_coach/... path
+# which only worked on the agentZero Linux container and broke pytest
+# collection on Windows hosts.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_SCRIPT = _REPO_ROOT / "scripts" / "pdftomd_probe.py"
+if os.environ.get("PDFTOMD_PROBE_PATH"):
+    _SCRIPT = Path(os.environ["PDFTOMD_PROBE_PATH"])
+elif os.environ.get("PDTM_PROJECT_ROOT"):
+    _SCRIPT = Path(os.environ["PDTM_PROJECT_ROOT"]) / "scripts" / "pdftomd_probe.py"
+else:
+    _SCRIPT = _DEFAULT_SCRIPT
+assert _SCRIPT.is_file(), (
+    f"pdftomd_probe.py not found at {_SCRIPT}. Set PDFTOMD_PROBE_PATH to the "
+    f"full path to pdftomd_probe.py, or PDTM_PROJECT_ROOT to the project root "
+    f"containing scripts/pdftomd_probe.py, or run pytest from a checkout where "
+    f"{_DEFAULT_SCRIPT} exists."
 )
-_SPEC = importlib.util.spec_from_file_location("pdftomd_probe", _SCRIPT)
+_SPEC = importlib.util.spec_from_file_location("pdftomd_probe", str(_SCRIPT))
 _mod = importlib.util.module_from_spec(_SPEC)
-sys.path.insert(0, os.path.dirname(_SCRIPT))
+sys.path.insert(0, str(_SCRIPT.parent))
 _SPEC.loader.exec_module(_mod)
 
 
