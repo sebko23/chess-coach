@@ -12,6 +12,8 @@ passes_b4_gate top-level boolean (the BBF-65.2 field).
 """
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -30,22 +32,90 @@ from chess_coach.profile.effect_size import EffectSize
 AUTH = {"Authorization": "Bearer devtoken123"}
 
 
-@pytest.fixture(autouse=True)
-def _patch_env(monkeypatch):
-    """Point the gateway at the real on-disk DB so the upstream metric
-    computations have data to read. Matches the pattern in
-    tests/integration/test_profile_analysis.py.
+@pytest.fixture
+def _archetypes_sqlite(tmp_path: Path) -> Path:
+    """Create the minimal schema the archetypes route's upstream metric
+    computations need to read without erroring.
+
+    The 6 metric computations in services/chess_coach/profile/stats.py
+    all run SELECT queries against {games, positions, analyses}. The
+    queries all tolerate empty result sets (returning
+    EffectSize(sample_size=0, ...)), so an empty schema is enough for
+    the route to reach the patched cluster_archetypes() call.
+
+    Schema mirrors libs/chess_coach/storage/migrations/{0002,0004,0005}.sql
+    STRICT-mode tables (SQLite STRICT enforces declared types).
     """
-    monkeypatch.setenv("CHESS_COACH_DATA_DIR", "/root/.local/share/chess-coach")
-    from chess_coach.gateway.auth import set_active_token
-    set_active_token("devtoken123")
-    yield
-    set_active_token(None)
+    db_path = tmp_path / "sqlite" / "chess_coach.db"
+    db_path.parent.mkdir(parents=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE games (
+                id            TEXT NOT NULL PRIMARY KEY,
+                pgn_raw       TEXT NOT NULL,
+                white         TEXT,
+                black         TEXT,
+                date          TEXT,
+                event         TEXT,
+                site          TEXT,
+                result        TEXT,
+                import_status TEXT NOT NULL DEFAULT 'pending'
+                                  CHECK(import_status IN ('pending','analyzing','done','failed')),
+                job_id        TEXT,
+                created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            ) STRICT;
+
+            CREATE TABLE positions (
+                id          TEXT NOT NULL PRIMARY KEY,
+                game_id     TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+                parent_id   TEXT REFERENCES positions(id),
+                fen         TEXT NOT NULL,
+                move_uci    TEXT,
+                move_san    TEXT,
+                ply         INTEGER NOT NULL DEFAULT 0,
+                is_mainline INTEGER NOT NULL DEFAULT 1
+            ) STRICT;
+
+            CREATE TABLE analyses (
+                id             TEXT NOT NULL PRIMARY KEY,
+                position_id    TEXT NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+                engine_id      TEXT NOT NULL,
+                depth          INTEGER NOT NULL,
+                score_cp       INTEGER,
+                score_mate     INTEGER,
+                best_move      TEXT,
+                pv_moves       TEXT,
+                result_json    TEXT NOT NULL,
+                created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+                classification TEXT,
+                cp_delta       REAL
+            ) STRICT;
+            """
+        )
+    return db_path
 
 
 @pytest.fixture
-def fastapi_app():
-    return create_app()
+def fastapi_app(tmp_path: Path, _archetypes_sqlite: Path):
+    """FastAPI app with CHESS_COACH_DATA_DIR pointing at a tmp_path
+    containing the minimal schema.
+
+    The top-level tests/conftest.py autouse _isolate_env fixture
+    already sets CHESS_COACH_DATA_DIR=<tmp_path>; this fixture relies
+    on that plus _archetypes_sqlite to populate the SQLite DB the
+    gateway reads from.
+
+    Also activates the dev bearer token (and resets on teardown) so the
+    route's auth path is exercised end-to-end. Mirrors the original
+    _patch_env autouse behavior.
+    """
+    from chess_coach.gateway.auth import set_active_token
+    set_active_token("devtoken123")
+    app = create_app()
+    yield app
+    set_active_token(None)
 
 
 def _fake_assignment(label="Tactician", confidence=0.7,
