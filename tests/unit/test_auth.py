@@ -57,5 +57,6 @@ class TestGenerateTokenIfNeeded:
     def test_none_or_empty_mints_fresh(self) -> None:
         a = generate_token_if_needed(None)
         b = generate_token_if_needed("")
-        assert a and b
+        assert a
+        assert b
         assert a != b  # vanishingly unlikely to collide

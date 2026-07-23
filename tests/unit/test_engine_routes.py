@@ -4,10 +4,10 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from chess_coach.gateway.app import create_app
-from chess_coach.gateway.config import GatewaySettings
-from chess_coach.gateway.auth import set_active_token
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
+from chess_coach.gateway.app import create_app
+from chess_coach.gateway.auth import set_active_token
+from chess_coach.gateway.config import GatewaySettings
 from chess_coach.testkit.mock_uci import MockUCIEngine
 
 

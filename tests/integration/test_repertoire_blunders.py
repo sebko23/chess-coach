@@ -1,8 +1,8 @@
 """Integration tests for repertoire and blunder routes."""
 from __future__ import annotations
-import pytest
-import pytest_asyncio
+
 import httpx
+import pytest_asyncio
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 STARTING_FEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
@@ -10,8 +10,8 @@ STARTING_FEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
 
 @pytest_asyncio.fixture
 async def prod_client():
-    from chess_coach.gateway.config import GatewaySettings
     from chess_coach.gateway import create_app
+    from chess_coach.gateway.config import GatewaySettings
     settings = GatewaySettings()
     app = create_app(settings)
     app.state.gateway.settings = settings

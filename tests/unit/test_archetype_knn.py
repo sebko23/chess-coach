@@ -4,11 +4,9 @@ Tests the kNN classifier against the SYNTHETIC PLACEHOLDER corpus. The
 labels are STUB; the kNN's job is to pick SOMETHING (a label from the
 corpus), not to validate that labels are correct against real data.
 """
-import pytest
 
 from chess_coach.datasets.archetype_gold import load_archetype_gold
 from chess_coach.profile import (
-    ArchetypeAssignment,
     STANDARD_ARCHETYPES,
     cluster_archetypes,
 )

@@ -44,7 +44,6 @@ import os
 
 import pytest
 
-
 # --- Always-on tests (BBF-54's contract) ---
 
 
@@ -157,11 +156,13 @@ def test_cohens_d_known_fixtures() -> None:
 
     # Sample mean above null -> d > 0
     d = cohens_d([3.0, 4.0, 5.0], null_value=2.0)
-    assert d is not None and d > 0, f"d of [3,4,5] vs null=2.0 should be > 0, got {d}"
+    assert d is not None
+    assert d > 0, f"d of [3,4,5] vs null=2.0 should be > 0, got {d}"
 
     # Sample mean below null -> d < 0
     d = cohens_d([1.0, 2.0, 3.0], null_value=4.0)
-    assert d is not None and d < 0, f"d of [1,2,3] vs null=4.0 should be < 0, got {d}"
+    assert d is not None
+    assert d < 0, f"d of [1,2,3] vs null=4.0 should be < 0, got {d}"
 
 
 def test_bootstrap_ci_known_fixtures() -> None:
@@ -196,11 +197,11 @@ def test_bootstrap_ci_known_fixtures() -> None:
 def test_stats_metrics_importable_from_package() -> None:
     """The 5 BBF-57 metrics are importable from chess_coach.profile."""
     from chess_coach.profile import (  # noqa: F401
+        blunder_rate_vs_rating,
+        conversion_ability,
+        opening_comfort,
         tactical_vs_positional_bias,
         time_pressure_quality,
-        opening_comfort,
-        conversion_ability,
-        blunder_rate_vs_rating,
     )
 
 
@@ -213,11 +214,11 @@ def test_stats_metrics_callable_with_db_path() -> None:
     with `d=None` and `sample_size=0` (no data).
     """
     from chess_coach.profile import (
+        blunder_rate_vs_rating,
+        conversion_ability,
+        opening_comfort,
         tactical_vs_positional_bias,
         time_pressure_quality,
-        opening_comfort,
-        conversion_ability,
-        blunder_rate_vs_rating,
     )
     # Use a non-existent path -- the metrics should
     # handle this gracefully by returning an "no data"
@@ -251,8 +252,10 @@ def test_stats_metrics_callable_with_db_path() -> None:
             )
     except Exception as exc:
         # sqlite3 errors on the fake db are tolerated; we
-        # only care that NotImplementedError does NOT fire
-        assert not isinstance(exc, NotImplementedError), (
+        # only care that NotImplementedError does NOT fire.
+        # This is the opposite of pytest.raises(): we accept
+        # any exception EXCEPT NotImplementedError.
+        assert not isinstance(exc, NotImplementedError), (  # noqa: PT017
             f"BBF-57 should have replaced the BBF-54 stub, "
             f"but {fn.__name__} raised NotImplementedError"
         )
@@ -262,7 +265,8 @@ def test_stats_metrics_callable_with_db_path() -> None:
 
 
 def test_profile_package_all_three_names_importable() -> None:
-    """BBF-59 ships all 3 remaining names: decision_fatigue, sequence_based_tilt, cluster_archetypes.
+    """BBF-59 ships all 3 remaining names: decision_fatigue,
+    sequence_based_tilt, cluster_archetypes.
 
     This test replaces the BBF-57/58 xfail test. The
     package now exposes the full Phase 4 finish
@@ -295,12 +299,12 @@ def test_stats_submodule_local_stubs() -> None:
     NotImplementedError when accessed via the SUBMODULE.
     """
     from chess_coach.profile.stats import (
+        blunder_rate_vs_rating,
+        conversion_ability,
+        decision_fatigue,
+        opening_comfort,
         tactical_vs_positional_bias,
         time_pressure_quality,
-        opening_comfort,
-        conversion_ability,
-        blunder_rate_vs_rating,
-        decision_fatigue,
     )
 
     fake_db = "/tmp/_bbf59_fake_submodule.db"
@@ -332,8 +336,8 @@ def test_stats_submodule_local_stubs() -> None:
 
 def test_tilt_function_is_implemented() -> None:
     """BBF-59 implements sequence_based_tilt."""
-    from chess_coach.profile.tilt import sequence_based_tilt
     from chess_coach.profile.effect_size import EffectSize
+    from chess_coach.profile.tilt import sequence_based_tilt
 
     # Calling with a fake db path should return an EffectSize
     # (no qualifying data) -- not raise NotImplementedError.
@@ -354,8 +358,8 @@ def test_tilt_function_is_implemented() -> None:
 def test_archetypes_function_is_implemented() -> None:
     """BBF-59 implements cluster_archetypes."""
     from chess_coach.profile.archetypes import (
-        ArchetypeAssignment,
         STANDARD_ARCHETYPES,
+        ArchetypeAssignment,
         cluster_archetypes,
     )
 

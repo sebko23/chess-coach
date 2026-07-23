@@ -1,15 +1,16 @@
 """Unit tests for the UCI parser (no engine subprocess required)."""
 from __future__ import annotations
 
-import pytest
-
-from chess_coach.uci.engine import InfoEvent, _parse_info
 from chess_coach.protocol_types.analysis import Score
+from chess_coach.uci.engine import _parse_info
 
 
 class TestParseInfo:
     def test_standard_info_line(self):
-        line = "info depth 18 seldepth 24 multipv 1 score cp 32 nodes 12345 nps 123450 time 100 pv d2d4 d7d5 g1f3"
+        line = (
+            "info depth 18 seldepth 24 multipv 1 score cp 32 nodes 12345 "
+            "nps 123450 time 100 pv d2d4 d7d5 g1f3"
+        )
         ev = _parse_info(line)
         assert ev is not None
         assert ev.depth == 18

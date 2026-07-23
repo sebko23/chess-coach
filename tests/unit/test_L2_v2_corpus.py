@@ -1,6 +1,6 @@
-import pytest
 
 from tests.gold.L2 import load_corpus, schema_version
+
 
 def test_v1_corpus_loads_as_v1():
     corpus = load_corpus('v1')
@@ -16,11 +16,14 @@ def test_v1_corpus_entries_have_required_fields():
 
 
 def test_v1_corpus_is_dict_when_wrapped():
-    import pathlib, json
+    import json
+    import pathlib
     path = pathlib.Path('tests/gold/L2/v1/corpus.json')
     raw = json.loads(path.read_text())
-    assert 'schema_version' in raw and raw['schema_version'] == '2.0'
-    assert 'positions' in raw and len(raw['positions']) == 12
+    assert 'schema_version' in raw
+    assert raw['schema_version'] == '2.0'
+    assert 'positions' in raw
+    assert len(raw['positions']) == 12
 
 def test_v1_positions_have_eval_deltas_after_bbf63():
     corpus = load_corpus("v1")
@@ -39,7 +42,10 @@ def test_v2_corpus_loads_as_v2():
 
 def test_v2_corpus_phase_distribution_is_balanced():
     corpus = load_corpus("v2")
-    counts = {p: sum(1 for x in corpus if x["phase"] == p) for p in ("opening", "middlegame", "endgame")}
+    counts = {
+        p: sum(1 for x in corpus if x["phase"] == p)
+        for p in ("opening", "middlegame", "endgame")
+    }
     assert all(c >= 3 for c in counts.values()), counts
 
 def test_v2_all_entries_have_eval_deltas():
@@ -49,7 +55,10 @@ def test_v2_all_entries_have_eval_deltas():
 
 def test_v2_all_entries_have_required_fields():
     corpus = load_corpus("v2")
-    required = {"id", "fen", "phase", "best_move_uci", "score_cp", "source", "engine", "eval_deltas", "tags"}
+    required = {
+        "id", "fen", "phase", "best_move_uci", "score_cp", "source",
+        "engine", "eval_deltas", "tags",
+    }
     for entry in corpus:
         missing = required - entry.keys()
         assert not missing, f"{entry['id']} missing {missing}"
@@ -69,7 +78,8 @@ def test_v2_has_at_least_1_negative_and_1_positive_outlier():
     assert pos, "v2 must include at least 1 winning position (>200 cp) for eval-delta spread"
 
 def test_gm_positions_have_pgn_game_ids():
-    import json, pathlib
+    import json
+    import pathlib
     corpus = load_corpus("v2")
     gm_positions = [p for p in corpus if p["source"]["type"] == "gm_game"]
     for entry in gm_positions:
@@ -77,16 +87,18 @@ def test_gm_positions_have_pgn_game_ids():
     game_ids = {e["pgn_game_id"] for e in gm_positions}
     labels_path = pathlib.Path("tests/gold/L2/v2/game_labels.jsonl")
     assert labels_path.exists(), "game_labels.jsonl not yet created"
-    labels = {json.loads(l)["pgn_game_id"] for l in open(labels_path) if l.strip()}
+    with open(labels_path) as f_label:
+        labels = {json.loads(line)["pgn_game_id"] for line in f_label if line.strip()}
     assert game_ids.issubset(labels), f"Labels missing for: {game_ids - labels}"
 
 
 def test_game_labels_jsonl_has_required_fields():
     import json
     required = {"pgn_game_id", "white", "black", "event", "year", "round", "result", "eco"}
-    for line in open("tests/gold/L2/v2/game_labels.jsonl"):
-        if not line.strip():
-            continue
-        label = json.loads(line)
-        missing = required - label.keys()
-        assert not missing, f"Label {label.get('pgn_game_id')} missing {missing}"
+    with open("tests/gold/L2/v2/game_labels.jsonl") as f_labels:
+        for line in f_labels:
+            if not line.strip():
+                continue
+            label = json.loads(line)
+            missing = required - label.keys()
+            assert not missing, f"Label {label.get('pgn_game_id')} missing {missing}"

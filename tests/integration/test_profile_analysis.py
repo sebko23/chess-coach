@@ -6,17 +6,17 @@ the new unified `metrics: [{id, value, ...}]` array. These
 tests verify both shapes.
 """
 from __future__ import annotations
-import pytest
-import pytest_asyncio
+
 import httpx
+import pytest_asyncio
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 
 
 @pytest_asyncio.fixture
 async def prod_client():
-    from chess_coach.gateway.config import GatewaySettings
     from chess_coach.gateway import create_app
+    from chess_coach.gateway.config import GatewaySettings
     settings = GatewaySettings()
     app = create_app(settings)
     app.state.gateway.settings = settings

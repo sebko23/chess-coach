@@ -8,14 +8,12 @@ from __future__ import annotations
 
 import json
 import pathlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-import pytest_asyncio
 
 from chess_coach.gateway.app import create_app
-
 
 CORPUS_V2 = pathlib.Path("tests/gold/L2/v2/corpus.json")
 CORPUS_V1 = pathlib.Path("tests/gold/L2/v1/corpus.json")
@@ -33,18 +31,14 @@ def fake_positions_factory():
     is responsible for the AGGREGATION; positions are mocked here."""
 
     def _factory(version: str, engine_top: str, engine_score: int):
-        if version == "v1":
-            corpus_path = CORPUS_V1
-        else:
-            corpus_path = CORPUS_V2
+        corpus_path = CORPUS_V1 if version == "v1" else CORPUS_V2
         raw = json.loads(corpus_path.read_text())
-        positions = raw["positions"] if "positions" in raw else raw
+        positions = raw.get("positions", raw)
 
         from chess_coach.gateway.routes.eval_verifier import PositionReport
         out = []
         for p in positions:
             delta = engine_score - p["score_cp"]
-            statuses = {"match_top1", "match_topN", "miss"}
             status = "match_top1" if engine_top == p["best_move_uci"] else "miss"
             out.append(PositionReport(
                 id=p["id"],
@@ -85,7 +79,7 @@ async def test_v2_summary_aggregation_when_all_match(fastapi_app, fake_positions
     # only possible if every gold move happens to be the same UCI -- unlikely.
     # Instead, build fakes where each engine top matches its gold move.
     raw = json.loads(CORPUS_V2.read_text())
-    positions = raw["positions"] if "positions" in raw else raw
+    positions = raw.get("positions", raw)
 
     from chess_coach.gateway.routes.eval_verifier import PositionReport
     fakes = []

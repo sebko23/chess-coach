@@ -1,4 +1,5 @@
-"""Integration tests for BBF-65 archetype cluster via the /v1/profile/{player}/explain/archetypes endpoint.
+"""Integration tests for BBF-65 archetype cluster via the
+/v1/profile/{player}/explain/archetypes endpoint.
 
 Uses httpx.ASGITransport + AsyncClient (matches the BBF-64.3 pattern) and
 patches ``cluster_archetypes`` at the route module so the handler sees
@@ -23,15 +24,14 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-# BBF-66: mark all tests in this file as slow (~3 min each due to real DB +
-# 6 upstream metric computations per route invocation). Excluded from PR CI;
-# runs nightly. See CONTRIBUTING.md for marker semantics.
-pytestmark = pytest.mark.slow
-
 from chess_coach.gateway.app import create_app
 from chess_coach.profile import ArchetypeAssignment
 from chess_coach.profile.effect_size import EffectSize
 
+# BBF-66: mark all tests in this file as slow (~3 min each due to real DB +
+# 6 upstream metric computations per route invocation). Excluded from PR CI;
+# runs nightly. See CONTRIBUTING.md for marker semantics.
+pytestmark = pytest.mark.slow
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 

@@ -59,8 +59,8 @@ def test_create_app_does_not_raise():
     # the chain completed.
     route_count = sum(1 for _ in app.routes)
     assert route_count > 0, (
-        f"create_app() returned a FastAPI app with no routes; "
-        f"the import chain completed but no routers registered. "
-        f"This usually means the import in app.py returned but "
-        f"the include_router calls inside create_app() did not run."
+        "create_app() returned a FastAPI app with no routes; "
+        "the import chain completed but no routers registered. "
+        "This usually means the import in app.py returned but "
+        "the include_router calls inside create_app() did not run."
     )

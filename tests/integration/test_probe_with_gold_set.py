@@ -44,7 +44,8 @@ def test_gold_set_is_loadable():
 
 
 def test_probe_computes_metrics_against_gold():
-    """End-to-end: gold set loaded, classified inputs synthesized, _compute_metrics returns non-None values."""
+    """End-to-end: gold set loaded, classified inputs synthesized,
+    _compute_metrics returns non-None values."""
     spec = importlib.util.spec_from_file_location("pdftomd_probe", SCRIPT_PATH)
     mod = importlib.util.module_from_spec(spec)
     sys.path.insert(0, str(Path(SCRIPT_PATH).parent))

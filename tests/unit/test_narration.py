@@ -1,16 +1,16 @@
 """Unit tests for the grounded-narration pipeline."""
 from __future__ import annotations
-import pytest
+
 from unittest.mock import AsyncMock, MagicMock
 
-from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
+from chess_coach.llm_router.router import LLMUnavailableError
 from chess_coach.narration.pipeline import NarrationPipeline
 from chess_coach.narration.validator import (
-    validate_citations,
     _normalize_move,
     _parse_eval_tag,
+    validate_citations,
 )
-from chess_coach.llm_router.router import LLMUnavailableError
+from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 

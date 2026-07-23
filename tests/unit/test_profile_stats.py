@@ -205,7 +205,8 @@ def test_tactical_returns_effect_size_on_synthetic_data(sqlite_db: str) -> None:
     assert result.point_estimate == pytest.approx(0.8, abs=0.01)
     assert result.null_value == 0.5
     # d should be positive (0.8 > 0.5)
-    assert result.d is not None and result.d > 0, f"d should be positive, got {result.d}"
+    assert result.d is not None
+    assert result.d > 0, f"d should be positive, got {result.d}"
     # ci_low should be <= 0.8 and ci_high >= 0.8
     assert result.ci_low <= 0.8 <= result.ci_high
 
@@ -305,7 +306,7 @@ def test_opening_comfort_computes_distinct_prefixes(sqlite_db: str) -> None:
     san_prefixes = ["e4", "e4", "e4", "d4", "d4", "c4", "c4"]
     san_suffixes = ["e5", "Nf3", "Nc6", "d5", "Nf6", "c5", "Nf3"]
     pos_idx = 0
-    for i, (pref, suff) in enumerate(zip(san_prefixes, san_suffixes), start=1):
+    for i, (pref, suff) in enumerate(zip(san_prefixes, san_suffixes, strict=True), start=1):
         _insert_game(conn, i, "testplayer", f"opp{i}", "1-0")
         for ply in range(1, 4):
             pos_idx += 1
@@ -432,11 +433,11 @@ def test_blunder_rate_vs_rating_uses_opponent_rating(tmp_path: Path) -> None:
 def test_all_metrics_have_section_b4_docstring() -> None:
     """Every metric function documents hypothesis + null + effect-size threshold."""
     from chess_coach.profile import (
+        blunder_rate_vs_rating,
+        conversion_ability,
+        opening_comfort,
         tactical_vs_positional_bias,
         time_pressure_quality,
-        opening_comfort,
-        conversion_ability,
-        blunder_rate_vs_rating,
     )
     for fn in (
         tactical_vs_positional_bias,
@@ -456,10 +457,3 @@ def test_all_metrics_have_section_b4_docstring() -> None:
 
 def test_metrics_importable_via_submodule() -> None:
     """All 5 BBF-57 metrics are also importable from stats submodule."""
-    from chess_coach.profile.stats import (
-        tactical_vs_positional_bias,
-        time_pressure_quality,
-        opening_comfort,
-        conversion_ability,
-        blunder_rate_vs_rating,
-    )

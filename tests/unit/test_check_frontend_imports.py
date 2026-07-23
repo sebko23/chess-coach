@@ -4,15 +4,12 @@ The scanner reads apps/desktop/src/ for usage patterns and verifies
 the corresponding npm package is declared in apps/desktop/package.json.
 """
 import json
-import textwrap
-from pathlib import Path
-import pytest
 
 from scripts.dev.check_frontend_imports import (
-    find_usage_patterns,
-    expected_packages_for_pattern,
-    scan_package_json,
     check_imports,
+    expected_packages_for_pattern,
+    find_usage_patterns,
+    scan_package_json,
 )
 
 

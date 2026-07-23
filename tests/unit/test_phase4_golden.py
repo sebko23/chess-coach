@@ -17,24 +17,24 @@ isolates to a specific scenario.
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
-
-import pytest
-
 
 # Import the fixture builders + EXPECTED constants.
 # The fixture file lives in tests/gold/; we add that dir
 # to sys.path dynamically so the import works regardless
 # of how pytest is invoked.
 import sys
+from pathlib import Path
+
+import pytest
+
 _FIXTURE_DIR = Path(__file__).resolve().parent.parent / "gold"
 if str(_FIXTURE_DIR) not in sys.path:
     sys.path.insert(0, str(_FIXTURE_DIR))
 from phase4_v1_fixtures import (  # noqa: E402
+    EXPECTED,
+    build_blundering_player,
     build_clean_player,
     build_tactical_player,
-    build_blundering_player,
-    EXPECTED,
 )
 
 
@@ -286,21 +286,19 @@ def test_blunder_rate_point_estimate(scenario) -> None:
     db_path, name, expected = scenario
     result = blunder_rate_vs_rating(db_path, name, seed=42)
     # total observations = 2 per game (positions 2 and 3)
-    total = expected["min_observations"]
     if expected["blunder_count"] == 0:
         assert result.point_estimate == 0.0, (
             f"{name}: blunder_rate should be 0 with 0 blunders"
         )
     else:
-        expected_rate = expected["blunder_count"] / total
-        # The actual rate may be slightly different because
-        # the fixture uses 2 positions per game (not 3), and
-        # the LAG filter excludes position 1, so total
-        # observations = 2 per game * 3 games = 6.
+        # The actual rate may be slightly different from the
+        # expected rate (blunder_count / total) because the
+        # fixture uses 2 positions per game (not 3), and the
+        # LAG filter excludes position 1, so total observations
+        # = 2 per game * 3 games = 6. We don't assert exact value
+        # because the per-position binary observation list
+        # depends on the LAG filter and the exact score sequence.
         assert result.point_estimate >= 0.0
-        # We don't assert exact value because the per-position
-        # binary observation list depends on the LAG
-        # filter and the exact score sequence.
 
 
 # --- L-2 gold integration check (skeleton) ---

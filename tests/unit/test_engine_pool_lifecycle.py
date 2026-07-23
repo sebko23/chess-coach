@@ -25,9 +25,7 @@ the pool to exercise its lifecycle branches (timeout, dead-pid).
 from __future__ import annotations
 
 import asyncio
-import sys
-import types
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import pytest
 
@@ -38,11 +36,9 @@ from chess_coach.engine_orch.pool import (
 )
 from chess_coach.protocol_types.analysis import (
     AnalysisRequest,
-    PVLine,
     Score,
 )
 from chess_coach.uci.engine import InfoEvent
-
 
 STARTING_POSITION = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
@@ -137,15 +133,12 @@ class FakeUCIEngine:
         raise AssertionError(f"unknown mode {self.mode}")
 
     async def quit(self) -> None:
+        import contextlib
         if self._proc is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._proc.kill()
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 await self._proc.wait()
-            except Exception:
-                pass
             self._proc = None
 
 

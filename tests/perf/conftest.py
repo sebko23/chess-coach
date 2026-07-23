@@ -19,7 +19,6 @@ import pytest
 from qdrant_client import QdrantClient
 from qdrant_client.models import SnapshotPriority
 
-
 QDRANT_URL = "http://localhost:6333"
 SQLITE_DB_PATH = "/root/.local/share/chess-coach/sqlite/chess_coach.db"
 COLLECTION = "positions"
