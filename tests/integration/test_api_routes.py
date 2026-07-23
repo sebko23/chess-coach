@@ -13,16 +13,8 @@ import pytest_asyncio
 from chess_coach.narration.pipeline import NarrationPipeline, NarrationOutput
 from fastapi import FastAPI
 
-from chess_coach.gateway.auth import set_active_token
 
 
-@pytest.fixture(autouse=True)
-def _patch_env(monkeypatch):
-    """Point to production DB and set token."""
-    monkeypatch.setenv("CHESS_COACH_DATA_DIR", "/root/.local/share/chess-coach")
-    set_active_token("devtoken123")
-    yield
-    set_active_token(None)
 
 
 @pytest_asyncio.fixture
@@ -45,7 +37,7 @@ async def engine_client() -> httpx.AsyncClient:
     """Client with mocked engine_pool + LLM router for narration."""
     from chess_coach.gateway.config import GatewaySettings
     from chess_coach.gateway import create_app
-    
+
     # Mock the LLM router so narration doesn't call OpenRouter
     mock_llm = MagicMock()
     mock_llm.complete = AsyncMock(return_value=(
@@ -54,7 +46,7 @@ async def engine_client() -> httpx.AsyncClient:
     settings = GatewaySettings()
     app = create_app(settings)
     app.state.gateway.settings = settings
-    
+
     # Mock the engine pool
     # Create a proper mock result with .pvs attribute matching AnalysisResult
     mock_result = MagicMock()
@@ -66,7 +58,7 @@ async def engine_client() -> httpx.AsyncClient:
     mock_score.value = 50
     mock_pv.score = mock_score
     mock_result.pvs = [mock_pv]
-    
+
     mock_pool = MagicMock()
     mock_pool.analyze = AsyncMock(return_value=mock_result)
     app.state.engine_pool = mock_pool
@@ -80,7 +72,7 @@ async def engine_client() -> httpx.AsyncClient:
         )
     )
     app.state.narration_pipeline = mock_pipeline
-    
+
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
