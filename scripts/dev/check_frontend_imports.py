@@ -24,7 +24,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-
 # The pattern table. Each pattern is matched as a bareword in TSX/TS code
 # (e.g. "useForm" in `import { useForm }`). The expected packages are the
 # npm packages that EXPORT that symbol.

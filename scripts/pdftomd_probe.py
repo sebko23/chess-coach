@@ -159,7 +159,8 @@ def _pdf_parse_subprocess(
     and record the choice in the returned meta.
 
     Return: (pages, meta) where
-        pages = [{"page": int, "text": str, "image_png": bytes|None, "image_w": int, "image_h": int}, ...]
+        pages = [{"page": int, "text": str, "image_png": bytes|None,
+                  "image_w": int, "image_h": int}, ...]
         meta  = {"sandbox": "subprocess"|"in-process", "rc": int, "stderr": str}
     """
     meta: dict[str, Any] = {"sandbox": "in-process", "rc": 0, "stderr": ""}
@@ -216,8 +217,8 @@ def _detect_boards(
     """
     import io
     try:
-        from PIL import Image  # type: ignore
         import numpy as np  # type: ignore
+        from PIL import Image  # type: ignore
     except Exception:
         np = None
         Image = None
@@ -250,6 +251,7 @@ def _detect_boards(
                 results["scores"].tolist(),
                 results["labels"].tolist(),
                 results["boxes"].tolist(),
+                strict=True,
             ):
                 if score < BOARD_DETECT_CONF_MIN:
                     continue
@@ -271,8 +273,9 @@ def _detect_boards(
                 )
             if bboxes:
                 return bboxes
-    except Exception:
-        # fall through to heuristic
+    except Exception:  # noqa: S110
+        # Heuristic fallback path; primary path's exception is expected
+        # to be silent (the heuristic below produces output either way).
         pass
 
     # Heuristic fallback: detect large square-ish regions with grid-like
@@ -326,8 +329,9 @@ def _classify_squares(
     grid_syms: list[list[str]] = [["." for _ in range(8)] for _ in range(8)]
     grid_conf: list[list[float]] = [[0.0 for _ in range(8)] for _ in range(8)]
     try:
-        from PIL import Image  # type: ignore
         import io
+
+        from PIL import Image  # type: ignore
     except Exception:
         return grid_syms, grid_conf
 
@@ -347,7 +351,7 @@ def _classify_squares(
     if "transformers" in hf_modules and "torch" in hf_modules:
         try:
             transformers = hf_modules["transformers"]
-            torch = hf_modules["torch"]
+            hf_modules["torch"]  # noqa: F841 (binding kept to keep import side-effects alive)
             clf = transformers.pipeline(
                 "image-classification",
                 model="Nothasan/Chessboard",
@@ -365,8 +369,8 @@ def _classify_squares(
                         symbols_map[(r, c)] = label
                         confidence[(r, c)] = score
             return _assemble_grid(symbols_map, confidence)
-        except Exception:
-            # fall through to pixel heuristic
+        except Exception:  # noqa: S110
+            # Fall through to pixel heuristic (below).
             pass
 
     # Heuristic fallback: density-based empty/occupied classification
@@ -491,7 +495,7 @@ def _serialize_markdown(
             lines.append("")
             lines.append(text)
             lines.append("")
-        for bj, board in enumerate(boards_per_page.get(idx, [])):
+        for bj, _board in enumerate(boards_per_page.get(idx, [])):  # noqa: B007 (_board reserved)
             key = (idx, bj)
             fen, ok, note = fens_per_board.get(key, (EMPTY_BOARD_FEN, False, "missing"))
             tag = f'<board fen="{fen}"/>'
@@ -546,7 +550,12 @@ def _compute_metrics(
                 #pages-with-gold.
     """
     if not gold:
-        return MetricComputeResult(metric_1=None, metric_2a=None, metric_2b=None, metric_2a_piece_squares_only=None)
+        return MetricComputeResult(
+            metric_1=None,
+            metric_2a=None,
+            metric_2b=None,
+            metric_2a_piece_squares_only=None,
+        )
     match_full = 0
     match_pos = 0
     pages_total = 0
@@ -567,16 +576,16 @@ def _compute_metrics(
         try:
             if fen.split()[0] == gold_fen.split()[0]:
                 match_pos += 1
-        except Exception:
+        except Exception:  # noqa: S110
             pass
         # per-square accuracy (only meaningful against a gold fen)
         try:
             g = gold_fen.split()[0].split("/")
             t = fen.split()[0].split("/")
-            for gr, tr in zip(g, t):
+            for gr, tr in zip(g, t, strict=True):
                 gs = _expand_fen_row(gr)
                 ts = _expand_fen_row(tr)
-                for gc, tc in zip(gs, ts):
+                for gc, tc in zip(gs, ts, strict=True):
                     if gc == tc:
                         squares_match += 1
                     # I-5: piece-squares-only counters (Design C-β)
@@ -584,7 +593,7 @@ def _compute_metrics(
                         pieces_total_gold += 1
                         if tc != '.' and gc == tc:
                             pieces_match_total += 1
-        except Exception:
+        except Exception:  # noqa: S110
             pass
     metric_2a = (squares_match / squares_total) if squares_total else 0.0
     metric_2b = (match_pos / pages_total) if pages_total else 0.0
@@ -625,6 +634,7 @@ def _write_checkpoint(
     metric_1: Any,
     metric_2a: float | None,
     metric_2b: float | None,
+    metric_2a_piece_squares_only: float | None,
     time_elapsed: float,
     errors: list[str],
 ) -> Path:
@@ -758,6 +768,7 @@ def main(argv: list[str] | None = None) -> int:
     metric_1: Any = None
     metric_2a: float | None = None
     metric_2b: float | None = None
+    metric_2a_piece_squares_only: float | None = None
     pages: list[dict[str, Any]] = []
     boards_per_page: dict[int, list[dict[str, Any]]] = {}
     fens_per_board: dict[tuple[int, int], tuple[str, bool, str]] = {}
@@ -771,7 +782,8 @@ def main(argv: list[str] | None = None) -> int:
         pages_in_chapter_1 = len(pages)
         if parse_meta.get("rc", 0) != 0:
             errors.append(
-                f"pdf-parse-failed: rc={parse_meta.get('rc')} stderr={parse_meta.get('stderr','')!r}"
+                f"pdf-parse-failed: rc={parse_meta.get('rc')} "
+                f"stderr={parse_meta.get('stderr','')!r}"
             )
         # Step 2: board detection
         for p in pages:
@@ -839,6 +851,7 @@ def main(argv: list[str] | None = None) -> int:
         metric_1=metric_1,
         metric_2a=metric_2a,
         metric_2b=metric_2b,
+        metric_2a_piece_squares_only=metric_2a_piece_squares_only,
         time_elapsed=t_elapsed,
         errors=errors,
     )

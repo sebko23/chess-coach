@@ -12,11 +12,11 @@ Pipeline:
 Pass criterion: ≥80% of detected boards produce a legal FEN.
 """
 import sys
+
+import chess
 import cv2
 import numpy as np
-import chess
 from pdf2image import convert_from_path
-from PIL import Image
 
 PDF_PATH = "/a0/usr/projects/trener/pdfs/Capablanca, Jose - Chess Fundamentals.pdf"
 PAGES = 20       # first 20 pages
@@ -66,7 +66,7 @@ def classify_square(sq_img: np.ndarray) -> str:
     # Use center 60% of square to avoid border artifacts
     margin_y, margin_x = int(h * 0.2), int(w * 0.2)
     center = gray[margin_y:h-margin_y, margin_x:w-margin_x]
-    mean = center.mean()
+    _mean = center.mean()  # noqa: F841 (reserved for future use)
     std = center.std()
     # High std = piece present (contrast between piece and background)
     # Low std = empty square

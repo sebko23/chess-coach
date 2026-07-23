@@ -1,10 +1,9 @@
 """Qdrant spike: FEN similarity search using TF-IDF (no torch needed)."""
-import sqlite3, json, sys, time
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+import sqlite3
+
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as qmodels
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 DB_PATH = '/root/.local/share/chess-coach/sqlite/chess_coach.db'
 COLLECTION_NAME = 'chess_positions_spike'
@@ -19,10 +18,10 @@ def fen_to_description(fen: str) -> str:
     board = parts[0]
     side = parts[1]
     castling = parts[2] if len(parts) > 2 else '-'
-    ep = parts[3] if len(parts) > 3 else '-'
-    
+    _ep = parts[3] if len(parts) > 3 else '-'  # noqa: F841 (en-passant; reserved)
+
     rows = board.split('/')
-    
+
     # Count material from FEN board characters directly
     white_material = 0
     black_material = 0
@@ -33,7 +32,7 @@ def fen_to_description(fen: str) -> str:
     white_queens = black_queens = 0
     white_king_pos = black_king_pos = None
     total_pieces = 0
-    
+
     for rank_idx, row in enumerate(rows):
         rank = 8 - rank_idx
         file_idx = 0
@@ -44,31 +43,43 @@ def fen_to_description(fen: str) -> str:
                 col = chr(ord('a') + file_idx)
                 pos = f"{col}{rank}"
                 if ch.isupper():
-                    if ch == 'K': white_king_pos = pos
-                    elif ch == 'Q': white_queens += 1
-                    elif ch == 'R': white_rooks += 1
-                    elif ch == 'B': white_bishops += 1
-                    elif ch == 'N': white_knights += 1
-                    elif ch == 'P': white_pawns += 1
+                    if ch == 'K':
+                        white_king_pos = pos
+                    elif ch == 'Q':
+                        white_queens += 1
+                    elif ch == 'R':
+                        white_rooks += 1
+                    elif ch == 'B':
+                        white_bishops += 1
+                    elif ch == 'N':
+                        white_knights += 1
+                    elif ch == 'P':
+                        white_pawns += 1
                     white_material += PIECE_VALUES[ch]
                 else:
-                    if ch == 'k': black_king_pos = pos
-                    elif ch == 'q': black_queens += 1
-                    elif ch == 'r': black_rooks += 1
-                    elif ch == 'b': black_bishops += 1
-                    elif ch == 'n': black_knights += 1
-                    elif ch == 'p': black_pawns += 1
+                    if ch == 'k':
+                        black_king_pos = pos
+                    elif ch == 'q':
+                        black_queens += 1
+                    elif ch == 'r':
+                        black_rooks += 1
+                    elif ch == 'b':
+                        black_bishops += 1
+                    elif ch == 'n':
+                        black_knights += 1
+                    elif ch == 'p':
+                        black_pawns += 1
                     black_material += PIECE_VALUES[ch]
                 total_pieces += 1
                 file_idx += 1
-    
+
     total_material = white_material + black_material
-    
+
     desc_parts = []
-    
+
     # Phase detection
     num_major = white_queens + black_queens + white_rooks + black_rooks
-    
+
     if total_material < 12 or total_pieces < 10:
         desc_parts.append("endgame")
         if total_material < 6:
@@ -82,9 +93,9 @@ def fen_to_description(fen: str) -> str:
         desc_parts.append("opening")
         if total_pieces >= 28:
             desc_parts.append("early-opening")
-    
+
     desc_parts.append(f"{side}-to-move")
-    
+
     # Material balance
     mat_diff = white_material - black_material
     if mat_diff > 3:
@@ -97,10 +108,10 @@ def fen_to_description(fen: str) -> str:
         desc_parts.append("black-slight-material-advantage")
     else:
         desc_parts.append("equal-material")
-    
+
     desc_parts.append(f"white-material-{white_material}")
     desc_parts.append(f"black-material-{black_material}")
-    
+
     # King safety
     if white_king_pos:
         desc_parts.append(f"white-king-{white_king_pos}")
@@ -114,7 +125,7 @@ def fen_to_description(fen: str) -> str:
             desc_parts.append("black-king-kingside-castled")
         elif black_king_pos in ['c8', 'b8', 'c7', 'b7']:
             desc_parts.append("black-king-queenside-castled")
-    
+
     # Piece counts
     desc_parts.append(f"white-queens-{white_queens}")
     desc_parts.append(f"black-queens-{black_queens}")
@@ -126,7 +137,7 @@ def fen_to_description(fen: str) -> str:
     desc_parts.append(f"black-bishops-{black_bishops}")
     desc_parts.append(f"white-pawns-{white_pawns}")
     desc_parts.append(f"black-pawns-{black_pawns}")
-    
+
     # Pawn structure
     if white_pawns >= 5:
         desc_parts.append("white-heavy-pawn-structure")
@@ -136,13 +147,17 @@ def fen_to_description(fen: str) -> str:
         desc_parts.append("black-heavy-pawn-structure")
     elif black_pawns <= 2:
         desc_parts.append("black-depleted-pawns")
-    
+
     # Castling rights
-    if 'K' in castling: desc_parts.append("white-can-castle-kingside")
-    if 'Q' in castling: desc_parts.append("white-can-castle-queenside")
-    if 'k' in castling: desc_parts.append("black-can-castle-kingside")
-    if 'q' in castling: desc_parts.append("black-can-castle-queenside")
-    
+    if 'K' in castling:
+        desc_parts.append("white-can-castle-kingside")
+    if 'Q' in castling:
+        desc_parts.append("white-can-castle-queenside")
+    if 'k' in castling:
+        desc_parts.append("black-can-castle-kingside")
+    if 'q' in castling:
+        desc_parts.append("black-can-castle-queenside")
+
     return " ".join(desc_parts)
 
 print("=" * 70)
@@ -153,44 +168,48 @@ print("=" * 70)
 db = sqlite3.connect(DB_PATH)
 cursor = db.cursor()
 
-print(f"\n1. Loading positions from SQLite DB...")
+print("\n1. Loading positions from SQLite DB...")
 rows = cursor.execute('''
-    SELECT id, fen, ply FROM positions 
-    WHERE ply BETWEEN 4 AND 30 
+    SELECT id, fen, ply FROM positions
+    WHERE ply BETWEEN 4 AND 30
     ORDER BY RANDOM() LIMIT 1000
 ''').fetchall()
 print(f"   Loaded {len(rows)} positions")
 
 # 2. Convert FEN to rich descriptions
-print(f"\n2. Converting FEN to text descriptions...")
+print("\n2. Converting FEN to text descriptions...")
 descriptions = []
 fen_list = []
-for pid, fen, ply in rows:
+for _pid, fen, _ply in rows:
     desc = fen_to_description(fen)
     descriptions.append(desc)
     fen_list.append(fen)
 
 print(f"   Generated {len(descriptions)} descriptions")
-print(f"   Sample description:")
+print("   Sample description:")
 sample_fen = fen_list[0]
 print(f"     FEN: {sample_fen}")
 print(f"     Desc: {descriptions[0]}")
 
 # Spot-check first query FEN
 q1_fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
-print(f"\n   Query FEN description check:")
+print("\n   Query FEN description check:")
 print(f"     FEN: {q1_fen}")
 print(f"     Desc: {fen_to_description(q1_fen)}")
 
 # 3. TF-IDF vectorization
-print(f"\n3. Vectorizing with TF-IDF...")
-vectorizer = TfidfVectorizer(max_features=256, analyzer='word', token_pattern=r'\b\w+\b')
+print("\n3. Vectorizing with TF-IDF...")
+vectorizer = TfidfVectorizer(
+    max_features=256,
+    analyzer="word",
+    token_pattern=r"\b\w+\b",  # noqa: S106 (regex pattern, not a password)
+)
 vectors = vectorizer.fit_transform(descriptions).toarray()
 print(f"   Shape: {vectors.shape}")
 print(f"   Vocabulary size: {len(vectorizer.vocabulary_)}")
 
 # 4. Setup Qdrant in-memory
-print(f"\n4. Setting up Qdrant in-memory...")
+print("\n4. Setting up Qdrant in-memory...")
 client = QdrantClient(':memory:')
 
 if client.collection_exists(COLLECTION_NAME):
@@ -217,7 +236,7 @@ client.upsert(collection_name=COLLECTION_NAME, points=points)
 print(f"   Upserted {len(points)} points")
 
 # 5. Test queries
-print(f"\n5. Running similarity queries...")
+print("\n5. Running similarity queries...")
 query_fens = [
     "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",  # King's Pawn (e4)
     "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1",  # Queen's Pawn (d4)
@@ -230,10 +249,10 @@ for qidx, qfen in enumerate(query_fens):
     print(f"\n   Query {qidx+1}: {qfen[:60]}...")
     qdesc = fen_to_description(qfen)
     print(f"     Description: {qdesc}")
-    
+
     # Vectorize query
     qvec = vectorizer.transform([qdesc]).toarray()[0]
-    
+
     # Search via Qdrant (use query_points API for newer client)
     results = client.query_points(
         collection_name=COLLECTION_NAME,
@@ -241,7 +260,7 @@ for qidx, qfen in enumerate(query_fens):
         limit=TOP_K,
         with_payload=True,
     )
-    
+
     print(f"     Top {TOP_K} results:")
     for r in results.points:
         fen = r.payload['fen']
