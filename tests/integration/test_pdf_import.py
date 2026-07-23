@@ -5,9 +5,7 @@ import io
 from unittest.mock import AsyncMock, patch
 
 import httpx
-import pytest
 import pytest_asyncio
-
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 MOCK_FEN = "8/8/8/4k3/8/8/8/4K2R w K - 0 1"

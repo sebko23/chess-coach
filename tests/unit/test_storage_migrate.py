@@ -4,8 +4,6 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-import pytest
-
 from chess_coach.storage import (
     discover_migrations,
     get_user_version,

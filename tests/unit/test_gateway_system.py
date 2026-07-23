@@ -44,7 +44,8 @@ class TestSystemInfo:
     async def test_request_id_generated_when_absent(self, client: httpx.AsyncClient) -> None:
         r = await client.get("/v1/system/info", headers=AUTH)
         rid = r.headers.get("X-Request-Id")
-        assert rid and len(rid) >= 8
+        assert rid
+        assert len(rid) >= 8
 
 
 class TestSystemHealth:

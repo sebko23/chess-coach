@@ -8,20 +8,16 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
-import pytest
 import pytest_asyncio
-from chess_coach.narration.pipeline import NarrationPipeline, NarrationOutput
-from fastapi import FastAPI
 
-
-
+from chess_coach.narration.pipeline import NarrationOutput, NarrationPipeline
 
 
 @pytest_asyncio.fixture
 async def prod_client() -> httpx.AsyncClient:
     """Test client against the real DB via ASGITransport."""
-    from chess_coach.gateway.config import GatewaySettings
     from chess_coach.gateway import create_app
+    from chess_coach.gateway.config import GatewaySettings
     settings = GatewaySettings()
     # Force in-memory Qdrant for tests — no network, fast, isolated.
     settings.qdrant_url = ":memory:"
@@ -35,8 +31,8 @@ async def prod_client() -> httpx.AsyncClient:
 @pytest_asyncio.fixture
 async def engine_client() -> httpx.AsyncClient:
     """Client with mocked engine_pool + LLM router for narration."""
-    from chess_coach.gateway.config import GatewaySettings
     from chess_coach.gateway import create_app
+    from chess_coach.gateway.config import GatewaySettings
 
     # Mock the LLM router so narration doesn't call OpenRouter
     mock_llm = MagicMock()
@@ -62,7 +58,6 @@ async def engine_client() -> httpx.AsyncClient:
     mock_pool = MagicMock()
     mock_pool.analyze = AsyncMock(return_value=mock_result)
     app.state.engine_pool = mock_pool
-    from chess_coach.narration.pipeline import NarrationPipeline
     mock_pipeline = MagicMock(spec=NarrationPipeline)
     mock_pipeline.explain_simple = AsyncMock(
         return_value=NarrationOutput(
@@ -252,11 +247,11 @@ class TestKB:
         assert resp.status_code == 422
 
     async def test_similar_rejects_top_k_out_of_range(self, prod_client):
-        resp = await prod_client.post(
-            "/v1/kb/similar",
-            json={"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", "top_k": 99},
-            headers=AUTH,
-        )
+        body = {
+            "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+            "top_k": 99,
+        }
+        resp = await prod_client.post("/v1/kb/similar", json=body, headers=AUTH)
         assert resp.status_code == 422
 
     async def test_similar_requires_auth(self, prod_client):

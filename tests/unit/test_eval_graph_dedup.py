@@ -29,7 +29,6 @@ from chess_coach.gateway.routes.eval_graph import (
     _get_dedup_lock,
 )
 
-
 KEY_A: tuple[str, int, str, int] = ("game-1", 5, "stockfish", 6)
 KEY_B: tuple[str, int, str, int] = ("game-1", 7, "stockfish", 6)
 KEY_C: tuple[str, int, str, int] = ("game-2", 5, "stockfish", 6)
@@ -201,13 +200,8 @@ class TestCoalesceAnalyze:
         # the leader set_exception before we awaited, the await
         # itself raises BoomError -- we wrap in try/except to
         # catch the propagation and assert.
-        try:
-            result = await _coalesce_analyze(KEY_A, lambda: asyncio.sleep(0))
-            assert False, (
-                f"expected BoomError, got success with {result!r}"
-            )
-        except BoomError as exc:
-            assert str(exc) == "stockfish fell over"
+        with pytest.raises(BoomError, match="stockfish fell over"):
+            await _coalesce_analyze(KEY_A, lambda: asyncio.sleep(0))
 
         await leader  # ensure the leader completes
 
@@ -300,16 +294,8 @@ class TestCoalesceAnalyze:
 
         # Catch the CancelledError so the test doesn't itself get
         # cancelled; assert it is what we expected.
-        try:
-            result = await _coalesce_analyze(
-                KEY_A, lambda: asyncio.sleep(0)
-            )
-            # Should not reach here.
-            assert False, (
-                f"expected CancelledError, got success with {result!r}"
-            )
-        except asyncio.CancelledError:
-            pass
+        with pytest.raises(asyncio.CancelledError):
+            await _coalesce_analyze(KEY_A, lambda: asyncio.sleep(0))
 
         await leader
         # Note: in this synthetic test the leader is not running

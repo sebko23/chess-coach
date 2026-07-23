@@ -1,7 +1,6 @@
 """Integration tests for the engine pool with real Stockfish."""
 from __future__ import annotations
 
-import pathlib
 import subprocess
 
 import pytest

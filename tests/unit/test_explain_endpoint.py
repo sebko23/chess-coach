@@ -117,12 +117,13 @@ async def client(sqlite_db: str, monkeypatch):
     we set the data dir to the tmp_path's parent so the gateway
     can find the SQLite file.
     """
+    # Move the SQLite db into the gateway's expected data dir
+    import os
+    import shutil
+
+    from chess_coach.gateway import create_app
     from chess_coach.gateway.auth import set_active_token
     from chess_coach.gateway.config import GatewaySettings
-    from chess_coach.gateway import create_app
-
-    # Move the SQLite db into the gateway's expected data dir
-    import shutil
     data_dir = str(Path(sqlite_db).parent / "gateway_data")
     os.makedirs(data_dir, exist_ok=True)
     target_db = str(Path(data_dir) / "sqlite" / "chess_coach.db")
@@ -149,9 +150,6 @@ async def client(sqlite_db: str, monkeypatch):
 
 
 # --- Endpoint tests ---
-
-
-import os  # placed here to keep the fixture section clean
 
 
 @pytest.mark.asyncio
@@ -309,10 +307,7 @@ def test_methodology_doc_per_metric_content() -> None:
         # Section runs to the next H2 or end of file
         rest = text[start + len(start_marker):]
         next_h2 = rest.find("\n## ")
-        if next_h2 == -1:
-            section_text = rest
-        else:
-            section_text = rest[:next_h2]
+        section_text = rest if next_h2 == -1 else rest[:next_h2]
         assert "Hypothesis" in section_text, f"{section} missing Hypothesis"
         assert "Null hypothesis" in section_text, (
             f"{section} missing Null hypothesis"

@@ -52,13 +52,14 @@ def test_verify_summary_aggregates_correctly():
 
 
 def test_verify_response_includes_corpus_version():
-    # VerifyResponse = (corpus_version: CorpusVersion, summary: VerifySummary, positions: list[PositionReport])
+    # VerifyResponse = corpus_version, summary, positions
+    summary = VerifySummary(
+        total=2, top1_hits=1, top3_hits=2,
+        score_within_50cp=1, mean_delta_cp_abs=10.0, max_delta_cp_abs=20,
+    )
     resp = VerifyResponse(
         corpus_version=CorpusVersion.V2,
-        summary=VerifySummary(
-            total=2, top1_hits=1, top3_hits=2,
-            score_within_50cp=1, mean_delta_cp_abs=10.0, max_delta_cp_abs=20,
-        ),
+        summary=summary,
         positions=[],
     )
     assert resp.corpus_version == CorpusVersion.V2
@@ -69,6 +70,7 @@ async def test_verify_corpus_v1_returns_full_reports():
     position's gold move may or may not match e2e4 -- we just verify
     the function completes and the response shape is correct."""
     from unittest.mock import AsyncMock, MagicMock
+
     from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
 
     # Mock engine that returns e2e4=30cp at top-1, d2d4=20cp at PV-2.
@@ -108,6 +110,7 @@ async def test_verify_corpus_v1_returns_full_reports():
 async def test_verify_corpus_v2_returns_18_reports():
     """v2 has 18 entries; with mocked engine, returns 18 PositionReports."""
     from unittest.mock import AsyncMock, MagicMock
+
     from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
 
     fixed = AnalysisResult(
@@ -135,8 +138,9 @@ async def test_verify_corpus_v2_returns_18_reports():
 async def test_verify_corpus_top1_match_status():
     """When the engine's top-1 move matches the gold move exactly, status='match_top1'."""
     from unittest.mock import AsyncMock, MagicMock
-    from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
+
     from chess_coach.datasets.l2_gold import load_l2_gold
+    from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
 
     # Load v1 to grab a real gold move
     v1 = load_l2_gold("v1")

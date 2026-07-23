@@ -80,7 +80,7 @@ def _check_health(client: httpx.Client) -> None:
         resp = client.get(url, headers=_headers(), timeout=HEALTH_TIMEOUT_S)
     except httpx.HTTPError as e:
         print(f"  FAIL: cannot reach gateway: {e}")
-        print(f"  is the backend running? start it with: docker compose up -d")
+        print("  is the backend running? start it with: docker compose up -d")
         sys.exit(1)
     if resp.status_code != 200:
         print(f"  FAIL: HTTP {resp.status_code} {resp.text[:200]}")
@@ -150,7 +150,7 @@ def _fetch_eval_graph(
         print(f"  FAIL: response is not a list: {type(data).__name__}")
         sys.exit(2)
     if not data:
-        print(f"  FAIL: empty eval-graph")
+        print("  FAIL: empty eval-graph")
         sys.exit(2)
     with_score = [p for p in data if p.get("score_cp") is not None]
     print(
@@ -158,11 +158,11 @@ def _fetch_eval_graph(
         f"elapsed={elapsed:.2f}s"
     )
     if not expect_cache_hit and len(with_score) != len(data):
-        print(f"  FAIL: expected all positions to have score_cp on first call")
+        print("  FAIL: expected all positions to have score_cp on first call")
         print(f"  missing: {[p for p in data if p.get('score_cp') is None]}")
         sys.exit(3)
     if expect_cache_hit and len(with_score) != len(data):
-        print(f"  FAIL: cache hit lost score_cp values")
+        print("  FAIL: cache hit lost score_cp values")
         sys.exit(4)
     return data
 
@@ -176,10 +176,10 @@ def main() -> int:
         second = _fetch_eval_graph(client, game_id, expect_cache_hit=True)
     # Sanity: the two calls returned the same data
     if [p["ply"] for p in first] != [p["ply"] for p in second]:
-        print(f"  FAIL: ply order changed between calls")
+        print("  FAIL: ply order changed between calls")
         return 2
     if [p.get("score_cp") for p in first] != [p.get("score_cp") for p in second]:
-        print(f"  FAIL: score_cp values changed between calls")
+        print("  FAIL: score_cp values changed between calls")
         return 4
     print(f"[4/4] OK smoke_test passed: {len(first)} positions, all with score_cp")
     return 0
@@ -191,19 +191,19 @@ def main() -> int:
 # standalone path above (when run as `python tests/integration/smoke_test.py`)
 # just exits with the right code.
 
-import pytest
-
 
 def test_smoke_lazy_eval_graph():
     """Pytest entry: same checks as the standalone main(), but skips
     cleanly if the gateway is unreachable so CI doesn't fail on a
     dev machine without the backend running.
     """
+    import pytest
     base = _base_url()
     with httpx.Client() as client:
         # Health check
         try:
-            resp = client.get(f"{base}/v1/system/health", headers=_headers(), timeout=HEALTH_TIMEOUT_S)
+            url = f"{base}/v1/system/health"
+            resp = client.get(url, headers=_headers(), timeout=HEALTH_TIMEOUT_S)
         except httpx.HTTPError:
             pytest.skip(f"gateway not reachable at {base}; skipping smoke test")
         if resp.status_code != 200:

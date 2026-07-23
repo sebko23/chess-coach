@@ -27,7 +27,7 @@ def _isolate_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pa
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("CHESS_COACH_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("CHESS_COACH_LOG_LEVEL", "WARNING")
-    yield tmp_path
+    return tmp_path
 
 
 @pytest.fixture

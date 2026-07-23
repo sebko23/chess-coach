@@ -4,10 +4,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from services.chess_coach.gold.eval_delta import eval_deltas
 
 from chess_coach.engine_orch.pool import EnginePool
 from chess_coach.protocol_types.analysis import AnalysisResult, PVLine, Score
-from services.chess_coach.gold.eval_delta import eval_deltas
 
 
 @pytest.mark.asyncio
