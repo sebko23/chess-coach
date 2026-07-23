@@ -3,16 +3,9 @@ from __future__ import annotations
 import pytest
 import pytest_asyncio
 import httpx
-from chess_coach.gateway.auth import set_active_token
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 
-@pytest.fixture(autouse=True)
-def _patch_env(monkeypatch):
-    monkeypatch.setenv("CHESS_COACH_DATA_DIR", "/root/.local/share/chess-coach")
-    set_active_token("devtoken123")
-    yield
-    set_active_token(None)
 
 @pytest_asyncio.fixture
 async def prod_client():

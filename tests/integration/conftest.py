@@ -59,6 +59,46 @@ def _restore_qdrant_env(monkeypatch) -> None:
     return
 
 
+@pytest.fixture(autouse=True)
+def _integration_db(tmp_path: Path) -> None:
+    """Apply all migrations to the test's tmp_path SQLite DB.
+
+    The top-level tests/conftest.py autouse _isolate_env fixture sets
+    CHESS_COACH_DATA_DIR=<tmp_path>; this fixture completes the
+    setup by populating tmp_path/sqlite/chess_coach.db with the
+    production schema (all 11 tables from migrations 0001-0007).
+
+    Empty tables are sufficient for most integration tests: route
+    handlers run SELECT queries that tolerate empty result sets, and
+    tests that need real data seed it explicitly via additional
+    fixtures (or skip if the schema isn't enough).
+
+    Replaces the per-file `_patch_env` autouse that hardcoded
+    /root/.local/share/chess-coach (broken on Windows). See BBF-79
+    (single file) and BBF-79.x (this sweep) for context.
+    """
+    from chess_coach.storage.migrate import migrate
+    db_path = tmp_path / "sqlite" / "chess_coach.db"
+    migrate(db_path)
+    return
+
+
+@pytest.fixture(autouse=True)
+def _integration_auth() -> AsyncIterator[None]:
+    """Activate the dev bearer token for integration tests.
+
+    Mirrors the original `_patch_env` autouse behavior from each
+    integration test file (which called set_active_token on setup
+    and set_active_token(None) on teardown). The route's bearer
+    check is exercised end-to-end; tests that want to assert
+    auth-rejection behavior set the token to None explicitly.
+    """
+    from chess_coach.gateway.auth import set_active_token
+    set_active_token("devtoken123")
+    yield
+    set_active_token(None)
+
+
 @pytest.fixture
 def qdrant_sqlite_path(tmp_path: Path) -> Path:
     """Create a deterministic SQLite fixture with five indexable positions."""
