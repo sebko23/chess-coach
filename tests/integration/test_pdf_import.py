@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import io
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 import pytest_asyncio
+from fastapi import UploadFile
+from services.chess_coach.gateway.routes.pdf_ingest import import_pdf
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 MOCK_FEN = "8/8/8/4k3/8/8/8/4K2R w K - 0 1"
@@ -75,22 +78,32 @@ class TestPdfImport:
         assert r.status_code == 422
 
     @patch(
+        "services.chess_coach.gateway.routes.pdf_ingest.convert_from_bytes",
+        return_value=[MagicMock()],
+    )
+    @patch(
         "services.chess_coach.gateway.routes.pdf_ingest._predict_fen",
         new_callable=AsyncMock,
         return_value=(MOCK_FEN, 0.9, None),
     )
-    async def test_valid_pdf_returns_import_response(self, mock_predict, prod_client):
-        r = await prod_client.post(
-            "/v1/import/pdf",
-            headers=AUTH,
-            files={
-                "file": ("test.pdf", io.BytesIO(_minimal_pdf()), "application/pdf")
-            },
-            params={"max_pages": 1},
+    @pytest.mark.usefixtures("_integration_db")
+    async def test_valid_pdf_returns_import_response(
+        self, mock_predict, mock_convert, tmp_path
+    ):
+        page_image = mock_convert.return_value[0]
+        page_image.save.side_effect = lambda buffer, format: buffer.write(b"png")
+        result = await import_pdf(
+            file=UploadFile(
+                filename="test.pdf",
+                file=io.BytesIO(_minimal_pdf()),
+            ),
+            max_pages=1,
+            db_path=str(tmp_path / "sqlite" / "chess_coach.db"),
         )
-        assert r.status_code == 200
-        data = r.json()
-        assert "import_id" in data
-        assert "pages_processed" in data
-        assert "diagrams_found" in data
-        assert "diagrams" in data
+
+        assert result.pages_processed == 1
+        assert result.diagrams_found == 1
+        assert len(result.diagrams) == 1
+        assert result.diagrams[0].fen == MOCK_FEN
+        mock_convert.assert_called_once()
+        mock_predict.assert_awaited_once()
