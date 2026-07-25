@@ -5,19 +5,19 @@ Greps the frontend source for usage patterns of frontend-library APIs
 and verifies the corresponding npm package is declared in
 apps/desktop/package.json.
 
-Advisory by default: prints a WARNING summary and exits 0 if any packages
-are missing. Future BBF can flip this to exit 1 once the codebase is known
-clean. See CONTRIBUTING.md.
+Enforcing: prints a WARNING summary and exits 1 if any packages are missing.
+This makes the scanner suitable for pull-request CI. See CONTRIBUTING.md.
 
 Usage:
-    python3 scripts/dev/check_frontend_imports.py
+    python scripts/dev/check_frontend_imports.py
 
 Exit codes:
-    0 - all usages match declared packages (current advisory behavior)
-    1 - internal scanner error (e.g. package.json not found)
+    0 - all usages match declared packages
+    1 - a package is missing or the scanner cannot run
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -149,9 +149,17 @@ def check_imports(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--apps-root",
+        type=Path,
+        default=None,
+        help="apps/desktop directory (defaults to the repository checkout)",
+    )
+    args = parser.parse_args()
     try:
-        ok = check_imports()
+        ok = check_imports(apps_root=args.apps_root)
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
-    sys.exit(0 if ok else 0)  # advisory mode: always exit 0 for now
+    sys.exit(0 if ok else 1)

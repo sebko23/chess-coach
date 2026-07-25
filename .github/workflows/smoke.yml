@@ -11,6 +11,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  frontend-imports:
+    name: frontend static imports
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check frontend package declarations
+        run: python scripts/dev/check_frontend_imports.py
+
   # Fast unit-level guard against the BBF-38/40/41/42/44 missing-dep
   # cascade. Runs the gateway boot regression test in a FRESH venv
   # that only has the declared [project.dependencies] installed,

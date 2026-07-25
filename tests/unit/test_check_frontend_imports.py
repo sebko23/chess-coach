@@ -4,6 +4,9 @@ The scanner reads apps/desktop/src/ for usage patterns and verifies
 the corresponding npm package is declared in apps/desktop/package.json.
 """
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 from scripts.dev.check_frontend_imports import (
     check_imports,
@@ -61,3 +64,29 @@ def test_check_imports_warns_when_package_missing(tmp_path, capsys):
     captured = capsys.readouterr()
     assert not ok
     assert "@mantine/form" in captured.out or "WARNING" in captured.out
+
+
+def test_cli_fails_when_package_missing(tmp_path):
+    """The CI entry point must fail when a detected package is undeclared."""
+    repo_root = Path(__file__).resolve().parents[2]
+    script = repo_root / "scripts" / "dev" / "check_frontend_imports.py"
+    apps_root = tmp_path / "apps" / "desktop"
+    src = apps_root / "src"
+    src.mkdir(parents=True)
+    (src / "AddEngine.tsx").write_text(
+        'import { useForm } from "@mantine/form";\n', encoding="utf-8"
+    )
+    (apps_root / "package.json").write_text(
+        json.dumps({"name": "test", "dependencies": {"react": "^18.0.0"}}),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(script), "--apps-root", str(apps_root)],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "@mantine/form" in result.stdout
