@@ -86,7 +86,10 @@ class AnalysisRequest(_ProtocolModel):
     depth: int | None = Field(default=None, ge=1, description="Search depth (plies)")
     nodes: int | None = Field(default=None, ge=1, description="Search node limit")
     multipv: int = Field(default=1, ge=1, le=5, description="Number of PVs to return")
-    engine_id: str | None = Field(default=None, description="Engine to use (optional shortcut; normally from URL path)")
+    engine_id: str | None = Field(
+        default=None,
+        description="Engine to use (optional shortcut; normally from URL path)",
+    )
     options: dict[str, str | int | bool] = Field(
         default_factory=dict, description="Extra UCI options within engine bounds"
     )

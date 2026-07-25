@@ -32,7 +32,6 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 # ID pattern: AG-vN-NNNN where vN is the version and NNNN is 4-digit zero-padded.
 _ID_PATTERN = re.compile(r"^AG-v\d+-\d{4}$")

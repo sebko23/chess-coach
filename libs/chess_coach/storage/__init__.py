@@ -7,6 +7,7 @@ as Phase-1 features land.
 from __future__ import annotations
 
 import sys as _sys
+
 if "chess_coach.storage.migrate" not in _sys.modules:
     from .migrate import (
         Migration,

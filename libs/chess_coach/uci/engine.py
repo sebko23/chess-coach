@@ -17,8 +17,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator
+from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import AsyncIterator
 
 from ..protocol_types.analysis import Score
 
@@ -62,7 +63,12 @@ class InfoEvent:
 class UCIEngine:
     """Asynchronous UCI protocol client wrapping a single subprocess."""
 
-    def __init__(self, binary: str, engine_id: str | None = None, extra_args: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        binary: str,
+        engine_id: str | None = None,
+        extra_args: list[str] | None = None,
+    ) -> None:
         self.binary: str = binary
         self.engine_id: str = engine_id or binary
         self._proc: asyncio.subprocess.Process | None = None
@@ -103,10 +109,8 @@ class UCIEngine:
         self._version = self._name  # we can refine later
         logger.info("uci: engine %s ready (uciok)", self.engine_id)
         # Set options, ignoring errors for engines that don't recognize them
-        try:
+        with suppress(Exception):
             await self.set_options(options or {})
-        except Exception:
-            pass
         await self._send("isready")
         await self._expect("readyok")
 
@@ -117,7 +121,7 @@ class UCIEngine:
         try:
             await self._send("quit")
             await asyncio.wait_for(self._proc.wait(), timeout=3)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._proc.kill()
             await self._proc.wait()
         finally:
@@ -130,19 +134,14 @@ class UCIEngine:
         for name, value in options.items():
             if isinstance(value, bool):
                 value = "true" if value else "false"
-            try:
+            with suppress(Exception):
                 await self._send(f"setoption name {name} value {value}")
-            except Exception:
-                pass  # ignore option errors (e.g., lc0 may not recognize all options)
 
     async def position(
         self, *, fen: str | None = None, moves: list[str] | None = None
     ) -> None:
         """Send the ``position`` command."""
-        if fen is not None:
-            cmd = f"position fen {fen}"
-        else:
-            cmd = "position startpos"
+        cmd = f"position fen {fen}" if fen is not None else "position startpos"
         if moves:
             cmd += " moves " + " ".join(moves)
         await self._send(cmd)
@@ -182,7 +181,8 @@ class UCIEngine:
             if movestogo is not None:
                 parts.append(f"movestogo {movestogo}")
         await self._send(" ".join(parts))
-        assert self._proc is not None and self._proc.stdout is not None
+        assert self._proc is not None
+        assert self._proc.stdout is not None
         self.bestmove = ""
         self.ponder = ""
         while True:
@@ -211,7 +211,8 @@ class UCIEngine:
         await self._proc.stdin.drain()
 
     async def _readline(self) -> str:
-        assert self._proc is not None and self._proc.stdout is not None
+        assert self._proc is not None
+        assert self._proc.stdout is not None
         line = await self._proc.stdout.readline()
         if not line:
             raise EOFError("Engine stdout closed unexpectedly")
@@ -233,7 +234,7 @@ class UCIEngine:
 # ── private helpers ────────────────────────────────────────────────────────
 
 
-def _parse_info(text: str) -> "InfoEvent | None":
+def _parse_info(text: str) -> InfoEvent | None:
     """Parse one ``info ...`` line into an InfoEvent.
 
     Uses a token-based parser that handles fields in any order.
@@ -248,24 +249,32 @@ def _parse_info(text: str) -> "InfoEvent | None":
     while i < len(parts):
         tok = parts[i]
         if tok == "depth" and i + 1 < len(parts):
-            fields["depth"] = int(parts[i + 1]); i += 2
+            fields["depth"] = int(parts[i + 1])
+            i += 2
         elif tok == "seldepth" and i + 1 < len(parts):
-            fields["seldepth"] = int(parts[i + 1]); i += 2
+            fields["seldepth"] = int(parts[i + 1])
+            i += 2
         elif tok == "multipv" and i + 1 < len(parts):
-            fields["multipv"] = int(parts[i + 1]); i += 2
+            fields["multipv"] = int(parts[i + 1])
+            i += 2
         elif tok == "score" and i + 2 < len(parts):
-            fields["score"] = Score(kind=parts[i + 1], value=int(parts[i + 2])); i += 3
+            fields["score"] = Score(kind=parts[i + 1], value=int(parts[i + 2]))
+            i += 3
         elif tok == "nodes" and i + 1 < len(parts):
-            fields["nodes"] = int(parts[i + 1]); i += 2
+            fields["nodes"] = int(parts[i + 1])
+            i += 2
         elif tok == "nps" and i + 1 < len(parts):
-            fields["nps"] = int(parts[i + 1]); i += 2
+            fields["nps"] = int(parts[i + 1])
+            i += 2
         elif tok == "time" and i + 1 < len(parts):
-            fields["time_ms"] = int(parts[i + 1]); i += 2
+            fields["time_ms"] = int(parts[i + 1])
+            i += 2
         elif tok in ("hashfull", "tbhits", "currmove", "currmovenumber",
                      "cpuload", "refutation", "currline") and i + 1 < len(parts):
             i += 2  # consume and ignore
         elif tok == "pv":
-            fields["pv"] = parts[i + 1:]; i = len(parts)
+            fields["pv"] = parts[i + 1:]
+            i = len(parts)
         elif tok == "string":
             i = len(parts)  # rest is a display string, ignore
         else:
