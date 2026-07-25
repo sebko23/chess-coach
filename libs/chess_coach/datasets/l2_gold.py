@@ -90,7 +90,7 @@ class L2GoldEntry:
     tags: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "L2GoldEntry":
+    def from_dict(cls, raw: dict[str, Any]) -> L2GoldEntry:
         """Build an entry from a raw JSON dict.
 
         Validates required fields. Raises ``ValueError`` with

@@ -5,11 +5,11 @@ but returns pre-programmed output lines. No real subprocess required.
 """
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import AsyncIterator
 
-from chess_coach.uci.engine import InfoEvent
 from chess_coach.protocol_types.analysis import Score
+from chess_coach.uci.engine import InfoEvent
 
 
 @dataclass

@@ -20,8 +20,8 @@ from __future__ import annotations
 
 import logging
 import re
-import shutil
 import sqlite3
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib.resources import files
@@ -163,10 +163,8 @@ def migrate(
             except Exception as exc:
                 # If executescript fails partway through, the connection is
                 # left without an active transaction; ROLLBACK is best-effort.
-                try:
+                with suppress(sqlite3.Error):
                     conn.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
                 raise MigrationFailedError(
                     f"Migration {m.name} failed: {exc}",
                     details={"migration": m.name, "version": m.version},
