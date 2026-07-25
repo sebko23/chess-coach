@@ -198,9 +198,8 @@ python3 scripts/dev/check_frontend_imports.py
 **Why this exists:**
 Per the user's 2026-07-17 Q3 strategic decision, the static-import
 scanner is dev-loop polish. Runtime CI catches missing dependencies in
-production; this catches them at write-time. The script is currently
-advisory (exits 0 even on warnings). Future BBF flips it to exit 1 once
-the codebase is known clean.
+production; this catches them at write-time and now fails the dedicated
+CI job when a detected package declaration is missing.
 
 **Pattern table:**
 The script's `PATTERN_TABLE` maps frontend-library API identifiers
@@ -210,13 +209,10 @@ in `scripts/dev/check_frontend_imports.py` with the pattern and the
 expected npm package(s). Then add a unit test in
 `tests/unit/test_check_frontend_imports.py`.
 
-**Current status (BBF-67.1):**
-- 22 patterns in the table covering Mantine + Tauri + Tiptap APIs.
+**Current status (BBF-83):**
+- 21 patterns in the table covering Mantine + Tauri + Tiptap APIs.
 - Real codebase scan returns: "OK: all 253 pattern usages match
   declared packages (12 distinct)."
-
-**Future BBF (BBF-67.2 or later):** wire into `lint:ci` so the scanner
-runs on every PR. This is intentionally deferred until the script has
-been reviewed by the user (so a bug in the script doesn't fail every
-PR).
+- The scanner is enforced by the `frontend static imports` job in
+  `.github/workflows/smoke.yml`; a detected undeclared package exits 1.
 
