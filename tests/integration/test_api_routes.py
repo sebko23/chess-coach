@@ -1,7 +1,17 @@
 """Integration tests for Phase 2-3 backend routes.
 
-Uses the production DB so all tables exist and we can make meaningful
-assertions against real data (551 games, 3,739 training cards).
+Uses the deterministic BBF-84B fixture contract seeded by the
+autouse chain in `tests/integration/conftest.py`:
+`_integration_db` migrates the tmp-path DB and
+`_seed_realistic_dataset` populates 551 games (373 owned by
+`ebassti`) and 3700+ due training cards. The literal counts
+`551`, `373`, and `3700+` are the **fixture contract**, not
+live production data; they are pinned by the assertion bodies
+in `TestGames` and `TestTraining` below and by
+`tests/integration/test_profile_analysis.py::TestProfile::test_get_profile_known_player`.
+See `tests/integration/fixtures/realistic_seed.py` for the
+seed implementation and `docs/16_audit/BBF-84B-fixture-policy.md`
+for the design rationale.
 """
 from __future__ import annotations
 

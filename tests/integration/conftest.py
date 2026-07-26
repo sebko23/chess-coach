@@ -99,6 +99,48 @@ def _integration_auth() -> AsyncIterator[None]:
     set_active_token(None)
 
 
+@pytest.fixture(autouse=True)
+def _seed_realistic_dataset(tmp_path: Path) -> None:
+    """Seed the BBF-84B fixture contract: 551 games / 373 ebassti / 3700+ cards.
+
+    Runs after `_integration_db` because the DB must already be
+    migrated. See `tests/integration/fixtures/realistic_seed.py`
+    for the contract itself.
+
+    This autouse was added in BBF-84B to close the five pre-existing
+    production-data-dependent integration failures (`total==551`,
+    `ebassti==373`, `due_count>=3700`, etc.) without weakening any
+    test assertion. The seeded counts ARE the test contract; a change
+    here must be paired with a deliberate test-body change.
+    """
+    import asyncio
+    import importlib.util
+    import sys
+
+    # tests/integration/ has no __init__.py, so the fixtures
+    # subdirectory is not importable as a normal package. Load
+    # `realistic_seed` by file path instead; this avoids adding a
+    # package marker to tests/integration/ (which would alter its
+    # test-discovery semantics).
+    fixture_path = (
+        Path(__file__).resolve().parent / "fixtures" / "realistic_seed.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "realistic_seed", fixture_path
+    )
+    if spec is None or spec.loader is None:  # pragma: no cover
+        raise RuntimeError(
+            f"Could not load fixture module from {fixture_path}"
+        )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("realistic_seed", module)
+    spec.loader.exec_module(module)
+
+    db_path = tmp_path / "sqlite" / "chess_coach.db"
+    asyncio.run(module.populate(db_path))
+    return
+
+
 @pytest.fixture
 def qdrant_sqlite_path(tmp_path: Path) -> Path:
     """Create a deterministic SQLite fixture with five indexable positions."""
