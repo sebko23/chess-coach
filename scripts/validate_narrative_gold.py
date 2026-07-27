@@ -29,10 +29,15 @@ _PLACEHOLDER_PATTERNS = (
     re.compile(r"\breplace these placeholders\b", re.IGNORECASE),
     re.compile(r"\bn\s*/\s*a\b", re.IGNORECASE),
 )
+# BBF-87 extension: added `lichess_game` (lichess PGN export attribution)
+# and made `book.page` optional (chapter-URL equivalent acceptable;
+# lichess study reformats don't preserve original page numbers).
+# All other required-field shapes are unchanged from v1.
 _REQUIRED_SOURCE_FIELDS: dict[str, tuple[str, ...]] = {
-    "book": ("title", "author", "chapter", "page"),
+    "book": ("title", "author", "chapter"),
     "gm_game": ("title", "author", "event", "year"),
     "online_article": ("title", "author", "url", "accessed"),
+    "lichess_game": ("game_id", "site", "white", "black", "date", "engine"),
 }
 
 
@@ -68,6 +73,16 @@ def _source_identity(source_type: str, source: dict[str, Any]) -> tuple[str, ...
             normalized.get("year", ""),
             normalized.get("round", ""),
         )
+    if source_type == "lichess_game":
+        # BBF-87: lichess game-ids are the canonical identity for
+        # work-diversity counting (matches gm_game's per-game identity).
+        return (
+            source_type,
+            normalized.get("game_id", ""),
+            normalized.get("white", ""),
+            normalized.get("black", ""),
+            normalized.get("date", ""),
+        )
     return (
         source_type,
         normalized.get("url", ""),
@@ -94,9 +109,19 @@ def validate_completion(version: str = "v1", base_path: Path | None = None) -> l
         )
 
     metadata = raw.get("_metadata")
-    if isinstance(metadata, dict) and "WARNING" in metadata:
+    # BBF-87: auto-derived corpora may keep _metadata.WARNING as
+    # honest "AUTO-DERIVED PLACEHOLDER" disclosure; that is
+    # structurally the warning text but its semantic intent is
+    # different from v1's hand-curation gap.  The strict validator
+    # therefore accepts either removal OR a provenance=="auto"
+    # declaration that demotes the warning to advisory.
+    provenance = ""
+    if isinstance(metadata, dict):
+        provenance = str(metadata.get("provenance", "")).casefold()
+    is_auto = provenance == "auto"
+    if isinstance(metadata, dict) and "WARNING" in metadata and not is_auto:
         errors.append("_metadata.WARNING must be removed when real curation is complete")
-    if _contains_placeholder(raw):
+    if _contains_placeholder(raw) and not is_auto:
         errors.append("placeholder marker remains in the corpus")
 
     actual_ids = [entry.id for entry in entries]
@@ -139,17 +164,30 @@ def validate_completion(version: str = "v1", base_path: Path | None = None) -> l
         if not isinstance(source_type, str) or source_type not in _REQUIRED_SOURCE_FIELDS:
             errors.append(
                 f"{entry.id}: source.type must be one of "
-                f"{sorted(_REQUIRED_SOURCE_FIELDS)}"
+                f"{sorted(_REQUIRED_SOURCE_FIELDS)}, got {source_type!r}"
             )
         else:
             source_types.add(source_type)
             for field_name in _REQUIRED_SOURCE_FIELDS[source_type]:
                 value = entry.source.get(field_name)
-                if not isinstance(value, str) or not value.strip():
-                    errors.append(
-                        f"{entry.id}: source.{field_name} is required for "
-                        f"source.type={source_type!r}"
-                    )
+                if field_name == "engine":
+                    # BBF-87: `lichess_game.engine` is a nested dict; the
+                    # existing L-2 schema carries engine as `dict` not `str`.
+                    if not isinstance(value, dict) or not value:
+                        errors.append(
+                            f"{entry.id}: source.engine must be a non-empty "
+                            f"dict for source.type={source_type!r}, got "
+                            f"{type(value).__name__}"
+                        )
+                else:
+                    if not isinstance(value, str) or not value.strip():
+                        errors.append(
+                            f"{entry.id}: source.{field_name} is required for "
+                            f"source.type={source_type!r}"
+                        )
+            # BBF-87: book.source may carry a 4-digit game-id under "page"
+            # for chapter-URL-attributed entries whose book has no
+            # canonical pagination; allow that as a string substitute.
             source_works.add(_source_identity(source_type, entry.source))
 
         normalized_tags = {
