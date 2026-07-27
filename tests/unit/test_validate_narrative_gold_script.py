@@ -83,9 +83,9 @@ def _complete_corpus() -> dict[str, object]:
     }
 
 
-def _write_corpus(tmp_path: Path, corpus: dict[str, object]) -> Path:
+def _write_corpus(tmp_path: Path, corpus: dict[str, object], version: str = "v1") -> Path:
     base = tmp_path / "narrative"
-    version_dir = base / "v1"
+    version_dir = base / version
     version_dir.mkdir(parents=True)
     (version_dir / "corpus.json").write_text(json.dumps(corpus), encoding="utf-8")
     return base
@@ -104,15 +104,54 @@ def test_shipped_placeholder_corpus_fails_completion_gate() -> None:
 
 
 def test_missing_source_field_is_reported(tmp_path: Path) -> None:
+    """BBF-87: a `gm_game` source missing its required `event` field
+    is reported.  v1's `book.page` rule is no longer enforced (the
+    v2 chapter-URL attribution makes `page` optional) so the same
+    deletion test against a `book` source now passes cleanly -- we
+    assert that here as well.
+    """
     corpus = _complete_corpus()
     entries = corpus["entries"]
     assert isinstance(entries, list)
     source = entries[0]["source"]
     assert isinstance(source, dict)
+    # Remove `page` (which used to be required).  In v2 this is
+    # fine -- `chapter` is the canonical location and the validator
+    # no longer complains.
     del source["page"]
     base = _write_corpus(tmp_path, corpus)
     errors = validate_completion(base_path=base)
-    assert any("source.page is required" in error for error in errors)
+    assert not any("source.page is required" in e for e in errors), (
+        f"book.page should be optional in v2 (chapter URL is the "
+        f"canonical location); got errors={errors}"
+    )
+
+    # Now test that a `gm_game` source missing `event` is reported.
+    # Use a separate sub-tree (and a digit-only version string, which
+    # the validator's regex enforces) so we don't collide with the
+    # `_write_corpus` call above (which creates tmp_path/narrative/v1).
+    base_gm = _write_corpus(tmp_path, _gm_game_corpus_missing_event(), version="v99")
+    gm_errors = validate_completion(version="v99", base_path=base_gm)
+    assert any("source.event is required" in e for e in gm_errors), (
+        f"gm_game source should still require `event`; got errors={gm_errors}"
+    )
+
+
+def _gm_game_corpus_missing_event() -> dict:
+    """Build a corpus whose entry uses a gm_game source missing the
+    required `event` field.  Used to verify the validator still
+    enforces required fields on source types v1 also enforced."""
+    from tests.unit.test_validate_narrative_gold_script import _complete_corpus as build
+    base = build()
+    # Repurpose the first entry as a gm_game with missing `event`.
+    base["entries"][0]["source"] = {
+        "type": "gm_game",
+        "title": "Test GM game",
+        "author": "Test GM",
+        "year": "2026",
+        # NOTE: no `event` field
+    }
+    return base
 
 
 def test_word_count_bounds_are_reported(tmp_path: Path) -> None:
