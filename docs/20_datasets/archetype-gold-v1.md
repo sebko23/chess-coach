@@ -3,6 +3,7 @@
 **Status:** BBF-75 curation kit. The shipped corpus is still a synthetic placeholder until a domain expert replaces it.
 **Path:** `tests/gold/archetypes/v1/corpus.json`
 **Loader:** `chess_coach.datasets.archetype_gold` (re-exported from `libs/chess_coach/datasets/archetype_gold.py`)
+**BBF-88.x v0 corpus:** `tests/gold/archetypes/v0/corpus.json` (auto-derived; alongside v1; see Appendix)
 
 ## Goal
 
@@ -117,7 +118,96 @@ Before declaring BBF-75 complete:
 
 ## Related documentation
 
-- [`L2-gold-v1.md`](L2-gold-v1.md) — sibling corpus spec (chess positions, not player metrics).
+- [L2-gold-v1.md](L2-gold-v1.md) — sibling corpus spec (chess positions, not player metrics).
 - [`../15_methodology/profile-metrics-v1.md`](../15_methodology/profile-metrics-v1.md) — methodology for each of the 6 metrics.
 - [`../../CHANGELOG.md`](../../CHANGELOG.md) — BBF-66 kNN swap + BBF-75 entry.
 - [`../../10_roadmap/phase-plan-v2.md`](../../10_roadmap/phase-plan-v2.md) — Phase 4 "Playing Style Patterns" plan.
+
+## Appendix: BBF-88.x v0 auto-derived corpus
+
+**Path:** `tests/gold/archetypes/v0/corpus.json`
+**Status:** AUTO-DERIVED. By project decision (no human-curator path),
+this corpus is the production default; v1 placeholder is preserved as a
+fallback for callers that explicitly pass `version="v1"`.
+
+### What it is
+
+The v0 corpus auto-derives metric vectors for real players from
+Lichess PGN exports, populates the project's chess_coach SQLite
+database (via the synthetic-analyses fixture at
+`tests/gold/archetypes_with_analyses_fixtures.py`), and runs the
+production `services.chess_coach.profile.stats.*` metric functions
+against each player. Archetype labels are then auto-bootstrapped
+via `services.chess_coach.profile.archetypes._knn_classify(metrics)`
+against the v1 placeholder — *self-consistent with v1* but not
+validated against real chess data.
+
+### What it is NOT
+
+- It is NOT a hand-curated corpus. Per project decision, hand
+  curation will not happen. v0 is the corpus, full stop.
+- It is NOT a real-Stockfish-eval corpus. The score_cp values come
+  from the synthetic-analyses fixture (shape-correct, not real).
+  Production users wanting real evals run
+  `services/chess_coach/gateway/routes/backfill_analyses` against
+  their own game's SQLite DB at runtime.
+- It is NOT a replacement for v1 in any hard sense. v1 placeholder
+  stays alongside v0; both corpora ship.
+
+### Honest disclosures (in `_metadata` of the shipped corpus)
+
+| Field | Value |
+|---|---|
+| `_metadata.provenance` | `"auto"` |
+| `_metadata.WARNING` | "AUTO-DERIVED. ...real metric vectors from production SQL pipeline; labels are auto-bootstrapped from v1 placeholder..." |
+| `_metadata.generator` | `scripts/curate_archetype_gold_auto.py @ <git-sha>` |
+| `_metadata.metric_methodology` | `services.chess_coach.profile.stats.<6 metrics>` |
+| `_metadata.bootstrap_label_strategy` | `_knn_classify(metrics) against v1 placeholder` |
+| `_metadata.v0_strategy` | `alongside_v1` |
+| `_metadata.v0_default` | `v0 (production truth); v1 still callable` |
+| `_metadata.v0_brief_alias` | `v0.2 (BBF-88.x brief notation; loader sees v0)` |
+
+Per-entry `_provenance` carries the source PGN filename and player
+name so consumers can trace any v0 entry back to its origin.
+
+### Validator behavior
+
+`scripts/validate_archetype_gold.py` enforces different rules for
+`provenance=="auto"` corpora:
+
+- Size floor: 1 entry (relaxed from v1's 20).
+- Size ceiling: 30 entries.
+- `_metadata.WARNING` and placeholder markers are advisory only
+  (auto corpora are honest about being auto-derived).
+- Per-archetype coverage is advisory (auto corpora may not cover
+  all 7 archetypes; the kNN-bootstrap produces whatever the metric
+  vectors cluster into).
+- `Unknown` labels are accepted (kNN-bootstrap can land there).
+- ID dense-and-ordered rule does not apply (auto corpora emit IDs
+  round-robin by archetype).
+
+`provenance!="auto"` (i.e. v1) keeps the original strict-mode rules.
+
+### How to regenerate
+
+```bash
+env -u PYTHONPATH .venv-bbf69-clean/Scripts/python.exe \
+    scripts/curate_archetype_gold_auto.py \
+    --input-pgn C:/Users/i3/Desktop/lichess_ebassti_2026-03-05.pgn \
+    --input-pgn C:/Users/i3/Downloads/lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn \
+    --min-games 1 \
+    --top-n 14
+```
+
+The shipped v0 corpus was generated from the ebassti PGN (33 games
+self-play) + the Fischer 60-Memorable-Games study PGN (59 games,
+all GM-level). The corpus contains 8 entries spanning 4 archetypes
+(Positional Player, Endgame Specialist, Grinder, Tilter).
+
+### Held back (NOT in v0)
+
+- Real Stockfish-eval backfill: not planned (per "rely on available
+  data" decision; the synthetic-analyses fixture is the available
+  data).
+- Real hand-curated corpus: not happening (per project decision).
+- The `STANDARD_ARCHETYPES` tuple is unchanged.

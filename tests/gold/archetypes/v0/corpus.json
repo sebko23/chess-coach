@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "_metadata": {
+    "WARNING": "AUTO-DERIVED. This v0.2 corpus is generated from real Lichess PGNs + a synthetic-analyses DB. The metric vectors are real (production SQL pipeline); the labels are auto-bootstrapped from the v1 placeholder via _knn_classify. There is no human-curator path on this project.",
+    "provenance": "auto",
+    "generator": "scripts/curate_archetype_gold_auto.py @ 2fb42b4",
+    "metric_methodology": "services.chess_coach.profile.stats.<6 metrics>",
+    "metric_partial_coverage": [],
+    "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder",
+    "pgn_inputs": [
+      "C:\\Users\\i3\\Desktop\\lichess_ebassti_2026-03-05.pgn",
+      "C:\\Users\\i3\\Downloads\\lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn"
+    ],
+    "n_players_evaluated": 14,
+    "n_entries_emitted": 8,
+    "created_at": "2026-07-27T20:43:35+00:00",
+    "expected_real_corpus_size": 14,
+    "labels_use": "one entry per (player, archetype_label) -- the kNN picks the label of the nearest reference vector against the v1 placeholder",
+    "v0_strategy": "alongside_v1",
+    "v0_default": "v0 (production truth); v1 still callable",
+    "v0_brief_alias": "v0.2 (BBF-88.x brief notation; loader sees v0)"
+  },
+  "entries": [
+    {
+      "id": "AG-v0-0002",
+      "archetype_label": "Endgame Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.4247,
+        "time_pressure_quality": 0.0422,
+        "opening_comfort": 1.0,
+        "conversion_ability": 1.0,
+        "blunder_rate_vs_rating": 0.0244,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "ebassti",
+        "n_games_in_pgn": 33,
+        "source_pgn": "lichess_ebassti_2026-03-05.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0003",
+      "archetype_label": "Endgame Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.4769,
+        "time_pressure_quality": 0.0289,
+        "opening_comfort": 1.0,
+        "conversion_ability": 1.0,
+        "blunder_rate_vs_rating": 0.0133,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "maia9",
+        "n_games_in_pgn": 5,
+        "source_pgn": "lichess_ebassti_2026-03-05.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0005",
+      "archetype_label": "Grinder",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.4512,
+        "time_pressure_quality": 0.0456,
+        "opening_comfort": 1.0,
+        "conversion_ability": 1.0,
+        "blunder_rate_vs_rating": 0.0378,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "Samuel Reshevsky",
+        "n_games_in_pgn": 4,
+        "source_pgn": "lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0012",
+      "archetype_label": "Grinder",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.4512,
+        "time_pressure_quality": 0.0456,
+        "opening_comfort": 1.0,
+        "conversion_ability": 1.0,
+        "blunder_rate_vs_rating": 0.0378,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "Efim Geller",
+        "n_games_in_pgn": 2,
+        "source_pgn": "lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0001",
+      "archetype_label": "Positional Player",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.5033,
+        "time_pressure_quality": 0.0822,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.06,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "Robert James Fischer",
+        "n_games_in_pgn": 60,
+        "source_pgn": "lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0007",
+      "archetype_label": "Positional Player",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.4646,
+        "time_pressure_quality": 0.0522,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.0356,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "Mikhail Tal",
+        "n_games_in_pgn": 3,
+        "source_pgn": "lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0006",
+      "archetype_label": "Tilter",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.4968,
+        "time_pressure_quality": 0.1756,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.1744,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "Svetozar Gligoric",
+        "n_games_in_pgn": 4,
+        "source_pgn": "lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0013",
+      "archetype_label": "Tilter",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.4968,
+        "time_pressure_quality": 0.1756,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.1744,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "player_name": "ITA19",
+        "n_games_in_pgn": 2,
+        "source_pgn": "lichess_ebassti_2026-03-05.pgn",
+        "metric_methodology": "services.chess_coach.profile.stats.*",
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    }
+  ]
+}

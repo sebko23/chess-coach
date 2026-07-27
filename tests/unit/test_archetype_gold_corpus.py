@@ -43,3 +43,79 @@ def test_load_unknown_version_raises():
     from chess_coach.datasets.archetype_gold import load_archetype_gold
     with pytest.raises((ValueError, FileNotFoundError, KeyError)):
         load_archetype_gold("v999")
+
+
+# --- BBF-88.x: v0 corpus round-trip + provenance checks ---
+
+
+def test_v0_corpus_loads_as_list() -> None:
+    """BBF-88.x: v0 corpus loads via the production loader."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+    corpus = load_archetype_gold("v0")
+    assert isinstance(corpus, list)
+    assert len(corpus) >= 1
+
+
+def test_v0_corpus_entries_have_required_fields() -> None:
+    """BBF-88.x: every v0 entry carries id + archetype_label + 6 metrics."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+    corpus = load_archetype_gold("v0")
+    required_metrics = {
+        "tactical_vs_positional_bias",
+        "time_pressure_quality",
+        "opening_comfort",
+        "conversion_ability",
+        "blunder_rate_vs_rating",
+        "decision_fatigue",
+    }
+    for entry in corpus:
+        assert entry.id.startswith("AG-v0-"), entry.id
+        assert isinstance(entry.archetype_label, str)
+        for m in required_metrics:
+            assert m in entry.metrics, f"{entry.id} missing metric {m}"
+
+
+def test_v0_corpus_archetype_labels_are_standard() -> None:
+    """BBF-88.x: every v0 archetype_label is in STANDARD_ARCHETYPES."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+    from chess_coach.profile import STANDARD_ARCHETYPES
+    corpus = load_archetype_gold("v0")
+    for entry in corpus:
+        assert entry.archetype_label in STANDARD_ARCHETYPES, (
+            f"{entry.id}: {entry.archetype_label!r}"
+        )
+
+
+def test_v0_corpus_provenance_metadata() -> None:
+    """BBF-88.x: each v0 entry has _provenance (auto-corpus provenance)."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+    corpus = load_archetype_gold("v0")
+    for entry in corpus:
+        assert entry._provenance is not None, (
+            f"{entry.id} missing _provenance"
+        )
+        assert entry._provenance.get("player_name"), (
+            f"{entry.id} missing player_name in _provenance"
+        )
+
+
+def test_v0_corpus_round_trip_validator_passes() -> None:
+    """BBF-88.x: scripts/validate_archetype_gold.py accepts the shipped v0 corpus."""
+    import json as _json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    validate_script = repo / "scripts" / "validate_archetype_gold.py"
+    proc = subprocess.run(
+        [sys.executable, str(validate_script), "--version", "v0", "--json"],
+        capture_output=True, text=True, cwd=str(repo), timeout=30,
+    )
+    assert proc.returncode == 0, (
+        f"v0 validator failed: stdout={proc.stdout!r} stderr={proc.stderr!r}"
+    )
+    result = _json.loads(proc.stdout)
+    assert result["complete"] is True, (
+        f"v0 validator reports incomplete: errors={result.get('errors')}"
+    )

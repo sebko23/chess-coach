@@ -57,11 +57,19 @@ class ArchetypeGoldEntry:
         id: The corpus-local id (AG-v1-NNNN).
         archetype_label: One of STANDARD_ARCHETYPES (e.g. "Tactician").
         metrics: Dict mapping metric name to float value.
+        _provenance: Optional provenance metadata dict (BBF-88.x).
+            Auto-derived corpora store per-entry provenance here
+            (player name, source PGN, etc.); v1 placeholder does
+            not include this field.
     """
 
     id: str
     archetype_label: str
     metrics: dict = field(default_factory=dict)
+    # BBF-88.x: auto corpora attach per-entry provenance. v1 has
+    # no _provenance field; the dataclass field is optional and
+    # `None` for v1 entries.
+    _provenance: dict | None = None
 
 
 def load_archetype_gold(version: str = "v1", base_path=None):
