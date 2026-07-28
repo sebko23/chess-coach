@@ -88,6 +88,15 @@ RUN uv pip install --system --no-cache -e .
 # this COPY would FileNotFoundError at gateway startup.
 COPY tests/gold/narrative/v2/ /app/tests/gold/narrative/v2/
 
+# BBF-87.1.y follow-up: copy the v0 archetype gold corpus into
+# the image. The kNN classifier at services/chess_coach/profile/
+# archetypes.py loads the v0 corpus (auto-derived in BBF-88.x) at
+# startup per the brief's "ship v0 alongside v1, default for new
+# code" decision. Without this COPY, gateway startup would
+# FileNotFoundError when the kNN classifier attempts to load
+# its reference vectors.
+COPY tests/gold/archetypes/v0/ /app/tests/gold/archetypes/v0/
+
 # ---- runtime config ----
 ENV CHESS_COACH_HOST=0.0.0.0 \
     CHESS_COACH_PORT=18080 \
