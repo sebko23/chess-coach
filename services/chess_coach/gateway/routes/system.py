@@ -8,7 +8,7 @@ Both require bearer auth per protocol §2; the gateway holds the active token.
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -22,6 +22,11 @@ from chess_coach.protocol_types import (
 
 from ..auth import require_bearer
 
+#: Signature of the callback that reports the in-process GroundingIndex
+#: entry count. Returns ``None`` when the pipeline has not been
+#: initialised yet (e.g. very early health probes). BBF-86.6.
+GroundingSizeFn = Callable[[], int | None]
+
 
 def build_system_router(
     *,
@@ -30,8 +35,18 @@ def build_system_router(
     protocol_max: str,
     capabilities: list[str],
     runtime_info: Mapping[str, str],
+    grounding_size_fn: GroundingSizeFn | None = None,
 ) -> APIRouter:
-    """Construct the router. Runtime values are captured at startup time."""
+    """Construct the router. Runtime values are captured at startup time.
+
+    `grounding_size_fn` is the BBF-86.6 hook that lets the health
+    endpoint surface a `narration_grounding` component whose status
+    reflects whether the GroundingIndex has any entries. Production
+    passes a closure that reads `app.state.narration_pipeline._grounding.size`;
+    tests pass deterministic values or ``None`` to disable the
+    component. When ``None``, the component is omitted (backwards
+    compatible with the pre-BBF-86.6 surface).
+    """
     router = APIRouter()
 
     @router.get(
@@ -69,6 +84,35 @@ def build_system_router(
             HealthCheckComponent(name="gateway", status="ok"),
             HealthCheckComponent(name="storage", status="ok"),
         ]
+        # BBF-86.6: surface a `narration_grounding` component whose
+        # status reflects the in-process GroundingIndex entry count.
+        # Empty index (corpus missing or empty) yields `degraded` so
+        # the silent-failure mode from BBF-86 F2 becomes visible
+        # to operators without taking the gateway out of rotation.
+        # Load balancers should treat `degraded` as informational.
+        if grounding_size_fn is not None:
+            grounding_size = grounding_size_fn()
+            if grounding_size is None:
+                grounding_status: str = "ok"
+                grounding_message = None
+            elif grounding_size > 0:
+                grounding_status = "ok"
+                grounding_message = None
+            else:
+                grounding_status = "degraded"
+                grounding_message = (
+                    "narrative grounding corpus is empty (0 entries); "
+                    "narration will run without FEN-based grounding. "
+                    "Check that the corpus directory is shipped via "
+                    "Dockerfile COPY and contains valid entries."
+                )
+            components.append(
+                HealthCheckComponent(
+                    name="narration_grounding",
+                    status=grounding_status,  # type: ignore[arg-type]
+                    message=grounding_message,
+                )
+            )
         # Rollup: worst-of by severity.
         order = {"ok": 0, "degraded": 1, "unhealthy": 2}
         worst = max(order[c.status] for c in components) if components else 0
