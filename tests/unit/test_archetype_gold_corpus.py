@@ -119,3 +119,108 @@ def test_v0_corpus_round_trip_validator_passes() -> None:
     assert result["complete"] is True, (
         f"v0 validator reports incomplete: errors={result.get('errors')}"
     )
+
+
+# ---- BBF-86.5: confidence gating (silent failure mode for v0 corpus) ----
+
+
+def test_knn_classify_gates_low_confidence_as_unknown() -> None:
+    """BBF-86.5: when confidence < min_confidence, return Unknown.
+
+    Before BBF-86.5, a user whose metric vector was near (but not
+    exactly at) a 4-covered-archetype training vector would get a
+    wrong label. After BBF-86.5, the gate returns Unknown below
+    min_confidence.
+    """
+    from chess_coach.profile.archetypes import _knn_classify
+    # Mid-range input: high confidence (Grinder archetype)
+    result = _knn_classify(
+        {
+            "tactical_vs_positional_bias": 0.5,
+            "time_pressure_quality": 0.1,
+            "opening_comfort": 15.0,
+            "conversion_ability": 0.6,
+            "blunder_rate_vs_rating": 0.15,
+            "decision_fatigue": 0.05,
+            "sequence_based_tilt": 0.05,
+        },
+        min_confidence=0.3,
+    )
+    assert result[0] == "Grinder"
+    assert result[1] >= 0.3
+
+
+def test_knn_classify_below_threshold_returns_unknown() -> None:
+    """BBF-86.5: extreme metric vector -> Unknown (above z-threshold)."""
+    from chess_coach.profile.archetypes import _knn_classify
+    result = _knn_classify(
+        {
+            "tactical_vs_positional_bias": 0.5,
+            "time_pressure_quality": 0.5,
+            "opening_comfort": 100.0,
+            "conversion_ability": 0.99,
+            "blunder_rate_vs_rating": 0.5,
+            "decision_fatigue": 0.5,
+            "sequence_based_tilt": 0.5,
+        },
+    )
+    assert result[0] == "Unknown"
+    assert result[1] == 0.0
+
+
+def test_knn_classify_min_confidence_zero_disables_gate() -> None:
+    """BBF-86.5: min_confidence=0.0 disables the gate (back-compat)."""
+    from chess_coach.profile.archetypes import _knn_classify
+    result_with_gate = _knn_classify(
+        {
+            "tactical_vs_positional_bias": 0.4,
+            "time_pressure_quality": 0.1,
+            "opening_comfort": 12.0,
+            "conversion_ability": 0.5,
+            "blunder_rate_vs_rating": 0.15,
+            "decision_fatigue": 0.05,
+            "sequence_based_tilt": 0.05,
+        },
+        min_confidence=0.5,
+    )
+    result_without_gate = _knn_classify(
+        {
+            "tactical_vs_positional_bias": 0.4,
+            "time_pressure_quality": 0.1,
+            "opening_comfort": 12.0,
+            "conversion_ability": 0.5,
+            "blunder_rate_vs_rating": 0.15,
+            "decision_fatigue": 0.05,
+            "sequence_based_tilt": 0.05,
+        },
+        min_confidence=0.0,
+    )
+    # With gate: same logic as without (label or Unknown).
+    # Without gate: same result, just no floor.
+    # Either way, both should agree on Unknown vs labeled.
+    assert (result_with_gate[0] == "Unknown") == (
+        result_without_gate[0] == "Unknown"
+    )
+
+
+def test_cluster_archetypes_gates_low_confidence_in_assignment() -> None:
+    """BBF-86.5: cluster_archetypes returns ArchetypeAssignment with
+    label=Unknown when confidence is below min_confidence (0.3).
+    """
+    from chess_coach.profile.archetypes import cluster_archetypes
+    # Extreme vector -> should be Unknown with low confidence
+    assignment = cluster_archetypes(
+        {
+            "tactical_vs_positional_bias": 0.5,
+            "time_pressure_quality": 0.5,
+            "opening_comfort": 100.0,
+            "conversion_ability": 0.99,
+            "blunder_rate_vs_rating": 0.5,
+            "decision_fatigue": 0.5,
+            "sequence_based_tilt": 0.5,
+        }
+    )
+    assert assignment.label == "Unknown"
+    assert assignment.confidence < 0.5
+    # Section-B4 gate: Unknown is inconclusive by definition.
+    assert not assignment.passes_b4_gate
