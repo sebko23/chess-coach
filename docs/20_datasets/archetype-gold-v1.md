@@ -1,9 +1,18 @@
-# Archetype Gold v1 — Curation Guide
+# Archetype Gold v1 — Curation Guide (legacy placeholder)
 
-**Status:** BBF-75 curation kit. The shipped corpus is still a synthetic placeholder until a domain expert replaces it.
+**Status (BBF-85, narrowed, 2026-07-28):** v1 is the **legacy
+placeholder** corpus. It shipped as a synthetic 14-entry placeholder
+(`_metadata.WARNING: "SYNTHETIC PLACEHOLDER"`) and was never
+replaced by a hand-curated corpus. **v0 (BBF-88.x, 2026-07-28)
+is the production truth** for the kNN classifier's reference
+vectors. This v1 doc is preserved for historical context; new
+code paths should target v0, not v1.
 **Path:** `tests/gold/archetypes/v1/corpus.json`
-**Loader:** `chess_coach.datasets.archetype_gold` (re-exported from `libs/chess_coach/datasets/archetype_gold.py`)
-**BBF-88.x v0 corpus:** `tests/gold/archetypes/v0/corpus.json` (auto-derived; alongside v1; see Appendix)
+**Loader:** `chess_coach.datasets.archetype_gold` (re-exported
+from `libs/chess_coach/datasets/archetype_gold.py`)
+**Default version for new code:** `v0`.
+**BBF-88.x v0 corpus:** `tests/gold/archetypes/v0/corpus.json`
+(auto-derived; alongside v1; see Appendix)
 
 ## Goal
 

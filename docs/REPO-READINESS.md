@@ -4,7 +4,11 @@
 `github.com/sebko23/chess-coach` and wants to know what works,
 what's broken, and where the sharp edges are.
 
-Last updated: 2026-07-15 (BBF-52).
+Last updated: 2026-07-28 (BBF-85 narrowed).  Refreshed to reflect
+post-BBF-87/87.1/87.1.y/88.x state.  Test counts: 369 passed / 1
+skipped / 0 failed (unit); 91 passed / 7 skipped / 0 failed
+(integration).  The previous "Last updated" line was 2026-07-15
+(BBF-52).
 
 ---
 

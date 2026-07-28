@@ -1,8 +1,13 @@
-# Narrative Gold v1 -- Curation Guide
+# Narrative Gold v1 -- Curation Guide (legacy placeholder)
 
-**Status:** BBF-69.2 curation kit. The shipped corpus is still a synthetic placeholder until a domain expert replaces it.
+**Status (BBF-85, narrowed, 2026-07-28):** v1 is the **legacy
+placeholder** corpus. It shipped as a synthetic 5-entry placeholder
+and was never replaced by a hand-curated corpus. **v2 (BBF-87,
+2026-07-26) is the production truth.** This v1 doc is preserved for
+historical context; new code paths should target v2, not v1.
 **Path:** `tests/gold/narrative/v1/corpus.json`
 **Loader:** `chess_coach.datasets.narrative_gold`
+**Default version for new code:** `v2`.
 
 > **BBF-87 (auto-derived v2 corpus, 2026-07-26):** An auto-derived
 > `v2` corpus now ships alongside this one at
