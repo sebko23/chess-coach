@@ -258,25 +258,55 @@ Added exit criteria:
 
 ---
 
-## Actual Progress (as of 2026-06-13, commit `7c41b02`)
+## Actual Progress (as of 2026-07-28, commit `3722bbe`)
 
-The phases below completed out of the originally planned order:
+The phases below completed out of the originally planned order.
+This table is refreshed as part of BBF-85 (narrowed); see
+`docs/16_audit/BBF-86-release-readiness-audit.md` for the full
+audit. Prior state was dated 2026-06-13 (commit `7c41b02`); since
+then: BBF-77, 79, 80, 81, 82, 83, 84, 84A, 84B, 87, 87.1, 87.1.y,
+88.x all shipped.
 
 | Phase (Original Plan) | Completion | Notes |
 |-----------------------|-----------|-------|
-| Gate 0 — Legal + Planning | ✅ 100% | All ADRs, CLA, licensing, protocol spec committed. |
+| Gate 0 — Legal + Planning | ✅ 100% | All ADRs, CLA, licensing, protocol spec committed. U1/U2/U8/U10 all confirmed in implementation. |
 | Phase 1 — Foundation | ✅ 100% | Gateway, SQLite, Stockfish, auth, jobs, migration runner. |
-| Phase 2 — Engine + Analysis | ✅ 85% | Stockfish 18 working. Leela/Maia adapters not built. |
-| Phase 3 — Memory + KB + LLM | ⚠️ 50% | LLM router + narration pipeline working. Qdrant/embeddings not deployed. |
-| Phase 4 — Psychological Profiling | ✅ 80% | 5 metrics, UI card. No archetype labels or sequence-based tilt. |
-| Phase 5 — Repertoire + Training | ✅ 85% | All 15 routes working. Typed client. Options A/C/D complete, B in progress. |
-| Phase 6 — PDF/Vision | ❌ 5% | Route stub + DB tables only. No ML models. |
-| Phase 7 — Cloud Sync | ❌ 10% | Lichess import only. No Chess.com, no research agent. |
-| Phase 8 — Packaging | ❌ 0% | Docker-only. No PyInstaller, no MSI. |
+| Phase 2 — Engine + Analysis | ✅ 90% | Stockfish 18 working in Docker (apt-installed). Leela/Maia adapters not built. Lazy eval-graph perf path shipped (BBF-25). |
+| Phase 3 — Memory + KB + LLM | ⚠️ 70% | LLM router + narration pipeline working (BBF-87.1). v2 narrative corpus auto-derived (BBF-87); v0 archetype corpus auto-derived (BBF-88.x). Qdrant sidecar CI runs green (BBF-52); embedding/index path incomplete. |
+| Phase 4 — Playing Style Patterns | ✅ 85% | 6 metric functions in `services/chess_coach/profile/stats.py`; UI card; kNN classifier with 7 archetypes. v0 corpus covers 4 of 7 archetypes (BBF-88.x); the other 3 (Tactician, Wildcard, Specialist) are honest gaps documented in `_metadata`. |
+| Phase 5 — Repertoire + Training | ✅ 90% | All 15 routes working. Typed client. Options A/C/D complete, B in progress. BBF-84B shiped deterministic fixture for integration tests. |
+| Phase 6 — PDF/Vision | ⚠️ 15% | Route isolated from Poppler (BBF-84A); DB tables in place; no ML models. |
+| Phase 7 — Cloud Sync | ⚠️ 15% | Lichess import working (game + PGN imports). No Chess.com, no research agent. |
+| Phase 8 — Packaging | ⚠️ 25% | Docker-only (`Dockerfile` builds a working image; CI smoke workflow exercises it). No PyInstaller, no MSI. Release asset hosting via GitHub Releases (used for `CHESS_COACH_Technology_Tutorial.pdf`). |
 
-**User decisions still open:** U1 (GPL boundary — resolved as "plausibly-NO"), U2 (scope confirmed as coaching not scouting), U8 (Stockfish-only confirmed for Phase 1-5).
+**User decisions still open:** None blocking. U1 (GPL boundary —
+"plausibly-NO" per counsel), U2 (coaching not scouting scope),
+U8 (Stockfish-only Phase 1-5) all confirmed in implementation.
 
-**Next priorities:** memory_kb pipeline (Phase 3 gap), architecture doc alignment (this pass), Maia engine adapter, chessboard OCR library investigation (before committing to YOLOv8).
+**Next priorities (BBF-86 release-readiness queue):**
+
+1. BBF-86.1 — `services/chess_coach/gateway/` Ruff slice (~55 errors).
+2. BBF-86.2 — `services/chess_coach/profile/` Ruff slice (~30 errors).
+3. Pre-BBF-87.1.y narrations rows backfill — find FEN-string rows
+   in narrations.position_id and either delete or migrate.
+4. `docs/20_datasets/` re-org — consolidate duplicate L2-gold
+   docs; re-frame v1 narrative/archetype docs.
+5. BBF-86.3 — `services/chess_coach/engine_orch/` Ruff slice.
+6. BBF-86.4 — repo-wide Ruff parity check decision.
+7. BBF-87.2 — online regen of v2 narrative corpus (lichess rate-limit).
+
+Held back from earlier sessions: real engine-backed narration
+path; real LLM integration (current route uses stub LLM router);
+re-introduction of `positions.game_id` FK constraint (post-BBF-87.1.y).
+
+### Gate 0 (closed)
+
+All four user decisions are confirmed in implementation:
+
+- [x] U1 (GPL boundary) — resolved as "plausibly-NO" per counsel.
+- [x] U2 (scope) — confirmed coaching not scouting.
+- [x] U8 (Stockfish-only Phase 1-5) — confirmed.
+- [x] U10 (Apache ICLA + CCLA template) — both files committed.
 
 ## L-2 gold set (BBF-49, 2026-07-15)
 
