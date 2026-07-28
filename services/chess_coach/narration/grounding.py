@@ -85,6 +85,7 @@ class GroundingIndex:
         self,
         version: str = "v2",
         base_path: Path | None = None,
+        fail_on_missing: bool = False,
     ) -> None:
         """Load the v2 corpus once and build the FEN index.
 
@@ -97,17 +98,46 @@ class GroundingIndex:
         that build a tmp corpus use it to override the default
         `tests/gold/narrative/` location.
 
-        If the corpus file is missing or the JSON is malformed,
-        this raises the same errors as
-        `chess_coach.datasets.narrative_gold.load_narrative_gold`
-        (FileNotFoundError or ValueError). We deliberately do
-        NOT swallow these -- a missing corpus is a build error
-        that should surface at startup, not at first request.
+        `fail_on_missing` controls how the constructor handles a
+        missing or malformed corpus file:
+          - True (strict mode): re-raise the underlying
+            FileNotFoundError or ValueError. Use this in tests
+            that need to detect the error, and anywhere a
+            missing corpus is a build error.
+          - False (default, graceful mode): log a WARNING via
+            `logging.getLogger(__name__)` and build an empty
+            index. The narration pipeline then runs without
+            grounding (the pre-BBF-87.1 behavior for FENs that
+            didn't match the v1 corpus).
+
+        BBF-86 finding F2 (external review §7.2): gateway
+        startup should not crash when the corpus is missing or
+        malformed in a local dev / test environment. Production
+        deploys ship the corpus via Dockerfile COPY (BBF-87.1 +
+        BBF-87.1.y follow-up) so this fallback path is rarely
+        hit in production; it exists primarily for dev/test.
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         self._version = version
-        self._entries: list[NarrativeGoldEntry] = load_narrative_gold(
-            version, base_path=base_path,
-        )
+        try:
+            self._entries: list[NarrativeGoldEntry] = load_narrative_gold(
+                version, base_path=base_path,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            if fail_on_missing:
+                raise
+            logger.warning(
+                "BBF-86 finding F2: narrative_gold corpus missing or "
+                "malformed for version=%s at base_path=%s (%s: %s); "
+                "running without grounding. This is the pre-BBF-87.1 "
+                "behavior for FENs that don\'t match the corpus. "
+                "Production deploys ship the corpus via Dockerfile "
+                "COPY; this fallback is for dev/test environments.",
+                version, base_path, type(exc).__name__, exc,
+            )
+            self._entries = []
         # Index by FEN. FENs are deterministic strings; identical
         # FENs collapse to the same entry. The corpus has at most
         # 1 entry per FEN by convention.
