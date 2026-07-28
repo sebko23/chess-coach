@@ -175,10 +175,25 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # this index per request; missing FENs are no-ops (the pipeline
     # behaves exactly as before for ungrounded calls).
     _grounding_index = GroundingIndex(version="v2")
-    logger.info(
-        "narration: loaded v2 corpus with %d entries for FEN grounding",
-        _grounding_index.size,
-    )
+    if _grounding_index.size > 0:
+        logger.info(
+            "narration: loaded v2 corpus with %d entries for FEN grounding",
+            _grounding_index.size,
+        )
+    else:
+        # BBF-86.6: emit a WARNING at the gateway logger (not just
+        # the GroundingIndex constructor) so the degraded mode is
+        # visible in the gateway's startup log. Production deploys
+        # ship the corpus via Dockerfile COPY (BBF-87.1 + 87.1.y
+        # follow-up), so this WARNING only fires for dev/test
+        # environments or mis-configured production.
+        logger.warning(
+            "narration: v2 grounding corpus loaded with 0 entries; "
+            "narration will run without FEN-based grounding. This is "
+            "the pre-BBF-87.1 behavior for FENs that don't match the "
+            "v1 corpus. Status 'degraded' will be reported by "
+            "GET /v1/system/health."
+        )
     app.state.narration_pipeline = NarrationPipeline(  # type: ignore[attr-defined]
         grounding=_grounding_index,
     )
@@ -278,6 +293,22 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         allow_headers=["Authorization", "Content-Type"],
     )
 
+    # BBF-86.6: the health endpoint surfaces a `narration_grounding`
+    # component whose status reflects the in-process GroundingIndex
+    # size. The closure reads `app.state.narration_pipeline._grounding.size`
+    # at request time (not at router build time) so the status is
+    # always live. Returns None when the pipeline / grounding index
+    # is not yet wired (e.g. tests that bypass lifespan), which the
+    # router treats as `ok` for backwards compatibility.
+    def _grounding_size() -> int | None:
+        pipeline = getattr(app.state, "narration_pipeline", None)
+        if pipeline is None:
+            return None
+        gi = getattr(pipeline, "_grounding", None)
+        if gi is None:
+            return None
+        return gi.size
+
     app.include_router(
         build_system_router(
             backend_version=BACKEND_VERSION,
@@ -288,6 +319,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
                 "python_version": platform.python_version(),
                 "platform": platform.platform(),
             },
+            grounding_size_fn=_grounding_size,
         ),
         prefix="/v1/system",
         tags=["system"],
