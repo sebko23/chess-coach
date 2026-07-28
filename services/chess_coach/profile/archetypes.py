@@ -53,15 +53,13 @@ domain expert (the user) can curate without touching the algorithm.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from .effect_size import (
     EffectSize,
-    COHENS_D_THRESHOLD,
     gate_metric,
 )
-
 
 # BBF-66 Q4: lifted to a module constant so the gate_metric call site
 # reads it explicitly. Cluster assignments are single observations
@@ -163,6 +161,7 @@ def _knn_classify(
     metrics: dict[str, float],
     k: int = 3,
     z_score_threshold: float = 2.0,
+    min_confidence: float = 0.3,
 ) -> tuple[str, float, dict[str, float], float]:
     """k-NN against the archetype gold corpus.
 
@@ -175,10 +174,27 @@ def _knn_classify(
     5. Find the k nearest neighbors; majority-vote their labels.
     6. If the k neighbors' mean distance > z_score_threshold,
        return label="Unknown" (the input is too far from any archetype).
-    7. Otherwise, return the majority label, confidence =
-       1 - (mean / threshold), clamped to [0, 1].
+    7. Otherwise, compute confidence = 1 - (mean / threshold),
+       clamped to [0, 1]. If confidence < min_confidence (default
+       0.3), return "Unknown" instead of the wrong-but-close label.
+       (BBF-86.5: this gates the silent failure mode where users
+       in the Tactician/Wildcard/Specialist cluster (no training
+       data in v0's 8-entry corpus) get nearest-neighbor labels
+       from the 4 covered archetypes. The kNN was finding "close
+       enough" matches but the labels were wrong. The 0.3 floor
+       is conservative: any label with confidence < 0.3 is surfaced
+       as Unknown instead of being reported as authoritative.)
+    8. Otherwise, return the majority label with confidence.
 
     Returns: (label, confidence, archetype_scores, mean_neighbor_distance)
+
+    BBF-86.5: the `min_confidence` parameter (default 0.3) is a
+    tunable gate. The threshold origin is documented as a
+    heuristic; no held-out real-player validation has been
+    performed. A future BBF should validate against held-out
+    data. Until then, the default is conservative: any label
+    with confidence < 0.3 is surfaced as Unknown instead of
+    being reported as authoritative.
     """
     corpus = _load_corpus_entries()
     if not corpus:
@@ -253,7 +269,7 @@ def _knn_classify(
     winner = max(label_votes.items(), key=lambda x: x[1])[0]
 
     # Build archetype_scores: vote-share for each label among k nearest.
-    archetype_scores = {label: 0.0 for label in STANDARD_ARCHETYPES}
+    archetype_scores = dict.fromkeys(STANDARD_ARCHETYPES, 0.0)
     for label, _ in k_nearest:
         archetype_scores[label] += 1.0 / k
 
@@ -268,6 +284,18 @@ def _knn_classify(
 
     # Confidence: 1 - (mean_distance / threshold), clamped to [0, 1].
     confidence = max(0.0, min(1.0, 1.0 - (mean_neighbor_distance / z_score_threshold)))
+
+    # BBF-86.5: gate the label by confidence. If the winner's
+    # confidence is below the floor, return "Unknown" instead of
+    # the wrong-but-close label. The kNN would otherwise return
+    # the nearest-neighbor label for users in the
+    # Tactician/Wildcard/Specialist cluster (no training data
+    # in v0's 8-entry corpus), even when the match is genuinely
+    # poor (high distance, low confidence). The min_confidence
+    # gate prevents this silent failure mode.
+    if confidence < min_confidence:
+        return ("Unknown", confidence, archetype_scores, mean_neighbor_distance)
+
     return (winner, confidence, archetype_scores, mean_neighbor_distance)
 
 
