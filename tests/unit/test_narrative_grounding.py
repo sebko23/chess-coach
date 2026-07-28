@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from chess_coach.narration.grounding import (
     GroundingIndex,
     GroundingMatch,
@@ -310,3 +312,48 @@ def test_shipped_v2_entries_have_parseable_grounding_blocks() -> None:
         # auto-derived template is in the corpus; the validator
         # is the next layer to check the LLM's citations).
         assert entry["narrative_explanation"] in block
+
+
+# ---- BBF-86 finding F2: graceful degradation on missing corpus ----
+
+
+def test_grounding_index_graceful_default_logs_warning(
+    tmp_path: Path,
+) -> None:
+    """BBF-86 F2: default constructor swallows FileNotFoundError.
+
+    A missing corpus logs a WARNING and produces an empty
+    index. The narration pipeline then runs without grounding
+    (the pre-BBF-87.1 behavior for FENs that did not match the
+    v1 corpus).
+
+    We test this by passing a `base_path` that doesn't have the
+    requested version subdirectory -- the loader's
+    FileNotFoundError is the realistic failure mode in a dev
+    environment.
+    """
+    gi = GroundingIndex(version="v3", base_path=tmp_path)
+    # The corpus loader raises FileNotFoundError; the constructor
+    # catches it and returns an empty index.
+    assert gi.size == 0
+    # lookup returns None (no match) instead of raising.
+    assert (
+        gi.lookup("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+        is None
+    )
+
+
+def test_grounding_index_strict_mode_raises_on_missing_corpus(
+    tmp_path: Path,
+) -> None:
+    """BBF-86 F2: fail_on_missing=True re-raises the underlying error.
+
+    Strict mode is for tests and CI scenarios where a missing
+    corpus is a build error that should surface immediately.
+    """
+    with pytest.raises(FileNotFoundError):
+        GroundingIndex(
+            version="v3",
+            base_path=tmp_path,
+            fail_on_missing=True,
+        )
