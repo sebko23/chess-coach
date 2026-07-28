@@ -80,6 +80,14 @@ COPY apps/ ./apps/
 # extra is NOT used in production; it's only for tests.
 RUN uv pip install --system --no-cache -e .
 
+# BBF-87.1: copy the v2 narrative gold corpus into the image.
+# The narration pipeline loads GroundingIndex(version="v2") at
+# startup, and the corpus must be reachable at the path the
+# loader resolves to (tests/gold/narrative/v2/corpus.json
+# relative to the repo root). Production deployments without
+# this COPY would FileNotFoundError at gateway startup.
+COPY tests/gold/narrative/v2/ /app/tests/gold/narrative/v2/
+
 # ---- runtime config ----
 ENV CHESS_COACH_HOST=0.0.0.0 \
     CHESS_COACH_PORT=18080 \

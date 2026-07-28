@@ -9,17 +9,19 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Request
-from ..auth import require_bearer
-from ..route_guard import route_guard
+
 from chess_coach.narration.pipeline import NarrationOutput
 from chess_coach.protocol_types.narration import (
     NarrationRequest,
     NarrationResponse,
 )
+
+from ..auth import require_bearer
+from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/narration", tags=["narration"])
@@ -59,7 +61,7 @@ async def explain_position(
 ) -> NarrationResponse:
     """Generate grounded coaching commentary for a chess position."""
     narration_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Build prompt context
     context_parts = []
@@ -96,19 +98,32 @@ async def explain_position(
         )
         grounded = False
 
+    # BBF-87.1: position_id is now nullable (migration 0008). The route
+    # previously inserted `body.fen` (a FEN string) into the position_id
+    # column, which was structurally wrong (position_id should reference
+    # positions.id). For BBF-87.1 we keep the same denormalized
+    # behavior (inserting body.fen) so the route's audit table continues
+    # to capture the FEN that was narrated; we just no longer violate
+    # the (now-dropped) FK constraint. corpus_entry_id is the new
+    # audit field -- populated when the FEN matched a v2 corpus entry.
+    position_id_value = body.fen
+    corpus_entry_id_value = output.corpus_entry_id
+
     # Store in narrations table
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             """INSERT INTO narrations
-               (id, position_id, model, narration, validated, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+               (id, position_id, model, narration, validated, created_at,
+                corpus_entry_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 narration_id,
-                body.fen,
+                position_id_value,
                 "narration-r1",  # model identifier, configurable later
                 output.narration,
                 1 if grounded else 0,
                 now,
+                corpus_entry_id_value,
             ),
         )
         await db.commit()
@@ -123,4 +138,5 @@ async def explain_position(
         score_display=output.score_display,
         depth_reached=None,
         best_move=None,
+        corpus_entry_id=output.corpus_entry_id,
     )

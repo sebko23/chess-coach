@@ -171,8 +171,10 @@ class TestNarrationPipeline:
         result = _analysis_result()
         router = await _make_router(["Try <move>e4</move> with eval <eval>+0.38</eval>."])
         pipeline = NarrationPipeline(router=router)
-        narration = await pipeline.explain(result)
+        # BBF-87.1: explain() now returns (narration, corpus_entry_id).
+        narration, corpus_entry_id = await pipeline.explain(result)
         assert "e4" in narration
+        assert corpus_entry_id is None  # no FEN in v2 corpus
         router.complete.assert_called_once()
 
     async def test_hallucinated_move_retries_then_fallback(self):
@@ -184,7 +186,7 @@ class TestNarrationPipeline:
         ]
         router = await _make_router(responses)
         pipeline = NarrationPipeline(router=router)
-        narration = await pipeline.explain(result)
+        narration, _ = await pipeline.explain(result)
         assert "Stockfish evaluates" in narration
         assert router.complete.call_count == 3
 
@@ -192,7 +194,7 @@ class TestNarrationPipeline:
         result = _analysis_result(pv_moves=["e2e4", "e7e5"])
         router = await _make_router(["Try <move>e4</move> with eval <eval>+0.38</eval>."])
         pipeline = NarrationPipeline(router=router)
-        narration = await pipeline.explain(result)
+        narration, _ = await pipeline.explain(result)
         assert "e4" in narration
 
     async def test_llm_unavailable_error_fallback(self):
@@ -200,7 +202,7 @@ class TestNarrationPipeline:
         router = MagicMock()
         router.complete = AsyncMock(side_effect=LLMUnavailableError("primary down"))
         pipeline = NarrationPipeline(router=router)
-        narration = await pipeline.explain(result)
+        narration, _ = await pipeline.explain(result)
         assert "Stockfish evaluates" in narration
         assert router.complete.call_count == 1
 
@@ -226,7 +228,7 @@ class TestNarrationPipeline:
         router = MagicMock()
         router.complete = AsyncMock(side_effect=LLMUnavailableError("down"))
         pipeline = NarrationPipeline(router=router)
-        narration = await pipeline.explain(result)
+        narration, _ = await pipeline.explain(result)
         assert "mate" in narration.lower()
 
 
