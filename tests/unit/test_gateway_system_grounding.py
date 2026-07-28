@@ -118,7 +118,7 @@ async def populated_grounding_client(
 class TestSystemHealthGrounding:
     """BBF-86.6: health endpoint surfaces narration_grounding component."""
 
-    async def test_grouding_component_is_present_in_response(
+    async def test_grounding_component_is_present_in_response(
         self, populated_grounding_client: httpx.AsyncClient,
     ) -> None:
         r = await populated_grounding_client.get(
