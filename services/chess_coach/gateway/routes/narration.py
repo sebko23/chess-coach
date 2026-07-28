@@ -35,6 +35,48 @@ def _pipeline(request: Request):
     return request.app.state.narration_pipeline
 
 
+async def _resolve_position_id(db_path: str, fen: str) -> str:
+    """BBF-87.1.y: resolve a real positions.id for the FEN.
+
+    Lookup an existing positions row by FEN; if none exists, insert
+    a freeform positions row with game_id=NULL. Returns the id of
+    the row.
+
+    Soft semantics: if multiple positions rows exist for the same
+    FEN, the first one (by arbitrary SQLite order) is reused. Race
+    conditions where two concurrent narrations of the same FEN
+    both INSERT a new positions row are tolerated; the duplicate
+    is harmless (positions has no UNIQUE constraint on fen).
+
+    BBF-87.1.y: this is the FEN-only path; import-PGN flow
+    (services/chess_coach/gateway/routes/pgn_import.py) creates
+    positions rows with real game_id values, so this helper's
+    game_id=NULL insert is the only FEN-only case in production.
+    """
+    async with aiosqlite.connect(db_path) as db:
+        # Enable FK enforcement on this connection. Python's
+        # sqlite3 defaults PRAGMA foreign_keys to OFF, so we must
+        # enable it explicitly to get the same behavior as
+        # production app code.
+        await db.execute("PRAGMA foreign_keys = ON")
+        # Look up first; reuse the existing id if any.
+        async with db.execute(
+            "SELECT id FROM positions WHERE fen = ? LIMIT 1", (fen,)
+        ) as cur:
+            row = await cur.fetchone()
+        if row is not None:
+            return row[0]
+        # No existing row; insert a freeform positions row.
+        new_id = str(uuid.uuid4())
+        await db.execute(
+            """INSERT INTO positions (id, game_id, fen, ply, is_mainline)
+               VALUES (?, NULL, ?, 0, 1)""",
+            (new_id, fen),
+        )
+        await db.commit()
+        return new_id
+
+
 class NarrationRouteResponse(NarrationResponse):
     """Route-layer response wrapper.
 
@@ -98,15 +140,14 @@ async def explain_position(
         )
         grounded = False
 
-    # BBF-87.1: position_id is now nullable (migration 0008). The route
-    # previously inserted `body.fen` (a FEN string) into the position_id
-    # column, which was structurally wrong (position_id should reference
-    # positions.id). For BBF-87.1 we keep the same denormalized
-    # behavior (inserting body.fen) so the route's audit table continues
-    # to capture the FEN that was narrated; we just no longer violate
-    # the (now-dropped) FK constraint. corpus_entry_id is the new
-    # audit field -- populated when the FEN matched a v2 corpus entry.
-    position_id_value = body.fen
+    # BBF-87.1.y: position_id is now a real FK to positions(id).
+    # The route resolves a positions row per call: lookup an
+    # existing position by FEN, or insert a freeform one with
+    # game_id=NULL. The narrations INSERT uses the resolved id.
+    # Migration 0009 made positions.game_id nullable; this is
+    # the only way the route can insert positions rows without
+    # a game context.
+    position_id_value = await _resolve_position_id(db_path, body.fen)
     corpus_entry_id_value = output.corpus_entry_id
 
     # Store in narrations table
