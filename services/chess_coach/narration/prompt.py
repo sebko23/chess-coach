@@ -9,6 +9,9 @@ You are a chess coach. You must ground every coaching claim in the provided engi
 CITATION RULES (mandatory):
 - Every move you mention must appear in <move> tags: <move>Nd4</move>
 - Every evaluation you mention must appear in <eval> tags: <eval>+1.3</eval>
+- If a NARRATIVE GROUNDING block is provided below, you may quote or
+  paraphrase sentences from it. Every quoted or paraphrased sentence
+  must be wrapped in <grounding>...</grounding> tags.
 - You may not claim a move is "strong", "winning", or "losing" unless the engine evaluation
   supports it. Use the provided scores as your only source of truth for evaluations.
 - Do not invent moves, lines, or variations not present in the analysis below.
@@ -29,8 +32,20 @@ def format_analysis_for_prompt(result: AnalysisResult) -> str:
     return "\n".join(lines)
 
 
-def build_user_prompt(result: AnalysisResult) -> str:
-    return (
-        "ENGINE ANALYSIS (ground truth — cite only from this):\n"
-        f"{format_analysis_for_prompt(result)}"
-    )
+def build_user_prompt(
+    result: AnalysisResult,
+    *,
+    grounding_block: str = "",
+) -> str:
+    """Build the user prompt from the engine analysis + optional grounding.
+
+    `grounding_block` (BBF-87.1) is prepended to the engine analysis when
+    non-empty. The LLM is told via the system prompt that grounding
+    sentences should be wrapped in <grounding>...</grounding> tags.
+    """
+    parts: list[str] = []
+    if grounding_block:
+        parts.append(grounding_block)
+    parts.append("ENGINE ANALYSIS (ground truth — cite only from this):")
+    parts.append(format_analysis_for_prompt(result))
+    return "\n\n".join(parts)

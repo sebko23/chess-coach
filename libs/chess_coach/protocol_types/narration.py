@@ -89,7 +89,6 @@ class NarrationResponse(BaseModel):
     Contains the validated narration text and a compact analysis summary
     (not the raw AnalysisResult dump — the frontend gets what it needs).
     """
-
     fen: str = Field(..., description="Position that was analysed")
     narration: str = Field(..., description="Grounded coaching narration")
     depth_reached: int | None = Field(
@@ -110,3 +109,14 @@ class NarrationResponse(BaseModel):
     )
     score_display: str = Field(..., description="Human-readable score, e.g. '+0.38' or 'mate in 2'")
     pv_moves: list[str] = Field(..., description="Top PV line moves in SAN")
+    # BBF-87.1: which v2 narrative corpus entry grounded this narration.
+    # None when the FEN is not in the corpus (no grounding block
+    # injected; pipeline ran without narrative grounding).
+    corpus_entry_id: str | None = Field(
+        default=None,
+        description=(
+            "The v2 narrative corpus entry (NG-v2-NNNN) whose "
+            "narrative_explanation grounded this narration. "
+            "None when no FEN match in the corpus."
+        ),
+    )

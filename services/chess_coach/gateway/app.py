@@ -14,6 +14,7 @@ ADR-0001: one event loop. ADR-0002: typed exceptions only.
 from __future__ import annotations
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import contextlib
@@ -30,37 +31,37 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
-
+from chess_coach.engine_orch.pool import EnginePool, EngineSpec
+from chess_coach.kb.pipeline import index_positions
+from chess_coach.narration import NarrationPipeline
+from chess_coach.narration.grounding import GroundingIndex  # noqa: E402  (BBF-87.1; follows existing app.py E402 pattern)
 from chess_coach.storage import ensure_writable, migrate
 
 from .auth import generate_token_if_needed, set_active_token
 from .config import GatewaySettings
-from .descriptor import Descriptor, remove_descriptor, write_descriptor
+from .descriptor import Descriptor, remove_descriptor
+from .exception_handlers import install_exception_handlers
 from .routes import (
     analysis_router,
+    backfill_analyses_router,
     blunder_router,
     engines_router,
     eval_graph_router,
-    game_router,
-    repertoire_router,
-    narration_router,
-    profile_router,
-    training_router,
-    pdf_ingest_router,
-    lichess_import_router,
-    repertoire_recommendations_router,
-    profile_analysis_router,
-    training_planner_router,
-    players_router,
-    kb_router,
-    pgn_import_router,
-    backfill_analyses_router,
     eval_verifier_router,
+    game_router,
+    kb_router,
+    lichess_import_router,
+    narration_router,
+    pdf_ingest_router,
+    pgn_import_router,
+    players_router,
+    profile_analysis_router,
+    profile_router,
+    repertoire_recommendations_router,
+    repertoire_router,
+    training_planner_router,
+    training_router,
 )
-from chess_coach.engine_orch.pool import EnginePool, EngineSpec
-from chess_coach.kb.pipeline import index_positions
-from chess_coach.narration import NarrationPipeline
-from .exception_handlers import install_exception_handlers
 from .routes.system import build_system_router
 
 if TYPE_CHECKING:
@@ -168,8 +169,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine_pool = app.state.engine_pool  # type: ignore[attr-defined]
         logger.info("gateway.startup: engine pool pre-injected, skipping auto-init")
 
-    # 1c. Narration pipeline (stored on app.state for FastAPI Depends)
-    app.state.narration_pipeline = NarrationPipeline()  # type: ignore[attr-defined]
+    # 1c. Narration pipeline (stored on app.state for FastAPI Depends).
+    # BBF-87.1: load the v2 narrative corpus as a GroundingIndex and
+    # pass it to the pipeline. The pipeline looks up FENs against
+    # this index per request; missing FENs are no-ops (the pipeline
+    # behaves exactly as before for ungrounded calls).
+    _grounding_index = GroundingIndex(version="v2")
+    logger.info(
+        "narration: loaded v2 corpus with %d entries for FEN grounding",
+        _grounding_index.size,
+    )
+    app.state.narration_pipeline = NarrationPipeline(  # type: ignore[attr-defined]
+        grounding=_grounding_index,
+    )
     # 1d. Memory KB store — eager init, index positions from SQLite
     _kb_t0 = time.time()
     _db_path = str(state.settings.sqlite_path)
