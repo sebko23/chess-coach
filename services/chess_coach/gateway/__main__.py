@@ -55,7 +55,9 @@ async def _run_async(settings: GatewaySettings) -> int:
 
     # Wait until the server has actually bound a socket so we can read the
     # real port (matters when settings.port == 0).
-    while not server.started and not serve_task.done():
+    # uvicorn exposes startup completion only as a polled boolean; there is no
+    # event or awaitable startup hook to wait on here.
+    while not server.started and not serve_task.done():  # noqa: ASYNC110
         await asyncio.sleep(0.01)
     if serve_task.done():
         # Startup failed before binding; let the exception propagate.

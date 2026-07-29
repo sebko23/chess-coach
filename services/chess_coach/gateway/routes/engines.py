@@ -45,7 +45,7 @@ async def engine_info(engine_id: str, pool: EnginePool = Depends(_pool)):
         raise HTTPException(
             status_code=404,
             detail={"code": ErrorCode.NOT_FOUND.value, "message": f"Engine {engine_id} not found"},
-        )
+        ) from None
 
 
 @router.post("/v1/engines/{engine_id}/analyze")
@@ -61,10 +61,10 @@ async def analyze_position(
         raise HTTPException(
             status_code=404,
             detail={"code": ErrorCode.NOT_FOUND.value, "message": f"Engine {engine_id} not found"},
-        )
+        ) from None
     except RuntimeError as e:
         raise HTTPException(
             status_code=500,
             detail={"code": ErrorCode.INTERNAL.value, "message": str(e)},
-        )
+        ) from e
     return {"data": result.model_dump()}
