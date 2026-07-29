@@ -12,14 +12,13 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import aiohttp
 import aiosqlite
+import chess.pgn
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-
-import chess.pgn
 
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
@@ -122,7 +121,7 @@ def _parse_game(obj: dict) -> tuple[str, dict, str] | None:
     date_str: str | None = None
     if ts:
         try:
-            dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+            dt = datetime.fromtimestamp(ts / 1000, tz=UTC)
             date_str = dt.strftime("%Y-%m-%d")
         except Exception:
             pass
@@ -144,7 +143,7 @@ async def _insert_game(
     db: aiosqlite.Connection, game: dict, pgn_raw: str,
 ):
     """Insert a single game and all its positions into the DB."""
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%fZ")
+    now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%fZ")
     await db.execute(
         """INSERT OR IGNORE INTO games
            (id, pgn_raw, white, black, date, event, site, result,

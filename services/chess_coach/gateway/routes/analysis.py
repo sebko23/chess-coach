@@ -3,6 +3,7 @@
 Protocol §4.6:
   POST /v1/analysis/positions  — simple position analysis (convenience alias)
 """
+# ruff: noqa: B008  -- FastAPI Depends() in argument defaults is the intended pattern; flagged uniformly across all route handlers.
 from __future__ import annotations
 
 from typing import Any
@@ -11,8 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from chess_coach.engine_orch.pool import EnginePool
 from chess_coach.errors.codes import ErrorCode
-from chess_coach.protocol_types.analysis import AnalysisRequest
 from chess_coach.gateway.auth import require_bearer
+from chess_coach.protocol_types.analysis import AnalysisRequest
 
 router = APIRouter(tags=["analysis"], dependencies=[Depends(require_bearer)])
 

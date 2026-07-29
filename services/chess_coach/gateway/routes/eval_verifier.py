@@ -10,21 +10,19 @@ regression test for engine eval drift.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
+from enum import StrEnum
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 
 from chess_coach.datasets.l2_gold import L2GoldEntry, load_l2_gold
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
-from chess_coach.protocol_types.analysis import AnalysisRequest, AnalysisResult
-from chess_coach.protocol_types.analysis import PVLine, Score
+from chess_coach.protocol_types.analysis import AnalysisRequest
 
 router = APIRouter()
 
 
-class CorpusVersion(str, Enum):
+class CorpusVersion(StrEnum):
     """L-2 corpus versions supported by the verifier."""
 
     V1 = "v1"

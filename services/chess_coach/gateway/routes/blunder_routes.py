@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from chess_coach.gateway.auth import require_bearer
+
 from ..route_guard import route_guard
 
 router = APIRouter(tags=["blunders"], dependencies=[Depends(require_bearer)])

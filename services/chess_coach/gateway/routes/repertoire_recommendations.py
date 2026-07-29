@@ -4,10 +4,11 @@ POST /v1/repertoire/{player}/recommendations
 Reads gap positions (ply 6-16, never played by player) and runs Stockfish depth 14
 to suggest the best move for each. Returns ranked by urgency.
 """
+# ruff: noqa: B008  -- FastAPI Depends() in argument defaults is the intended pattern; flagged uniformly across all route handlers.
 from __future__ import annotations
 
-import logging
 import asyncio
+import logging
 from typing import Literal
 
 import aiosqlite
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 
 from chess_coach.engine_orch.pool import EnginePool
 from chess_coach.protocol_types.analysis import AnalysisRequest
+
 from ..auth import require_bearer
 
 logger = logging.getLogger(__name__)

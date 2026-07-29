@@ -12,7 +12,7 @@ from __future__ import annotations
 import hmac
 from typing import Annotated
 
-from fastapi import Depends, Header
+from fastapi import Header
 
 from chess_coach.errors import UnauthorizedError
 

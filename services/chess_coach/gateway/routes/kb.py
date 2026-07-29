@@ -11,9 +11,10 @@ import logging
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
+from chess_coach.kb import index_positions, query_similar
+
 from ..auth import require_bearer
 from ..route_guard import route_guard
-from chess_coach.kb import index_positions, query_similar
 
 logger = logging.getLogger(__name__)
 

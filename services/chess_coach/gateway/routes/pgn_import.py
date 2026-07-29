@@ -29,9 +29,9 @@ import io
 import logging
 import uuid
 
+import aiosqlite
 import chess
 import chess.pgn
-import aiosqlite
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
@@ -83,7 +83,7 @@ async def _games_table_columns(db_path: str) -> list[tuple]:
         return list(await cur.fetchall())
 
 
-def _walk_game(game: "chess.pgn.Game") -> list[tuple[int, str, str | None, str | None]]:
+def _walk_game(game: chess.pgn.Game) -> list[tuple[int, str, str | None, str | None]]:
     """Return list of (ply, fen, move_uci, move_san) for the game's mainline.
 
     The first entry is the starting position (ply=0, no move). Each subsequent
@@ -159,7 +159,7 @@ async def import_pgn(
     games_cols = await _games_table_columns(db_path)
     games_notnull = {row[1] for row in games_cols if row[3] == 1}
 
-    parsed_games: list[tuple[int, "chess.pgn.Game", dict]] = []
+    parsed_games: list[tuple[int, chess.pgn.Game, dict]] = []
     for i in range(body.max_games):
         try:
             game = chess.pgn.read_game(pgn_io)

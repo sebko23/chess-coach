@@ -59,6 +59,7 @@ from chess_coach.profile import (
     tactical_vs_positional_bias,
     time_pressure_quality,
 )
+
 from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
@@ -222,7 +223,7 @@ async def get_profile_analysis(
         "time_pressure_blunders": 0.0,
         "opening_breadth": 0,
     }
-    for i, (mid, (fn, legacy_field)) in enumerate(_METRIC_REGISTRY.items()):
+    for i, (mid, (_fn, legacy_field)) in enumerate(_METRIC_REGISTRY.items()):
         effect = effects[i]
         if isinstance(effect, Exception):
             continue

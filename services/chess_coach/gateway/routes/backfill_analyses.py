@@ -30,9 +30,9 @@ import io
 import logging
 from typing import Any
 
+import aiosqlite
 import chess
 import chess.pgn
-import aiosqlite
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
@@ -308,7 +308,7 @@ async def backfill_analyses(
             for _plan_idx, _ply_idx, fen in tasks
         ]
         gathered = await asyncio.gather(*coros, return_exceptions=True)
-        for (plan_idx, ply_idx, _fen), result in zip(tasks, gathered):
+        for (plan_idx, ply_idx, _fen), result in zip(tasks, gathered, strict=False):
             analysis_results[(plan_idx, ply_idx)] = result
 
     # ── Phase 2: per-game INSERTs in small transactions. ──
