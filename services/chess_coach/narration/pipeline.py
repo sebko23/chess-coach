@@ -3,6 +3,46 @@
 Uses multi-turn conversation on retry: the failed narration is fed back as an
 assistant turn, and the correction instruction arrives as a user turn.  This
 preserves system-prompt authority while giving the model direct recency-weight.
+
+Scope of validation (BBF-86 external-review F3):
+
+  This pipeline validates **citation correctness** — cited moves appear in
+  the engine PV, cited evaluations match the engine score (exact mate or
+  centipawn ±20), and <grounding> tags map back to the matched v2 corpus
+  entry by word-LCS similarity (see services/chess_coach/narration/validator.py:
+  the validator emits a structured `validations.missing_moves /
+  missing_evals / bad_notation / grounding_failures` shape). It does NOT
+  validate **LLM output quality** — narrative fluency, factual accuracy
+  beyond cited tags, and pedagogical value are out of scope for the
+  validator; the validator deliberately consumes only the citation shape.
+
+  Test surface:
+
+  - tests/integration/test_narrative_pipeline_grounded.py drives the
+    full HTTP path with a stub LLMRouter returning a pre-canned
+    narration. **The stub's citations do NOT match the synthetic route
+    analysis PVs** (see the test's own comments at lines 122-130), so
+    validation is expected to fail and `grounded` may be False there;
+    the test asserts only the audit-table contract
+    (`corpus_entry_id` populated / NULL), NOT the citation-validation
+    outcome. Callers should not infer "the LLM produces valid citations"
+    from this test.
+
+  - tests/unit/test_narrative_grounding.py exercises the validator's
+    word-LCS similarity path DIRECTLY (no stub router, no LLM).
+    Tokens, LCS counts, and `_grounding_similarity_ok` thresholds are
+    asserted at the function level.
+
+  - tests/unit/test_narration.py exercises the prompt-format and
+    pipeline retry loop.
+
+  Production deployments currently use the LLMRouter with OpenRouter
+  (primary + fallback) via services/chess_coach/llm_router/router.py;
+  an absent key raises LLMUnavailableError and the pipeline returns
+  the template fallback at services/chess_coach/narration/pipeline.py.
+  The citation validator runs the same way on real LLM output as it
+  would on a stub. Real-LLM integration + LLM-quality validation are
+  held back as separate work items (see v2 handoff §13.3 Tier 4 #15).
 """
 from __future__ import annotations
 
