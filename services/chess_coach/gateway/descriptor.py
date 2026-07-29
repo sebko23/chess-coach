@@ -12,6 +12,7 @@ operator) may authenticate.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
@@ -61,19 +62,15 @@ def write_descriptor(path: Path, descriptor: Descriptor) -> None:
         os.replace(tmp, path)
     except Exception:
         # Best-effort cleanup; suppress secondary errors.
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
 
 
 def remove_descriptor(path: Path) -> None:
     """Remove the descriptor file if it exists. Idempotent."""
-    try:
+    with contextlib.suppress(FileNotFoundError):
         path.unlink()
-    except FileNotFoundError:
-        pass
 
 
 __all__ = ["Descriptor", "generate_token", "remove_descriptor", "write_descriptor"]

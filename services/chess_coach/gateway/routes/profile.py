@@ -10,17 +10,17 @@ from pydantic import BaseModel, Field
 
 from chess_coach.gateway.auth import require_bearer
 from chess_coach.profile import (
+    ArchetypeAssignment,
     EffectSize,
     blunder_rate_vs_rating,
-    cluster_archetypes,
     conversion_ability,
     decision_fatigue,
     opening_comfort,
     sequence_based_tilt,
     tactical_vs_positional_bias,
     time_pressure_quality,
-    ArchetypeAssignment,
 )
+
 from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
@@ -246,10 +246,7 @@ def _load_methodology_for(metric_id: str) -> str:
     # Find the next H2 after start
     rest = text[start + len(section_start):]
     next_h2 = rest.find("\n## ")
-    if next_h2 == -1:
-        section_text = rest
-    else:
-        section_text = rest[:next_h2]
+    section_text = rest if next_h2 == -1 else rest[:next_h2]
     cache[metric_id] = section_text.strip()
     return cache[metric_id]
 

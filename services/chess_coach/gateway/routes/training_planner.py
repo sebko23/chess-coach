@@ -9,8 +9,7 @@ caps new cards at 30% of daily budget, and balances card types.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Literal
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Query, Request
@@ -103,7 +102,7 @@ async def get_training_schedule(
 ) -> TrainingScheduleResponse:
     """Generate a prioritized multi-day training schedule."""
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row

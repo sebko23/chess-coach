@@ -17,31 +17,39 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import contextlib
-import logging
-import pathlib
-import platform
-import sys
-import time
-import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+# BBF-86.1a: the imports below MUST come after `load_dotenv()` so
+# `chess_coach.config` (and the rest of the modules that read
+# os.environ at import time) sees the .env values before they're
+# first read. The existing precedent (set by BBF-87.1) covers
+# `GroundingIndex`; this commit extends the same rationale to the
+# rest of the contiguous import cluster.
+import contextlib  # noqa: E402
+import logging  # noqa: E402
+import pathlib  # noqa: E402
+import platform  # noqa: E402
+import sys  # noqa: E402
+import time  # noqa: E402
+import uuid  # noqa: E402
+from collections.abc import AsyncIterator, Awaitable, Callable  # noqa: E402
+from dataclasses import dataclass  # noqa: E402
+from typing import TYPE_CHECKING  # noqa: E402
 
-from fastapi import FastAPI, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, Response  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
-from chess_coach.engine_orch.pool import EnginePool, EngineSpec
-from chess_coach.kb.pipeline import index_positions
-from chess_coach.narration import NarrationPipeline
-from chess_coach.narration.grounding import GroundingIndex  # noqa: E402  (BBF-87.1; follows existing app.py E402 pattern)
-from chess_coach.storage import ensure_writable, migrate
+from chess_coach.engine_orch.pool import EnginePool, EngineSpec  # noqa: E402
+from chess_coach.kb.pipeline import index_positions  # noqa: E402
+from chess_coach.narration import NarrationPipeline  # noqa: E402
+from chess_coach.narration.grounding import (  # noqa: E402
+    GroundingIndex,  # noqa: E402  (BBF-87.1; follows existing app.py E402 pattern)
+)
+from chess_coach.storage import ensure_writable, migrate  # noqa: E402
 
-from .auth import generate_token_if_needed, set_active_token
-from .config import GatewaySettings
-from .descriptor import Descriptor, remove_descriptor
-from .exception_handlers import install_exception_handlers
-from .routes import (
+from .auth import generate_token_if_needed, set_active_token  # noqa: E402
+from .config import GatewaySettings  # noqa: E402
+from .descriptor import Descriptor, remove_descriptor  # noqa: E402
+from .exception_handlers import install_exception_handlers  # noqa: E402
+from .routes import (  # noqa: E402
     analysis_router,
     backfill_analyses_router,
     blunder_router,
@@ -62,7 +70,7 @@ from .routes import (
     training_planner_router,
     training_router,
 )
-from .routes.system import build_system_router
+from .routes.system import build_system_router  # noqa: E402
 
 if TYPE_CHECKING:
     pass
@@ -146,10 +154,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # run N analyses truly in parallel — each slot owns its own
         # subprocess and per-slot lock. BBF-19.
         env_workers = int(os.environ.get("CHESS_COACH_MAX_WORKERS", "0"))
-        if env_workers > 0:
-            max_workers = env_workers
-        else:
-            max_workers = 1
+        max_workers = env_workers if env_workers > 0 else 1
         engine_pool = EnginePool(specs, max_workers=max_workers)
         app.state.engine_pool = engine_pool  # type: ignore[attr-defined]
         # Warmup: start all N stockfish subprocesses eagerly so the

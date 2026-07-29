@@ -8,15 +8,16 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Request
-from ..route_guard import route_guard
 from pydantic import BaseModel, Field
 
 from chess_coach.errors.exceptions import NotFoundError
 from chess_coach.gateway.auth import require_bearer
+
+from ..route_guard import route_guard
 
 router = APIRouter(tags=["training"], dependencies=[Depends(require_bearer)])
 
@@ -90,7 +91,7 @@ def _fsrs_next(
     new_difficulty = max(1.0, min(10.0, difficulty + (5 - rating) * 0.5))
     new_retrievability = min(1.0, retrievability + 0.15 * (rating - 2))
     interval_days = int(new_stability * 1.5)
-    due_dt = datetime.now(timezone.utc).replace(hour=6, minute=0, second=0, microsecond=0) + timedelta(days=interval_days)
+    due_dt = datetime.now(UTC).replace(hour=6, minute=0, second=0, microsecond=0) + timedelta(days=interval_days)
     return new_stability, new_difficulty, new_retrievability, due_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -145,10 +146,7 @@ async def get_queue(player: str, request: Request, limit: int = 20):
             cards.append(CardOut(**r))
 
         # Count query
-        if player and player != 'default':
-            count_params = (player,)
-        else:
-            count_params = ()
+        count_params = (player,) if player and player != 'default' else ()
         cur2 = await db.execute(f"{count_sql} {where}", count_params)
         due_count = (await cur2.fetchone())[0]
 
@@ -174,7 +172,7 @@ async def review_card(card_id: str, body: ReviewRequest, request: Request):
         s, d, r, revs, _ = row["stability"], row["difficulty"], row["retrievability"], row["reviews"], row["lapses"]
         ns, nd, nr, ndue = _fsrs_next(body.rating, s, d, r, revs)
         nrev = revs + 1
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%fZ")
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%fZ")
         await db.execute(
             "UPDATE training_cards SET stability=?, difficulty=?, retrievability=?, "
             "reviews=?, last_review=?, due=?, updated_at=? WHERE id=?",
@@ -200,7 +198,7 @@ async def seed_from_blunders(body: SeedRequest, request: Request):
             "LIMIT 100",
             (body.player,),
         )
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%fZ")
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%fZ")
         for pos_id, _fen in rows:
             cid = str(uuid.uuid4())
             await db.execute(

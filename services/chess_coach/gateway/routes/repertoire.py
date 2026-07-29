@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import aiosqlite
-from fastapi import APIRouter, Query, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from chess_coach.gateway.auth import require_bearer
+
 from ..route_guard import route_guard
 
 router = APIRouter(tags=["repertoire"], dependencies=[Depends(require_bearer)])

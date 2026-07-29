@@ -5,6 +5,7 @@ Accepts a FEN + optional context (move, eval, game phase) and returns
 grounded coaching prose via the narration pipeline.
 Stores each narration in the narrations table for audit/replay.
 """
+# ruff: noqa: B008  -- FastAPI Depends() in argument defaults is the intended pattern; flagged uniformly across all route handlers.
 from __future__ import annotations
 
 import logging

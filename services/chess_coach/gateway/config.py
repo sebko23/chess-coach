@@ -1,10 +1,7 @@
 """Gateway settings — read from env / .env with sensible defaults."""
 from __future__ import annotations
 
-import os
 import platform
-import secrets
-import sys
 from pathlib import Path
 
 from pydantic import Field

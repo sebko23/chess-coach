@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
+
 from ..route_guard import route_guard
 
 router = APIRouter(tags=["games"], dependencies=[Depends(require_bearer)])
