@@ -164,7 +164,7 @@ def bootstrap_ci(
     if not sample:
         return (0.0, 0.0)
 
-    rng = random.Random(seed) if seed is not None else random
+    rng = random.Random(seed) if seed is not None else random  # noqa: S311 (bootstrap resampling, not crypto)
     n = len(sample)
     resampled_stats: list[float] = []
     for _ in range(n_resamples):
@@ -191,8 +191,14 @@ def bootstrap_ci(
     hi_floor = int(hi_idx)
     lo_frac = lo_idx - lo_floor
     hi_frac = hi_idx - hi_floor
-    ci_low = resampled_stats[lo_floor] * (1.0 - lo_frac) + resampled_stats[min(lo_floor + 1, n_resamples - 1)] * lo_frac
-    ci_high = resampled_stats[hi_floor] * (1.0 - hi_frac) + resampled_stats[min(hi_floor + 1, n_resamples - 1)] * hi_frac
+    ci_low = (
+        resampled_stats[lo_floor] * (1.0 - lo_frac)
+        + resampled_stats[min(lo_floor + 1, n_resamples - 1)] * lo_frac
+    )
+    ci_high = (
+        resampled_stats[hi_floor] * (1.0 - hi_frac)
+        + resampled_stats[min(hi_floor + 1, n_resamples - 1)] * hi_frac
+    )
     return (ci_low, ci_high)
 
 

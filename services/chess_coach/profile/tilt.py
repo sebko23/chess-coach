@@ -69,12 +69,8 @@ that passes the §B4 gate.
 """
 from __future__ import annotations
 
-import sqlite3
-from typing import Any
-
-from .effect_size import EffectSize, bootstrap_ci, cohens_d
+from .effect_size import EffectSize, bootstrap_ci
 from .stats import _connect, _resolve_player
-
 
 MIN_SAMPLE_TILT = 30         # total games
 MIN_LOSS_STREAKS = 5         # loss streaks of length >= 2
@@ -234,10 +230,7 @@ def sequence_based_tilt(
         std = variance ** 0.5
     else:
         std = 0.0
-    if std == 0:
-        d = None
-    else:
-        d = (mean_obs - baseline) / std
+    d = None if std == 0 else (mean_obs - baseline) / std
     ci_low, ci_high = bootstrap_ci(observations, seed=seed)
     return EffectSize(
         point_estimate=round(point_estimate, 4),

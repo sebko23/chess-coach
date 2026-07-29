@@ -108,7 +108,8 @@ class ArchetypeAssignment:
     confidence: float
     archetype_scores: dict[str, float]
     effect_size: EffectSize
-    passes_b4_gate: bool = False  # section-B4 gate: True iff the assignment is surfacable. Default False.
+    passes_b4_gate: bool = False
+    # section-B4 gate: True iff the assignment is surfacable. Default False.
 
 
 # Standard archetype labels. Defined here so BBF-59
@@ -149,7 +150,7 @@ def _zscore_normalize(
 ) -> list[float]:
     """Per-dimension z-score. Avoid division by zero (std=0 -> 0.0)."""
     out: list[float] = []
-    for v, m, s in zip(values, mean, std):
+    for v, m, s in zip(values, mean, std, strict=False):
         if s > 0:
             out.append((v - m) / s)
         else:
@@ -216,14 +217,14 @@ def _knn_classify(
     mean = [sum(corpus_by_dim[d]) / len(corpus_by_dim[d]) for d in all_dimensions]
     var = [
         sum((v - m) ** 2 for v in corpus_by_dim[d]) / max(1, len(corpus_by_dim[d]) - 1)
-        for d, m in zip(all_dimensions, mean)
+        for d, m in zip(all_dimensions, mean, strict=False)
     ]
     std = [v ** 0.5 for v in var]
 
     # Z-score the input. Missing dimensions in the input: treat as 0
     # (== at-mean after z-scoring).
     input_z: list[float] = []
-    for d, m, s in zip(all_dimensions, mean, std):
+    for d, m, s in zip(all_dimensions, mean, std, strict=False):
         if d in metrics:
             input_z.append((metrics[d] - m) / s if s > 0 else 0.0)
         else:
@@ -236,7 +237,7 @@ def _knn_classify(
     dim_index = {d: i for i, d in enumerate(all_dimensions)}
     for label, mvec in corpus:
         entry_z: list[float] = []
-        for d, m, s in zip(all_dimensions, mean, std):
+        for d, m, s in zip(all_dimensions, mean, std, strict=False):
             if d in mvec:
                 entry_z.append((mvec[d] - m) / s if s > 0 else 0.0)
             else:

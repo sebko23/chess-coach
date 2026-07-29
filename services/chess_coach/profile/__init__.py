@@ -69,31 +69,31 @@ exit criteria):
 """
 from __future__ import annotations
 
+from .archetypes import (
+    STANDARD_ARCHETYPES,
+    ArchetypeAssignment,
+    cluster_archetypes,
+)
+
 # Public API. BBF-57 re-exports the 5 implemented metrics.
 # BBF-58 will re-export decision_fatigue and sequence_based_tilt.
 # BBF-59 will re-export cluster_archetypes.
-
 from .effect_size import (
-    EffectSize,
     COHENS_D_THRESHOLD,
+    EffectSize,
     bootstrap_ci,
     cohens_d,
     gate_metric,
 )
 from .stats import (
+    blunder_rate_vs_rating,
+    conversion_ability,
+    decision_fatigue,
+    opening_comfort,
     tactical_vs_positional_bias,
     time_pressure_quality,
-    opening_comfort,
-    conversion_ability,
-    blunder_rate_vs_rating,
-    decision_fatigue,
 )
 from .tilt import sequence_based_tilt
-from .archetypes import (
-    ArchetypeAssignment,
-    STANDARD_ARCHETYPES,
-    cluster_archetypes,
-)
 
 __all__: list[str] = [
     # stats.py -- 6 metric implementations (BBF-57 + BBF-59)
