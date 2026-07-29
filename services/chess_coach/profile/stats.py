@@ -75,7 +75,6 @@ from .effect_size import (
     cohens_d,
 )
 
-
 # --- Per-metric minimum sample sizes ---
 # These are intentionally conservative defaults; the
 # methodology docs (BBF-60) state the empirical basis.
@@ -264,7 +263,7 @@ def time_pressure_quality(
       - ci = bootstrap_ci on the combined binary list
     """
     resolved = _resolve_player(db_path, player)
-    deltas = _fetch_side_deltas(db_path, resolved)
+    _fetch_side_deltas(db_path, resolved)
     # Binary observations: 1 = blunder, 0 = not blunder
     # Split by ply depth (even = white moved, odd = black; we
     # use raw ply values from the SQL which are 1-indexed,
@@ -272,7 +271,7 @@ def time_pressure_quality(
     blunders: list[float] = []
     for r in _fetch_observations_with_ply(db_path, resolved):
         delta = r["side_delta"]
-        ply = r["ply"]
+        r["ply"]
         if delta < -100:  # blunder
             blunders.append(1.0)
         else:
@@ -513,10 +512,7 @@ def conversion_ability(
             continue
         result = r["result"]
         # Did the player win?
-        if r["white"] == resolved:
-            won = result == "1-0"
-        else:
-            won = result == "0-1"
+        won = result == "1-0" if r["white"] == resolved else result == "0-1"
         observations.append(1.0 if won else 0.0)
     sample_size = len(observations)
     if sample_size < MIN_SAMPLE_CONVERSION:
@@ -602,8 +598,16 @@ def blunder_rate_vs_rating(
                 sample_size=0, null_value=0.0,
             )
         # Compute mean opponent rating (the OPPONENT's
-        # rating for each game the player played)
-        rows = conn.execute(
+        # rating for each game the player played). Column
+        # names come from a hard-coded literal tuple probed
+        # via PRAGMA table_info; the resolved player value
+        # is parameterised below.
+        _sql = (
+            # S608 false-positive rationale:
+            # column-name interpolation comes from a hard-coded
+            # literal tuple probed via PRAGMA table_info -- NO
+            # user input reaches this string. The resolved player
+            # value `resolved` below is parameterised via `?`.
             f"""
             SELECT
               CASE WHEN white = ? THEN {black_elo_col} ELSE {white_elo_col} END
@@ -612,7 +616,10 @@ def blunder_rate_vs_rating(
             WHERE (white = ? OR black = ?)
               AND CASE WHEN white = ? THEN {black_elo_col} ELSE {white_elo_col} END
                 IS NOT NULL
-            """,
+            """  # noqa: S608
+        )
+        rows = conn.execute(
+            _sql,
             (resolved, resolved, resolved, resolved),
         ).fetchall()
     opp_ratings = [r["opp_rating"] for r in rows if r["opp_rating"] is not None]
@@ -750,7 +757,7 @@ def decision_fatigue(
     # build the binary (blunder) observation list.
     positions: list[float] = []  # normalized move-count
     blunders: list[float] = []   # 1 if blunder, 0 otherwise
-    for sid, deltas in sessions.items():
+    for _sid, deltas in sessions.items():
         n = len(deltas)
         if n < 2:
             continue
@@ -769,22 +776,13 @@ def decision_fatigue(
     cov_pb = sum((positions[i] - mean_p) * (blunders[i] - mean_b)
                  for i in range(n)) / n
     var_p = sum((p - mean_p) ** 2 for p in positions) / n
-    if var_p == 0:
-        slope = 0.0
-    else:
-        slope = cov_pb / var_p
+    slope = 0.0 if var_p == 0 else cov_pb / var_p
     point_estimate = max(0.0, slope)  # only positive slope = fatigue
     # Cohen's d: standardize the slope by the residual std.
     predicted = [mean_b + slope * (p - mean_p) for p in positions]
     residuals = [blunders[i] - predicted[i] for i in range(n)]
-    if n > 2:
-        resid_std = (sum(r ** 2 for r in residuals) / (n - 2)) ** 0.5
-    else:
-        resid_std = 0.0
-    if resid_std == 0 or var_p ** 0.5 == 0:
-        d = None
-    else:
-        d = (slope * (var_p ** 0.5)) / resid_std
+    resid_std = (sum(r ** 2 for r in residuals) / (n - 2)) ** 0.5 if n > 2 else 0.0
+    d = None if resid_std == 0 or var_p ** 0.5 == 0 else slope * var_p ** 0.5 / resid_std
     ci_low, ci_high = bootstrap_ci(blunders, seed=seed)
     return EffectSize(
         point_estimate=round(point_estimate, 4),
