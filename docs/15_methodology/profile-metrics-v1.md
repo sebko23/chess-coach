@@ -482,3 +482,63 @@ present in BOTH the input and each reference vector (so missing metrics
 don't penalize distance). k=3 nearest neighbours vote on the label;
 mean distance > 2.0 z-score units returns "Unknown".
 
+### "Unknown" gate duality (BBF-86.5, 2026-07-28)
+
+The classifier returns `"Unknown"` for two distinct reasons, both of
+which are correct — the user sees a single "Inconclusive" UI label
+either way, but the diagnostics differ:
+
+1. **Distance gate** (z-scored Euclidean mean distance > 2.0):
+   the input is too far from any archetype shape. Confidence
+   surfaces as `max(0, 1 - mean / 4.0)` (a degraded
+   signal even when unknown). Original kNN-only "Unknown" path.
+
+2. **Confidence gate** (`min_confidence = 0.3`, BBF-86.5):
+   k=3 nearest neighbors are within the 2.0 z-score threshold
+   but their majority vote is statistically weak
+   (`confidence = max(0, 1 - mean_distance / threshold)` < 0.3).
+   Returns "Unknown" with the original (low) confidence surfaced.
+
+The confidence gate **closes a silent failure mode in v0**: the v0
+corpus (BBF-88.x, 2026-07-28) covers 4 of 7 archetypes
+(Positional Player, Endgame Specialist, Grinder, Tilter) and
+leaves the Tactician / Wildcard / Specialist cluster without
+training data. Without the confidence gate, a player whose
+metric vector is genuinely in one of those 3 archetypes would
+get the nearest-neighbor label from the 4 covered archetypes
+"close enough" matches, returning a wrong-but-confident label.
+The 0.3 floor surfaces those as "Inconclusive" instead.
+
+The 0.3 floor is **a heuristic, not validated against held-out real
+player data**. Tuning rationale: the gate is conservative (lower
+than the original 0.5 floor, but high enough to suppress wrong
+majority-vote labels from a partial corpus). A future BBF should
+validate the floor against held-out real player vectors.
+
+### Corpus version (v0 vs v1)
+
+The classifier ships against the v0 corpus at
+`tests/gold/archetypes/v0/corpus.json` (BBF-88.x). The v1 corpus at
+`tests/gold/archetypes/v1/corpus.json` is a SYNTHETIC PLACEHOLDER
+(`_metadata.WARNING` block) and is **NOT** the production source
+of reference vectors. v0 covers 4 of 7 archetypes (kNN-bootstrapped
+from the v1 placeholders via the auto-derive script at
+`scripts/curate_archetype_gold_auto.py`); the 3 missing archetypes
+(Tactician, Wildcard, Specialist) are the cluster where the
+`min_confidence` gate is load-bearing.
+
+Future work: extend v0 to cover the 3 missing archetypes
+(BBF-88.2) and replace the kNN-bootstrapped v0 with hand-curated
+seed entries (BBF-89). Until then, the v0 + confidence gate is the
+best available signal.
+
+### Why heuristic shape-matching is RETIRED (recap)
+
+Heuristic shape-matching (BBF-59) is intentionally not kept as a
+fallback. The Q1 strategic decision (per the archetype cluster
+section): kNN is single source of truth. Heuristic drift led to
+two diverging thresholds (algorithm defaults vs. route overrides)
+that surfaced as inconsistent labels in the UI. kNN consolidates
+to a corpus that a domain expert can curate without touching
+code, which is the right separation of concerns.
+
