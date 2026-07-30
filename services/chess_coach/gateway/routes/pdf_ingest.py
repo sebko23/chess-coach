@@ -4,7 +4,7 @@ POST /v1/import/pdf
 Accepts a PDF file upload, extracts pages as images, submits each to the
 chessvision.ai /predict endpoint, and stores valid FEN positions in the DB.
 
-chessvision.ai API: POST http://app.chessvision.ai/predict
+chessvision.ai API: POST https://app.chessvision.ai/predict (BBF-sec-01)
 - No API key required (public endpoint)
 - Accepts base64-encoded PNG images
 - Returns FEN string with underscores instead of spaces
@@ -12,6 +12,7 @@ chessvision.ai API: POST http://app.chessvision.ai/predict
   Multi-board pages are NOT supported by the public endpoint. See BBF-68.3
   for the probe that established this and the doc-only contract change.
 """
+# ruff: noqa: B008  -- FastAPI Depends() in argument defaults is the intended pattern; flagged uniformly across all route handlers.
 from __future__ import annotations
 
 import io
@@ -28,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from ...pdf_ocr import predict_fen
 from ..auth import require_bearer
+from ..config import GatewaySettings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/import", tags=["import"])
@@ -92,7 +94,11 @@ class PdfImportResponse(BaseModel):
     )
 
 
-async def _predict_fen(image_png_bytes: bytes) -> tuple[str | None, float, str | None]:
+async def _predict_fen(
+    image_png_bytes: bytes,
+    *,
+    settings: GatewaySettings | None = None,
+) -> tuple[str | None, float, str | None]:
     """Thin delegator to the OCR backend dispatcher.
 
     The actual backend is selected at call time by the
@@ -100,8 +106,17 @@ async def _predict_fen(image_png_bytes: bytes) -> tuple[str | None, float, str |
     ``chess_coach.pdf_ocr.adapter``. Backends MUST return ``OcrResult``
     tuples; this function exists only so ``import_pdf`` keeps its existing
     call shape and existing route-integration tests stay green.
+
+    BBF-sec-01: when the caller provides Pydantic ``GatewaySettings``,
+    the route hands the configured ``chessvision_url`` to the adapter
+    so a single source-of-truth governs the OCR endpoint across the
+    gateway. The settings object is optional to preserve backward
+    compatibility with tests that call this delegator directly.
     """
-    result = await predict_fen(image_png_bytes)
+    if settings is not None:
+        result = await predict_fen(image_png_bytes, url=settings.chessvision_url)
+    else:
+        result = await predict_fen(image_png_bytes)
     return (result.fen, result.confidence, result.error)
 
 
@@ -125,6 +140,7 @@ async def import_pdf(
     file: Annotated[UploadFile, File(...)],
     max_pages: int = Query(MAX_PAGES, ge=1, le=200),
     db_path: str = Depends(_db_path),
+    settings: GatewaySettings = Depends(GatewaySettings),
 ) -> PdfImportResponse:
     """Extract chess diagrams from a PDF via chessvision.ai."""
     import_id = str(uuid.uuid4())
@@ -150,7 +166,9 @@ async def import_pdf(
         buf = io.BytesIO()
         page_img.save(buf, format="PNG")
 
-        fen, confidence, error = await _predict_fen(buf.getvalue())
+        fen, confidence, error = await _predict_fen(
+            buf.getvalue(), settings=settings,
+        )
         valid = _validate_fen(fen)
 
         results.append(DiagramResult(
