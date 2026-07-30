@@ -200,7 +200,11 @@ async def get_training_schedule(
 
         # Pass 2: fill remaining time with new cards
         temp_idx = card_idx
-        while temp_idx < len(scored) and day_minutes < daily_minutes and new_cards_added < new_card_budget:
+        while (
+            temp_idx < len(scored)
+            and day_minutes < daily_minutes
+            and new_cards_added < new_card_budget
+        ):
             c = scored[temp_idx]
             if c["is_new"] and c not in [dc.model_dump() for dc in day_cards]:
                 mins = MINUTES_PER_CARD.get(c["card_type"], DEFAULT_MINUTES)

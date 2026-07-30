@@ -33,7 +33,10 @@ class GatewaySettings(BaseSettings):
     # --- network ---
     host: str = Field(
         default=_DEFAULT_HOST,
-        description="Bind address. Uses 0.0.0.0 to accept connections from outside Docker/remote hosts.",
+        description=(
+            "Bind address. Uses 0.0.0.0 to accept connections from outside "
+            "Docker/remote hosts."
+        ),
     )
     port: int = Field(
         default=18080,
@@ -56,7 +59,10 @@ class GatewaySettings(BaseSettings):
     # --- data ---
     data_dir: Path = Field(
         default=_DEFAULT_DATA_DIR,
-        description="Root directory for sqlite, logs, backups, engine downloads, and the runtime descriptor.",
+        description=(
+            "Root directory for sqlite, logs, backups, engine downloads, and "
+            "the runtime descriptor."
+        ),
     )
 
     @property
@@ -78,7 +84,10 @@ class GatewaySettings(BaseSettings):
     # --- auth ---
     backend_token: str = Field(
         default="",
-        description="Pre-set bearer token. Empty or not set = auto-generate a fresh token on each start.",
+        description=(
+            "Pre-set bearer token. Empty or not set = auto-generate a fresh "
+            "token on each start."
+        ),
     )
 
     # --- observation ---

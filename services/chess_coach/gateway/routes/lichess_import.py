@@ -170,14 +170,17 @@ async def _insert_game(
 
     board = parsed.board()
     await db.execute(
-        "INSERT OR IGNORE INTO positions (id, game_id, fen, ply, is_mainline) VALUES (?, ?, ?, 0, 1)",
+        "INSERT OR IGNORE INTO positions "
+        "(id, game_id, fen, ply, is_mainline) VALUES (?, ?, ?, 0, 1)",
         (f"{game['id']}:0", game["id"], board.fen()),
     )
     for ply, move in enumerate(parsed.mainline_moves(), 1):
         board.push(move)
         move_san = board.san(move)
         await db.execute(
-            "INSERT OR IGNORE INTO positions (id, game_id, fen, move_uci, move_san, ply, is_mainline) VALUES (?, ?, ?, ?, ?, ?, 1)",
+            "INSERT OR IGNORE INTO positions "
+            "(id, game_id, fen, move_uci, move_san, ply, is_mainline) "
+            "VALUES (?, ?, ?, ?, ?, ?, 1)",
             (f"{game['id']}:{ply}", game["id"], board.fen(), move.uci(), move_san, ply),
         )
 
