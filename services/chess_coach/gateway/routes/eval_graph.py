@@ -252,7 +252,9 @@ async def _analyze_one_position(
     row = _build_analyses_row(position_id, depth, result, analyses_cols)
     cols_csv = ", ".join(row.keys())
     placeholders = ", ".join("?" for _ in row)
-    sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders})"
+    # Column names are hard-coded or sourced from the migrated local schema;
+    # every runtime value remains bound through a generated placeholder.
+    sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders})"  # noqa: S608
     try:
         await db.execute(sql, list(row.values()))
         return True
@@ -389,7 +391,8 @@ async def get_eval_graph(
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute(
-                f"SELECT position_id, score_cp, score_mate, classification "
+                # Only placeholder tokens are interpolated; IDs/depth are bound below.
+                f"SELECT position_id, score_cp, score_mate, classification "  # noqa: S608
                 f"FROM analyses WHERE position_id IN ({placeholders}) "
                 f"AND engine_id = 'stockfish' AND depth = ?",
                 (*position_ids, depth),

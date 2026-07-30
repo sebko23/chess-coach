@@ -194,7 +194,9 @@ async def _insert_analysis(
     row = _build_analyses_row(position_id, depth, result)
     cols_csv = ", ".join(row.keys())
     placeholders_sql = ", ".join("?" for _ in row)
-    sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders_sql})"
+    # Column names come exclusively from the hard-coded row built above;
+    # every runtime value remains bound through a generated placeholder.
+    sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders_sql})"  # noqa: S608
     try:
         cur = await db.execute(sql, list(row.values()))
         return cur.rowcount == 1
@@ -264,7 +266,8 @@ async def backfill_analyses(
         if body.game_ids:
             placeholders = ",".join("?" for _ in body.game_ids)
             cur = await db.execute(
-                f"SELECT id, pgn_raw FROM games WHERE id IN ({placeholders})",
+                # Only placeholder tokens are interpolated; game IDs are bound below.
+                f"SELECT id, pgn_raw FROM games WHERE id IN ({placeholders})",  # noqa: S608
                 body.game_ids,
             )
         else:
