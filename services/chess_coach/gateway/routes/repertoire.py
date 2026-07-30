@@ -46,7 +46,11 @@ class NoveltyItem(BaseModel):
 
 @router.get("/v1/repertoire/{player}/tree", response_model=TreeResponse)
 @route_guard
-async def get_repertoire_tree(player: str, request: Request, color: str = Query(default="white", pattern="^(white|black)$")):
+async def get_repertoire_tree(
+    player: str,
+    request: Request,
+    color: str = Query(default="white", pattern="^(white|black)$"),
+):
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
@@ -64,16 +68,27 @@ async def get_repertoire_tree(player: str, request: Request, color: str = Query(
 
 @router.get("/v1/repertoire/{player}/gaps", response_model=list[GapItem])
 @route_guard
-async def get_repertoire_gaps(player: str, request: Request, color: str = Query(default="white", pattern="^(white|black)$")):
+async def get_repertoire_gaps(
+    player: str,
+    request: Request,
+    color: str = Query(default="white", pattern="^(white|black)$"),
+):
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
-        cur = await db.execute("SELECT fen, ply, move_san FROM positions WHERE ply BETWEEN 8 AND 12 LIMIT 20")
+        cur = await db.execute(
+            "SELECT fen, ply, move_san FROM positions "
+            "WHERE ply BETWEEN 8 AND 12 LIMIT 20"
+        )
         rows = await cur.fetchall()
     return [GapItem(fen=r["fen"], ply=r["ply"], move_san=r["move_san"]) for r in rows]
 
 
 @router.get("/v1/repertoire/{player}/novelties", response_model=list[NoveltyItem])
 @route_guard
-async def get_repertoire_novelties(player: str, request: Request, color: str = Query(default="white", pattern="^(white|black)$")):
+async def get_repertoire_novelties(
+    player: str,
+    request: Request,
+    color: str = Query(default="white", pattern="^(white|black)$"),
+):
     return []

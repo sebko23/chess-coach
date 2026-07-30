@@ -89,7 +89,11 @@ async def _run_async(settings: GatewaySettings) -> int:
             settings.host, bound_port, settings.descriptor_path,
         )
     else:
-        logger.info("gateway.ready: serving %s:%d  (descriptor disabled)", settings.host, bound_port)
+        logger.info(
+            "gateway.ready: serving %s:%d  (descriptor disabled)",
+            settings.host,
+            bound_port,
+        )
 
     await serve_task
     return 0

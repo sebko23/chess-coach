@@ -43,7 +43,10 @@ router = APIRouter(prefix="/v1/import", tags=["import"])
 
 
 class BackfillRequest(BaseModel):
-    game_ids: list[str] = Field(default_factory=list, description="If empty, back-fill all games with pgn_raw populated")
+    game_ids: list[str] = Field(
+        default_factory=list,
+        description="If empty, back-fill all games with pgn_raw populated",
+    )
     depth: int = Field(8, ge=1, le=30)
     max_plies: int = Field(200, ge=1, le=1000)
 

@@ -91,7 +91,9 @@ def _fsrs_next(
     new_difficulty = max(1.0, min(10.0, difficulty + (5 - rating) * 0.5))
     new_retrievability = min(1.0, retrievability + 0.15 * (rating - 2))
     interval_days = int(new_stability * 1.5)
-    due_dt = datetime.now(UTC).replace(hour=6, minute=0, second=0, microsecond=0) + timedelta(days=interval_days)
+    due_dt = datetime.now(UTC).replace(
+        hour=6, minute=0, second=0, microsecond=0
+    ) + timedelta(days=interval_days)
     return new_stability, new_difficulty, new_retrievability, due_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -130,7 +132,10 @@ async def get_queue(player: str, request: Request, limit: int = 20):
             params = (limit,)
 
         # Queue query
-        cur = await db.execute(f"{base_sql} {where} ORDER BY due ASC, stability ASC LIMIT ?", params)
+        cur = await db.execute(
+            f"{base_sql} {where} ORDER BY due ASC, stability ASC LIMIT ?",
+            params,
+        )
         rows = [dict(r) for r in await cur.fetchall()]
 
         # Enrich with ECO/opening extracted from PGN
@@ -169,7 +174,13 @@ async def review_card(card_id: str, body: ReviewRequest, request: Request):
                 message=f"Card {card_id} not found",
                 details={"card_id": card_id},
             )
-        s, d, r, revs, _ = row["stability"], row["difficulty"], row["retrievability"], row["reviews"], row["lapses"]
+        s, d, r, revs, _ = (
+            row["stability"],
+            row["difficulty"],
+            row["retrievability"],
+            row["reviews"],
+            row["lapses"],
+        )
         ns, nd, nr, ndue = _fsrs_next(body.rating, s, d, r, revs)
         nrev = revs + 1
         now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%fZ")
@@ -179,7 +190,14 @@ async def review_card(card_id: str, body: ReviewRequest, request: Request):
             (ns, nd, nr, nrev, now, ndue, now, card_id),
         )
         await db.commit()
-    return ReviewResponse(id=card_id, new_stability=ns, new_difficulty=nd, new_retrievability=nr, new_reviews=nrev, new_due=ndue)
+    return ReviewResponse(
+        id=card_id,
+        new_stability=ns,
+        new_difficulty=nd,
+        new_retrievability=nr,
+        new_reviews=nrev,
+        new_due=ndue,
+    )
 
 
 @router.post("/v1/training/seed-from-blunders")
@@ -193,8 +211,10 @@ async def seed_from_blunders(body: SeedRequest, request: Request):
             "SELECT DISTINCT p.id AS pos_id, p.fen "
             "FROM positions p "
             "JOIN analyses a ON a.position_id = p.id "
-            "WHERE (a.classification LIKE '%blunder%' OR ABS(COALESCE(a.cp_delta,0)) > 150) "
-            "AND p.id NOT IN (SELECT reference_id FROM training_cards WHERE card_type='position' AND player_name=?) "
+            "WHERE (a.classification LIKE '%blunder%' "
+            "OR ABS(COALESCE(a.cp_delta,0)) > 150) "
+            "AND p.id NOT IN (SELECT reference_id FROM training_cards "
+            "WHERE card_type='position' AND player_name=?) "
             "LIMIT 100",
             (body.player,),
         )
@@ -202,7 +222,8 @@ async def seed_from_blunders(body: SeedRequest, request: Request):
         for pos_id, _fen in rows:
             cid = str(uuid.uuid4())
             await db.execute(
-                "INSERT INTO training_cards (id, player_name, card_type, reference_id, due, created_at, updated_at) "
+                "INSERT INTO training_cards "
+                "(id, player_name, card_type, reference_id, due, created_at, updated_at) "
                 "VALUES (?, ?, 'position', ?, ?, ?, ?)",
                 (cid, body.player, pos_id, now, now, now),
             )

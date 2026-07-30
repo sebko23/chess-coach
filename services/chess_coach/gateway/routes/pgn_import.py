@@ -43,7 +43,12 @@ router = APIRouter(prefix="/v1/import", tags=["import"])
 
 class PgnImportRequest(BaseModel):
     pgn: str = Field(..., description="PGN text, single or multi-game")
-    depth: int = Field(8, ge=1, le=30, description="Depth used by future lazy analyses at GET /v1/games/{id}/eval-graph")
+    depth: int = Field(
+        8,
+        ge=1,
+        le=30,
+        description="Depth used by future lazy analyses at GET /v1/games/{id}/eval-graph",
+    )
     max_games: int = Field(500, ge=1, le=5000)
     max_plies: int = Field(200, ge=1, le=1000, description="Cap on positions stored per game")
 

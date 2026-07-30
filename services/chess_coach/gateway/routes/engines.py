@@ -25,7 +25,10 @@ def _pool(request: Request) -> EnginePool:
     if pool is None:
         raise HTTPException(
             status_code=503,
-            detail={"code": ErrorCode.SERVER_UNAVAILABLE.value, "message": "Engine pool not initialised"},
+            detail={
+                "code": ErrorCode.SERVER_UNAVAILABLE.value,
+                "message": "Engine pool not initialised",
+            },
         )
     return pool
 
