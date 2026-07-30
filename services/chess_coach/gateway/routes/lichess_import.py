@@ -66,35 +66,37 @@ async def _fetch_games_ndjson(
     url = LICHESS_API.format(username=username)
     headers = {"Accept": "application/x-ndjson"}
 
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(url, params=params) as resp:
-            if resp.status == 404:
-                raise HTTPException(
-                    404,
-                    detail={
-                        "code": ErrorCode.NOT_FOUND.value,
-                        "message": f"Lichess user '{username}' not found",
-                    },
-                )
-            if resp.status == 429:
-                raise HTTPException(
-                    429,
-                    detail={
-                        "code": ErrorCode.RATE_LIMITED.value,
-                        "message": "Lichess API rate limit hit; try again later",
-                    },
-                )
-            if resp.status != 200:
-                body = await resp.text()
-                raise HTTPException(
-                    resp.status,
-                    detail={
-                        "code": ErrorCode.UPSTREAM_ERROR.value,
-                        "message": f"Lichess API error: {body[:200]}",
-                    },
-                )
+    async with (
+        aiohttp.ClientSession(headers=headers) as session,
+        session.get(url, params=params) as resp,
+    ):
+        if resp.status == 404:
+            raise HTTPException(
+                404,
+                detail={
+                    "code": ErrorCode.NOT_FOUND.value,
+                    "message": f"Lichess user '{username}' not found",
+                },
+            )
+        if resp.status == 429:
+            raise HTTPException(
+                429,
+                detail={
+                    "code": ErrorCode.RATE_LIMITED.value,
+                    "message": "Lichess API rate limit hit; try again later",
+                },
+            )
+        if resp.status != 200:
+            body = await resp.text()
+            raise HTTPException(
+                resp.status,
+                detail={
+                    "code": ErrorCode.UPSTREAM_ERROR.value,
+                    "message": f"Lichess API error: {body[:200]}",
+                },
+            )
 
-            text = await resp.text()
+        text = await resp.text()
     objs: list[dict] = []
     for line in text.split(chr(10)):
         line = line.strip()
@@ -123,8 +125,8 @@ def _parse_game(obj: dict) -> tuple[str, dict, str] | None:
         try:
             dt = datetime.fromtimestamp(ts / 1000, tz=UTC)
             date_str = dt.strftime("%Y-%m-%d")
-        except Exception:
-            pass
+        except (OSError, OverflowError, ValueError) as exc:
+            _log.debug("Ignoring invalid Lichess game timestamp %r: %s", ts, exc)
 
     perf = obj.get("perf", "game")
     game = {
@@ -201,7 +203,7 @@ async def import_lichess(body: LichessImportRequest, request: Request):
                 "code": ErrorCode.UPSTREAM_ERROR.value,
                 "message": f"Failed to fetch from Lichess: {exc}",
             },
-        )
+        ) from exc
 
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         for obj in objs:

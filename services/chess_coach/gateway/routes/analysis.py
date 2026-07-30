@@ -40,7 +40,7 @@ async def analyze_position(
         raise HTTPException(
             status_code=422,
             detail={"code": ErrorCode.VALIDATION_ERROR.value, "message": str(e)},
-        )
+        ) from e
     engine_id = req.engine_id or "stockfish"
     try:
         result = await pool.analyze(req, engine_id)
@@ -48,10 +48,10 @@ async def analyze_position(
         raise HTTPException(
             status_code=404,
             detail={"code": ErrorCode.NOT_FOUND.value, "message": f"Engine {engine_id} not found"},
-        )
+        ) from None
     except RuntimeError as e:
         raise HTTPException(
             status_code=500,
             detail={"code": ErrorCode.INTERNAL.value, "message": str(e)},
-        )
+        ) from e
     return {"data": result.model_dump()}

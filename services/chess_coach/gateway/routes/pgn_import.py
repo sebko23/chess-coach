@@ -191,7 +191,7 @@ async def import_pgn(
     total_games = len(parsed_games)
 
     async with aiosqlite.connect(db_path) as db:
-        for i, _game, row in parsed_games:
+        for _i, _game, row in parsed_games:
             game_id = row["id"]
 
             values: dict[str, object] = dict(row)

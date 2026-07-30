@@ -76,8 +76,8 @@ def _uci_to_san(fen: str, uci: str) -> str:
         move = chess.Move.from_uci(uci)
         if move in board.legal_moves:
             return board.san(move)
-    except Exception:
-        pass
+    except (ImportError, ValueError) as exc:
+        logger.debug("Falling back to UCI for move %s: %s", uci, exc)
     return uci
 
 
