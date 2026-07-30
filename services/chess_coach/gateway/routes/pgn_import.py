@@ -210,7 +210,9 @@ async def import_pgn(
 
             cols_csv = ", ".join(values.keys())
             placeholders = ", ".join("?" for _ in values)
-            sql = f"INSERT INTO games ({cols_csv}) VALUES ({placeholders})"
+            # Column names are hard-coded or sourced from the migrated local schema;
+            # every PGN-derived value remains bound through a generated placeholder.
+            sql = f"INSERT INTO games ({cols_csv}) VALUES ({placeholders})"  # noqa: S608
 
             inserted_ok = False
             try:
