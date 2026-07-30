@@ -19,8 +19,12 @@ import logging
 import platform
 from dataclasses import dataclass, field
 
-from chess_coach.protocol_types.analysis import AnalysisRequest, AnalysisResult, PVLine
-from chess_coach.uci.engine import UCIEngine, InfoEvent
+from chess_coach.protocol_types.analysis import (
+    AnalysisRequest,
+    AnalysisResult,
+    PVLine,
+)
+from chess_coach.uci.engine import UCIEngine
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +174,9 @@ class EnginePool:
                 try:
                     await engine.position(fen=req.fen)
                     pvs_dict: dict[int, PVLine] = {}
-                    use_nodes = spec.path.endswith("lc0") or any("lc0" in a for a in spec.extra_args)
+                    use_nodes = spec.path.endswith("lc0") or any(
+                        "lc0" in arg for arg in spec.extra_args
+                    )
                     # Drain the go() generator with an overall deadline.
                     # engine.go() is an async generator, so we consume it
                     # into a list inside a coroutine and wait_for that.
@@ -188,7 +194,7 @@ class EnginePool:
                             _drain_go(),
                             timeout=self._engine_go_timeout_s,
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         # The engine hung. Forcibly kill the subprocess,
                         # drop our reference, raise so the route returns
                         # 5xx instead of silently retrying on a wedged
@@ -220,14 +226,19 @@ class EnginePool:
                                     engine._proc.wait(),
                                     timeout=2.0,
                                 )
-                        except (asyncio.TimeoutError, Exception):
-                            pass
+                        except Exception as exc:
+                            logger.debug(
+                                "engine_pool: failed to reap timed-out %s slot %d: %s",
+                                engine_id,
+                                slot.slot_index,
+                                exc,
+                            )
                         slot.engine = None
                         raise EngineHungError(
                             engine_id=engine_id,
                             slot_index=slot.slot_index,
                             timeout_s=self._engine_go_timeout_s,
-                        )
+                        ) from None
                     for ev in events:
                         if ev.score is not None and ev.pv:
                             pv = PVLine(
@@ -362,8 +373,13 @@ class EnginePool:
                         asyncio.shield(slot.engine._proc.wait()),
                         timeout=1.0,
                     )
-                except (asyncio.TimeoutError, Exception):
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        "engine_pool: failed to reap dead %s slot %d: %s",
+                        spec.engine_id,
+                        slot.slot_index,
+                        exc,
+                    )
                 slot.engine._proc = None
                 slot.engine = None
             engine = UCIEngine(
