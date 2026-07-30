@@ -24,6 +24,11 @@ _MAX_ENTRIES = 40
 # is relaxed for these corpora.
 _MIN_AUTO_ENTRIES = 1
 _MAX_AUTO_ENTRIES = 30
+# BBF-88.2a: per-entry provenance strategy. kNN-bootstrapped
+# entries from BBF-88.x use the default strategy. Hand-curated
+# entries use "synthetic_shape_curated" and must include an
+# `archetype_trait_source` field documenting the source.
+_SHAPE_CURATED_STRATEGY = "synthetic_shape_curated"
 _ID_PATTERN = re.compile(r"^AG-v\d+-\d{4}$")
 _PLACEHOLDER_PATTERNS = (
     re.compile(r"\bsynthetic placeholder\b", re.IGNORECASE),
@@ -111,6 +116,34 @@ def validate_completion(version: str = "v1", base_path: Path | None = None) -> l
         errors.extend(
             f"{entry.id}: " + msg
             for msg in _validate_metrics_shape(entry.metrics)
+        )
+
+    # BBF-88.2a: shape-curated entries require an archetype_trait_source.
+    # The validator logs a WARNING so operators see the new strategy
+    # in their validation output; the WARNING is advisory only and
+    # does not fail the corpus.
+    shape_curated_count = 0
+    for entry in entries:
+        prov = entry._provenance
+        if not isinstance(prov, dict):
+            continue
+        if prov.get("strategy") != _SHAPE_CURATED_STRATEGY:
+            continue
+        shape_curated_count += 1
+        source = prov.get("archetype_trait_source")
+        if not isinstance(source, str) or not source:
+            errors.append(
+                f"{entry.id}: shape-curated entry missing "
+                f"`archetype_trait_source` in _provenance"
+            )
+    if shape_curated_count > 0:
+        print(
+            f"WARNING: {shape_curated_count} shape-curated entry/entries "
+            f"(strategy={_SHAPE_CURATED_STRATEGY!r}) are not kNN-bootstrapped; "
+            f"metric vectors are hand-curated from the ARCHETYPE_TRAITS shape contract. "
+            f"See BBF-88.2a brief for the rationale and BBF-89 for the "
+            f"eventual hand-curated seed corpus.",
+            file=sys.stderr,
         )
 
     if is_auto:
