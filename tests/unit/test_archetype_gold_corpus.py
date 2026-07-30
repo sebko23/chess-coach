@@ -1,5 +1,9 @@
 """Tests for BBF-66 archetype-gold corpus loader (mirrors test_l2_gold_dataset.py)."""
 
+import json
+import logging
+from pathlib import Path
+
 import pytest
 
 
@@ -179,6 +183,101 @@ def test_v0_shape_curated_entries_have_archetype_trait_source() -> None:
         assert isinstance(source, str), (
             f"{entry.id}: archetype_trait_source is not a string"
         )
+
+
+# ---- BBF-86.7: self-describing _metadata.version + advisory loader check ----
+
+
+def test_v0_shipped_corpus_has_version_field() -> None:
+    """BBF-86.7: the shipped v0 archetype corpus self-describes as v0."""
+    from chess_coach.datasets.archetype_gold import (
+        load_archetype_gold_with_metadata,
+    )
+    raw = load_archetype_gold_with_metadata(version="v0")
+    metadata = raw.get("_metadata")
+    assert isinstance(metadata, dict)
+    assert metadata.get("version") == "v0"
+
+
+def test_archetype_loader_warns_on_version_mismatch(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path,
+) -> None:
+    """BBF-86.7: requesting v1 from a v0 corpus logs a WARNING but
+    does NOT raise. This is the soft-advisory contract; refusing
+    would break production callers (e.g. archetypes.py hard-codes
+    load_archetype_gold("v1") and v1 may not be in the image).
+    """
+    import logging
+
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+
+    # Build a tmp corpus that self-describes as "v0" but is loaded
+    # under a different version request ("v1"). The loader must
+    # log a WARNING and return entries, not raise.
+    tmp_corpus = {
+        "schema_version": 1,
+        "_metadata": {
+            "version": "v0",
+            "provenance": "auto",
+            "WARNING": "test fixture",
+        },
+        "entries": [
+            {
+                "id": "AG-v0-0001",
+                "archetype_label": "Tilter",
+                "metrics": {
+                    "tactical_vs_positional_bias": 0.5,
+                    "time_pressure_quality": 0.2,
+                    "opening_comfort": 1.0,
+                    "conversion_ability": 0.0,
+                    "blunder_rate_vs_rating": 0.2,
+                    "decision_fatigue": 0.0,
+                },
+            },
+        ],
+    }
+    corpus_dir = tmp_path / "v1"
+    corpus_dir.mkdir()
+    (corpus_dir / "corpus.json").write_text(
+        json.dumps(tmp_corpus), encoding="utf-8",
+    )
+
+    with caplog.at_level(
+        logging.WARNING, logger="chess_coach.datasets.archetype_gold",
+    ):
+        entries = load_archetype_gold(version="v1", base_path=tmp_path)
+
+    # The loader must succeed (soft-advisory, not refusing).
+    assert len(entries) == 1
+    assert entries[0].id == "AG-v0-0001"
+
+    # And a version-mismatch WARNING must be logged.
+    mismatch = [
+        r for r in caplog.records
+        if "version mismatch" in r.message.lower()
+    ]
+    assert mismatch, "expected a version-mismatch WARNING to be logged"
+
+
+def test_archetype_loader_no_warning_when_version_matches(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """BBF-86.7: requesting v0 from the v0 corpus emits no
+    version-mismatch WARNING."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+
+    with caplog.at_level(
+        logging.WARNING, logger="chess_coach.datasets.archetype_gold",
+    ):
+        load_archetype_gold(version="v0")
+    mismatch = [
+        r for r in caplog.records
+        if "version mismatch" in r.message.lower()
+    ]
+    assert not mismatch, (
+        f"unexpected version-mismatch WARNING(s): "
+        f"{[r.message for r in mismatch]}"
+    )
 
 
 # ---- BBF-86.5: confidence gating (silent failure mode for v0 corpus) ----

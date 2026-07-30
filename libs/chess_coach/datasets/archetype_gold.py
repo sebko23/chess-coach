@@ -29,9 +29,12 @@ Public API:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # ID pattern: AG-vN-NNNN where vN is the version and NNNN is 4-digit zero-padded.
 _ID_PATTERN = re.compile(r"^AG-v\d+-\d{4}$")
@@ -100,6 +103,22 @@ def load_archetype_gold_with_metadata(version: str = "v1", base_path=None):
             f"Archetype gold corpus at {corpus_path} has schema_version "
             f"{raw.get('schema_version')}, expected 1"
         )
+    # BBF-86.7: advisory version check. If the corpus carries a
+    # `_metadata.version` field, log a WARNING if the requested
+    # version doesn't match. Refusing would break production
+    # callers (e.g. services/chess_coach/profile/archetypes.py
+    # hard-codes load_archetype_gold("v1") and v1 may not be in
+    # the production image; the load must succeed and the
+    # WARNING is the diagnostic).
+    metadata = raw.get("_metadata")
+    if isinstance(metadata, dict):
+        corpus_version = metadata.get("version")
+        if isinstance(corpus_version, str) and corpus_version != version:
+            logger.warning(
+                "archetype gold corpus version mismatch: requested "
+                "%r but corpus %s reports _metadata.version=%r",
+                version, corpus_path, corpus_version,
+            )
     return raw
 
 

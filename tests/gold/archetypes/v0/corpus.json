@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "_metadata": {
+    "version": "v0",
     "WARNING": "AUTO-DERIVED + SHAPE-CURATED. The 8 kNN-bootstrapped entries (Tilter, Grinder, Positional Player, Endgame Specialist) are auto-derived from real Lichess PGNs + a synthetic-analyses DB. The 6 entries covering Tactician, Wildcard, and Specialist (BBF-88.2a) are hand-curated from the ARCHETYPE_TRAITS shape contract because the v1 placeholder's 4-cluster metric space did not produce those archetype labels. The metric vectors for the 6 shape-curated entries are NOT measured; they are derived from the per-archetype trait parameters (start_score, end_score, blunder_rate, etc.) to extend coverage to all 7 standard archetypes. The labels are still self-consistent with v1's heuristic definitions; this is the documented honest gap that BBF-89 (hand-curated seed corpus) will close.",
     "provenance": "auto",
     "generator": "scripts/curate_archetype_gold_auto.py @ 2fb42b4 (initial 8) + hand-curated 6 entries per BBF-88.2a",
