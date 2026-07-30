@@ -16,7 +16,9 @@ elif platform.system() == "Darwin":
 else:  # Windows
     _DEFAULT_DATA_DIR = _HOME / "AppData" / "Local" / "chess-coach"
 
-_DEFAULT_HOST = "0.0.0.0"
+# The gateway defaults to container/remote accessibility; operators can
+# override CHESS_COACH_HOST when a loopback-only bind is required.
+_DEFAULT_HOST = "0.0.0.0"  # noqa: S104
 _DEFAULT_LOG_LEVEL = "INFO"
 
 

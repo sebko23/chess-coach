@@ -23,6 +23,7 @@ load_dotenv()
 # first read. The existing precedent (set by BBF-87.1) covers
 # `GroundingIndex`; this commit extends the same rationale to the
 # rest of the contiguous import cluster.
+import asyncio  # noqa: E402
 import contextlib  # noqa: E402
 import logging  # noqa: E402
 import pathlib  # noqa: E402
@@ -128,12 +129,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 1b. Engine pool (skip if already injected, e.g. by test fixtures)
     if not hasattr(app.state, 'engine_pool') or getattr(app.state, 'engine_pool', None) is None:
         stockfish_path = '/usr/local/bin/stockfish'
-        if not pathlib.Path(stockfish_path).exists():
+        if not await asyncio.to_thread(pathlib.Path(stockfish_path).exists):
             stockfish_path = 'stockfish'  # fallback to PATH
         maia_path = '/a0/usr/projects/chess_coach/data/engines/lc0'
         maia_weights = '/a0/usr/projects/chess_coach/data/engines/maia-1500.pb'
-        import pathlib as _pathlib
-        maia_available = _pathlib.Path(maia_path).exists() and _pathlib.Path(maia_weights).exists()
+        maia_path_exists, maia_weights_exist = await asyncio.gather(
+            asyncio.to_thread(pathlib.Path(maia_path).exists),
+            asyncio.to_thread(pathlib.Path(maia_weights).exists),
+        )
+        maia_available = maia_path_exists and maia_weights_exist
 
         specs = [EngineSpec(engine_id="stockfish", path=stockfish_path)]
         if maia_available:

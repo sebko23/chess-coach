@@ -72,7 +72,8 @@ async def _run_async(settings: GatewaySettings) -> int:
         # address on Windows and macOS (though Linux tolerates it).
         announce_host = (
             settings.announce_host
-            or ("127.0.0.1" if settings.host == "0.0.0.0" else settings.host)
+            # Comparing the configured bind host does not itself bind a socket.
+            or ("127.0.0.1" if settings.host == "0.0.0.0" else settings.host)  # noqa: S104
         )
         descriptor = Descriptor(
             host=announce_host,
