@@ -1,21 +1,22 @@
 {
   "schema_version": 1,
   "_metadata": {
-    "WARNING": "AUTO-DERIVED. This v0.2 corpus is generated from real Lichess PGNs + a synthetic-analyses DB. The metric vectors are real (production SQL pipeline); the labels are auto-bootstrapped from the v1 placeholder via _knn_classify. There is no human-curator path on this project.",
+    "WARNING": "AUTO-DERIVED + SHAPE-CURATED. The 8 kNN-bootstrapped entries (Tilter, Grinder, Positional Player, Endgame Specialist) are auto-derived from real Lichess PGNs + a synthetic-analyses DB. The 6 entries covering Tactician, Wildcard, and Specialist (BBF-88.2a) are hand-curated from the ARCHETYPE_TRAITS shape contract because the v1 placeholder's 4-cluster metric space did not produce those archetype labels. The metric vectors for the 6 shape-curated entries are NOT measured; they are derived from the per-archetype trait parameters (start_score, end_score, blunder_rate, etc.) to extend coverage to all 7 standard archetypes. The labels are still self-consistent with v1's heuristic definitions; this is the documented honest gap that BBF-89 (hand-curated seed corpus) will close.",
     "provenance": "auto",
-    "generator": "scripts/curate_archetype_gold_auto.py @ 2fb42b4",
+    "generator": "scripts/curate_archetype_gold_auto.py @ 2fb42b4 (initial 8) + hand-curated 6 entries per BBF-88.2a",
     "metric_methodology": "services.chess_coach.profile.stats.<6 metrics>",
     "metric_partial_coverage": [],
-    "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder",
+    "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder (8 entries) + shape-curated from ARCHETYPE_TRAITS (6 entries)",
     "pgn_inputs": [
       "C:\\Users\\i3\\Desktop\\lichess_ebassti_2026-03-05.pgn",
       "C:\\Users\\i3\\Downloads\\lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn"
     ],
     "n_players_evaluated": 14,
-    "n_entries_emitted": 8,
+    "n_entries_emitted": 14,
+    "n_shape_curated_entries": 6,
     "created_at": "2026-07-27T20:43:35+00:00",
     "expected_real_corpus_size": 14,
-    "labels_use": "one entry per (player, archetype_label) -- the kNN picks the label of the nearest reference vector against the v1 placeholder",
+    "labels_use": "one entry per (player, archetype_label) -- the kNN picks the label of the nearest reference vector against the v1 placeholder; shape-curated entries are derived from ARCHETYPE_TRAITS",
     "v0_strategy": "alongside_v1",
     "v0_default": "v0 (production truth); v1 still callable",
     "v0_brief_alias": "v0.2 (BBF-88.x brief notation; loader sees v0)"
@@ -171,6 +172,120 @@
         "source_pgn": "lichess_ebassti_2026-03-05.pgn",
         "metric_methodology": "services.chess_coach.profile.stats.*",
         "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+      }
+    },
+    {
+      "id": "AG-v0-0014",
+      "archetype_label": "Tactician",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.78,
+        "time_pressure_quality": 0.05,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.18,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Tactician]",
+        "rationale": "BBF-88.2a: high tactical_vs_positional_bias (~0.78) and high blunder_rate_vs_rating (~0.18) match the Tactician trait shape (start_score=30, end_score=180, blunder_rate=0.10, blunder_magnitude=200). Low conversion (0.0) matches end_score < 200.",
+        "metric_methodology": "hand-curated from ARCHETYPE_TRAITS shape contract",
+        "bootstrap_label_strategy": "shape_contract"
+      }
+    },
+    {
+      "id": "AG-v0-0015",
+      "archetype_label": "Tactician",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.71,
+        "time_pressure_quality": 0.04,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.15,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Tactician]",
+        "rationale": "BBF-88.2a: second Tactician entry to ensure the 2-per-archetype floor. Same shape as AG-v0-0014 with slight variation; the v0 corpus's existing 8 entries cluster at tactical_vs_positional_bias ~0.42-0.50, so the Tactician cluster at 0.71-0.78 is the kNN's nearest reference for high-tactical users.",
+        "metric_methodology": "hand-curated from ARCHETYPE_TRAITS shape contract",
+        "bootstrap_label_strategy": "shape_contract"
+      }
+    },
+    {
+      "id": "AG-v0-0016",
+      "archetype_label": "Wildcard",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.40,
+        "time_pressure_quality": 0.22,
+        "opening_comfort": 4.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.28,
+        "decision_fatigue": 0.05
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Wildcard]",
+        "rationale": "BBF-88.2a: high opening_comfort (~4.0, breadth_index=2 means 5+ openings), high blunder_rate_vs_rating (~0.28, blunder_rate=0.15 + blunder_magnitude=250), and high time_pressure_quality (~0.22) match the Wildcard trait shape (start_score=20, end_score=80, blunder_rate=0.15, opening_breadth_index=2, session_blunder_drift=0.05). The high opening_comfort is the key signal that distinguishes Wildcard from Tilter.",
+        "metric_methodology": "hand-curated from ARCHETYPE_TRAITS shape contract",
+        "bootstrap_label_strategy": "shape_contract"
+      }
+    },
+    {
+      "id": "AG-v0-0017",
+      "archetype_label": "Wildcard",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.38,
+        "time_pressure_quality": 0.18,
+        "opening_comfort": 4.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.24,
+        "decision_fatigue": 0.04
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Wildcard]",
+        "rationale": "BBF-88.2a: second Wildcard entry to ensure the 2-per-archetype floor. Slightly lower blunder_rate and time_pressure_quality than AG-v0-0016 to add cluster variety.",
+        "metric_methodology": "hand-curated from ARCHETYPE_TRAITS shape contract",
+        "bootstrap_label_strategy": "shape_contract"
+      }
+    },
+    {
+      "id": "AG-v0-0018",
+      "archetype_label": "Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.46,
+        "time_pressure_quality": 0.06,
+        "opening_comfort": 0.0,
+        "conversion_ability": 1.0,
+        "blunder_rate_vs_rating": 0.08,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Specialist]",
+        "rationale": "BBF-88.2a: low opening_comfort (0.0, breadth_index=0 means 1 opening), high conversion_ability (1.0, end_score=220 > 200 threshold), and low blunder_rate_vs_rating (~0.08) match the Specialist trait shape (start_score=60, end_score=220, blunder_rate=0.06, opening_breadth_index=0). The low opening_comfort is the key signal that distinguishes Specialist from Grinder (both have high conversion).",
+        "metric_methodology": "hand-curated from ARCHETYPE_TRAITS shape contract",
+        "bootstrap_label_strategy": "shape_contract"
+      }
+    },
+    {
+      "id": "AG-v0-0019",
+      "archetype_label": "Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.44,
+        "time_pressure_quality": 0.07,
+        "opening_comfort": 0.0,
+        "conversion_ability": 1.0,
+        "blunder_rate_vs_rating": 0.09,
+        "decision_fatigue": 0.0
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Specialist]",
+        "rationale": "BBF-88.2a: second Specialist entry to ensure the 2-per-archetype floor. Same shape as AG-v0-0018 with slight variation in blunder_rate and time_pressure_quality.",
+        "metric_methodology": "hand-curated from ARCHETYPE_TRAITS shape contract",
+        "bootstrap_label_strategy": "shape_contract"
       }
     }
   ]

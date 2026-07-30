@@ -87,16 +87,29 @@ def test_v0_corpus_archetype_labels_are_standard() -> None:
 
 
 def test_v0_corpus_provenance_metadata() -> None:
-    """BBF-88.x: each v0 entry has _provenance (auto-corpus provenance)."""
+    """BBF-88.x: each v0 entry has _provenance (auto-corpus provenance).
+
+    BBF-88.2a extended the corpus with 6 hand-curated entries
+    that use a different provenance scheme (`strategy: "synthetic_shape_curated"`).
+    Those entries have an `archetype_trait_source` field instead
+    of `player_name`. This test accepts either provenance scheme.
+    """
     from chess_coach.datasets.archetype_gold import load_archetype_gold
     corpus = load_archetype_gold("v0")
     for entry in corpus:
         assert entry._provenance is not None, (
             f"{entry.id} missing _provenance"
         )
-        assert entry._provenance.get("player_name"), (
-            f"{entry.id} missing player_name in _provenance"
-        )
+        prov = entry._provenance
+        is_shape_curated = prov.get("strategy") == "synthetic_shape_curated"
+        if is_shape_curated:
+            assert prov.get("archetype_trait_source"), (
+                f"{entry.id} missing archetype_trait_source in _provenance"
+            )
+        else:
+            assert prov.get("player_name"), (
+                f"{entry.id} missing player_name in _provenance"
+            )
 
 
 def test_v0_corpus_round_trip_validator_passes() -> None:
@@ -119,6 +132,53 @@ def test_v0_corpus_round_trip_validator_passes() -> None:
     assert result["complete"] is True, (
         f"v0 validator reports incomplete: errors={result.get('errors')}"
     )
+
+
+# ---- BBF-88.2a: 7-of-7 archetype coverage ----
+
+
+def test_v0_all_7_archetypes_covered() -> None:
+    """BBF-88.2a: every STANDARD_ARCHETYPES label appears in the v0 corpus.
+
+    Prevents regression: if a future BBF accidentally removes one
+    of the shape-curated entries for Tactician, Wildcard, or
+    Specialist, this test fails. The kNN classifier's silent
+    failure mode (4-of-7 coverage) is closed by this assertion.
+    """
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+    from chess_coach.profile import STANDARD_ARCHETYPES
+
+    corpus = load_archetype_gold("v0")
+    covered = {entry.archetype_label for entry in corpus}
+    # Drop "Unknown" from the required set; it's reserved for the
+    # kNN output bucket and must NOT appear as a corpus label.
+    standard_labels = {label for label in STANDARD_ARCHETYPES if label != "Unknown"}
+    assert covered >= standard_labels, (
+        f"v0 corpus missing STANDARD_ARCHETYPES coverage: "
+        f"missing={standard_labels - covered}, "
+        f"present={covered}"
+    )
+
+
+def test_v0_shape_curated_entries_have_archetype_trait_source() -> None:
+    """BBF-88.2a: every shape-curated entry documents its trait source."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+
+    corpus = load_archetype_gold("v0")
+    shape_curated = [
+        e for e in corpus
+        if e._provenance
+        and e._provenance.get("strategy") == "synthetic_shape_curated"
+    ]
+    assert shape_curated, "v0 corpus has no shape-curated entries (BBF-88.2a)"
+    for entry in shape_curated:
+        source = entry._provenance.get("archetype_trait_source")
+        assert source is not None, (
+            f"{entry.id}: shape-curated entry missing archetype_trait_source"
+        )
+        assert isinstance(source, str), (
+            f"{entry.id}: archetype_trait_source is not a string"
+        )
 
 
 # ---- BBF-86.5: confidence gating (silent failure mode for v0 corpus) ----
