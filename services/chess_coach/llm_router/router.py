@@ -1,13 +1,16 @@
 """Minimal async OpenRouter client."""
 from __future__ import annotations
+
 import logging
+
 from openai import AsyncOpenAI
+
 from .config import (
+    FALLBACK_MODEL,
+    FALLBACK_TIMEOUT,
     OPENROUTER_BASE_URL,
     PRIMARY_MODEL,
-    FALLBACK_MODEL,
     PRIMARY_TIMEOUT,
-    FALLBACK_TIMEOUT,
     get_api_key,
 )
 

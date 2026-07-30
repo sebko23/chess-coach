@@ -4,6 +4,7 @@ Reads OPENROUTER_API_KEY from environment (with dotenv support at app startup).
 """
 import os
 
+
 # Key is read lazily at call time via get_api_key() to avoid import-time capture
 def get_api_key() -> str:
     return os.environ.get("OPENROUTER_API_KEY", "")

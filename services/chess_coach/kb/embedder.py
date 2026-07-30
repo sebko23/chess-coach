@@ -173,7 +173,11 @@ def validate_embedder() -> bool:
     gate2_pass = open_open > open_end
 
     logger.info(
-        "embedder validate: e4_d4=%.3f (advisory <0.85=%s) open_open=%.3f open_end=%.3f (open>end=%s)",
+        (
+            "embedder validate: "
+            "e4_d4=%.3f (advisory <0.85=%s) "
+            "open_open=%.3f open_end=%.3f (open>end=%s)"
+        ),
         e4_d4, gate1_pass, open_open, open_end, gate2_pass,
     )
     if not gate1_pass:
