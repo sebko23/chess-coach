@@ -132,7 +132,7 @@ variable you have to set is `CHESS_COACH_DATA_DIR` (any writable directory).
 ```bash
 # In a venv:
 uv venv && source .venv/bin/activate          # Windows: .venv\Scripts\activate
-uv pip install -e ".[dev]"
+uv sync --frozen --extra dev   # reproducible from uv.lock
 
 # Optional: pin the dev token so you can curl without reading backend.json
 export CHESS_COACH_BACKEND_TOKEN=devtoken123

@@ -30,6 +30,25 @@ This is binding architectural requirement **P2** (see `docs/08_security/security
 - **SQLite** ≥ 3.40 (usually preinstalled or available via OS package manager)
 - **Stockfish 18** binary on PATH or at a known location. The gateway defaults to `/usr/local/bin/stockfish`; you can override with the `CHESS_COACH_STOCKFISH_PATH` env var if needed.
 
+### Reproducible installs (BBF-sec-03)
+
+`uv.lock` is the source of truth for transitive dependencies and is
+tracked in the repo alongside `pyproject.toml`. To install deterministically:
+
+```bash
+# In a venv (recommended):
+uv venv && source .venv/bin/activate          # Windows: .venv\Scripts\activate
+uv sync --frozen --extra dev
+```
+
+`uv sync --frozen` reads the locked dep graph and refuses to
+re-resolve if `uv.lock` is out of sync with `pyproject.toml`.
+If `uv lock --check` shows a diff, run `uv lock` to refresh the lock
+and commit the updated `uv.lock` alongside your `pyproject.toml`
+changes. The Dockerfile uses `uv sync --frozen --no-install-project
+--extra dev && uv pip install --system --no-cache -e .` for the
+same reason.
+
 ## Building the desktop GUI
 
 ```bash
@@ -69,7 +88,7 @@ The backend reads three env vars that the next dev should understand:
 ```bash
 # In a venv:
 uv venv && source .venv/bin/activate          # Windows: .venv\Scripts\activate
-uv pip install -e ".[dev]"
+uv sync --frozen --extra dev   # reproducible from uv.lock
 
 # Set the dev token so you can curl without re-reading backend.json
 export CHESS_COACH_BACKEND_TOKEN=devtoken123
@@ -136,7 +155,7 @@ From the repo root, in two terminals:
 ```bash
 # Terminal 1: backend
 uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
+uv sync --frozen --extra dev   # reproducible from uv.lock
 export CHESS_COACH_BACKEND_TOKEN=devtoken123
 export CHESS_COACH_MAX_WORKERS=2
 python -m chess_coach.gateway
@@ -180,7 +199,7 @@ What's in the image:
 
 - Base: `python:3.11-slim-bookworm` (Debian 12)
 - Stockfish: installed via `apt-get install stockfish`, symlinked to `/usr/local/bin/stockfish` so the gateway's default path works
-- Python deps: installed via `uv pip install -e .` from `pyproject.toml`
+- Python deps: installed via `uv sync --frozen` from `uv.lock` (BBF-sec-03)
 - Non-root user (`chesscoach`, uid 1000)
 - Entrypoint: `tini` (PID 1) then `chess-coach-gateway` (installed entry point)
 - Port: 18080 published to `127.0.0.1` on the host

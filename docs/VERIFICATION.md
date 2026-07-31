@@ -55,8 +55,9 @@ curl -sS http://127.0.0.1:18080/v1/system/health \
    culprits are:
    - `apt-get install stockfish` fails -> check your apt sources
      or use a different stockfish binary path
-   - `uv pip install -e .` fails -> check pyproject.toml; run
-     `uv pip install -e .` locally first to debug
+   - `uv sync --frozen --extra dev` fails -> check uv.lock is committed
+     and `uv lock --check` is silent; run `uv sync --frozen --extra dev`
+     locally first to debug
    - tini install fails -> check the package name; tini is
      standard on Debian-slim but may need a different name on
      Alpine-based images

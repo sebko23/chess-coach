@@ -62,22 +62,34 @@ RUN groupadd --system --gid 1000 chesscoach \
 # ---- Python toolchain ----
 # We use `uv` (https://github.com/astral-sh/uv) for fast, reproducible
 # installs. Pin the version so the image is reproducible.
-COPY --from=ghcr.io/astral-sh/uv:0.4.18 /uv /uvx /usr/local/bin/
+#
+# BBF-sec-03: bump from 0.4.18 to 0.11.28 so the install line below
+# can use `uv sync --frozen`. The new pin matches the version used
+# by the local dev environment, so local-vs-CI behavior is consistent.
+COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
 # ---- Python deps ----
-# Copy only the metadata first so Docker can cache the install
-# layer. Re-running with only source changes won't re-install
-# every dep.
-COPY pyproject.toml ./
+# Split the COPY+RUN layers so that source-only changes don't
+# re-trigger the full `uv sync` resolver pass. The first layer
+# (pyproject + uv.lock) only changes when deps change; the second
+# layer (libs/ services/ apps/) changes on every source edit.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --extra dev
+
 COPY libs/ ./libs/
 COPY services/ ./services/
 COPY apps/ ./apps/
 
 # Install the package editable. No `--no-deps` because we want the
-# runtime deps (fastapi, uvicorn, aiosqlite, etc.). The `.[dev]`
-# extra is NOT used in production; it's only for tests.
+# runtime deps (fastapi, uvicorn, aiosqlite, etc.). The layered
+# split above means this RUN only re-executes on source changes.
+# BBF-sec-03: `--no-install-project` on the sync layer keeps sync
+# from trying to install the editable project twice; this line
+# handles the editable install. The lock is the source of truth
+# (tracked in BBF-sec-03); the build fails loudly when the lock is
+# stale.
 RUN uv pip install --system --no-cache -e .
 
 # BBF-87.1: copy the v2 narrative gold corpus into the image.
