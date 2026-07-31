@@ -91,3 +91,25 @@ _editable_impl_*.pth
 # working tree, they should not be committed. Match prefix `_bbfN` and include
 # the canonical "input" / "input.json" / ".json" patterns we use.
 _bb*_input*.json
+
+# Audit S-01.3b (BBF-sec-04, 2026-07-31): session-handover / external-review / agent-runtime patterns.
+# These files are operational artifacts that should never be committed (they're untracked
+# today, but accidental `git add .` would publish them).
+#
+# NB on git's patmatch semantics: `**/foo.md` matches `foo.md` at the repo root AND in
+# any subdirectory. (Verified via `git check-ignore --no-index -v` against handoff files
+# like `Session Started _ State Assessment.md` and `SESSION-HANDOVER-2026-06-26.md`.)
+#
+# NB on Windows case-insensitivity: with `core.ignorecase=true`, the pattern
+# `**/Session*.md` ALSO matches lowercase `session-*.md`. The legitimate tracked
+# files at docs/13_review_response/session-*.md are repo-hygiene review docs that
+# are NOT operational session-handover artifacts, so we whitelist them here.
+.a0proj/
+**/Session*.md
+!docs/13_review_response/session-*.md
+**/SESSION-HANDOVER*.md
+**/*Claude Review*.md
+**/*Diagnostic Report*.md
+**/*Progress _ Problems Report*.md
+**/prompt*.txt
+chess_coach.egg-info/
