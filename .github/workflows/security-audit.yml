@@ -1,0 +1,168 @@
+name: security-audit
+
+# BBF-sec-05 (S-01.4): security-audit CI workflow.
+#
+# Audit driver: docs/16_audit/SECURITY-AUDIT-2026-07-30.md §10 Priority 2 #6.
+# The audit found that the security-strategy.md §A-F13 documents "CI runs
+# pip-audit weekly" but the workflow didn't exist. This workflow adds it.
+#
+# This workflow runs in addition to the existing smoke.yml. The smoke
+# workflow exercises the gateway boot, frontend imports, and end-to-end
+# Qdrant path. The security-audit workflow adds the supply-chain and
+# disclosure-accuracy checks.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel any in-progress run for the same branch/PR. Matches the
+# smoke.yml pattern.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: pip-audit. The audit's priority 2 #6 directive explicitly
+  # names pip-audit. We run it against uv.lock so the dep graph is
+  # reproducible (post-BBF-sec-03). `--strict` makes any unfixed
+  # vulnerability a hard failure.
+  pip-audit:
+    name: pip-audit (Python dep vulnerability scan)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        # Pin the same version as the Dockerfile (BBF-sec-03) so the
+        # production install path and the CI path use the same uv.
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 0.11.28
+
+      - name: Install pip-audit
+        # `uv tool install` puts pip-audit on PATH without polluting
+        # the system Python. The audit's priority 2 #6 directive
+        # explicitly names pip-audit.
+        run: uv tool install --with pip-audit pip-audit
+
+      - name: Build requirements for pip-audit
+        # pip-audit's --requirement flag expects pip/requirements.txt
+        # format, not uv's TOML lock format. `uv export` converts
+        # uv.lock to a requirements file that pip-audit can parse.
+        # Critical flags:
+        #   --no-hashes: avoid hash mismatch warnings (the hash is in
+        #                the lock, not the requirements file).
+        #   --no-editable: don't write the editable-marker line.
+        #   --no-emit-project: skip the workspace package (chess-coach
+        #                     is local-only and not on PyPI; without
+        #                     this flag, pip-audit --strict fails with
+        #                     "Dependency not found on PyPI").
+        #   --frozen: refuse to re-resolve; use the locked deps.
+        #   --output-file: the actual flag name (--output is rejected).
+        run: uv export --no-hashes --no-editable --no-emit-project --frozen --output-file requirements-ci.txt
+
+      - name: Run pip-audit
+        # `--strict` makes any known vulnerability a hard failure.
+        # `--requirement requirements-ci.txt` reads the resolved
+        # deps from the converted requirements file.
+        run: pip-audit --strict --requirement requirements-ci.txt
+
+      - name: Cleanup
+        # Don't leave the export file in the working directory.
+        if: always()
+        run: rm -f requirements-ci.txt
+
+  # Job 2: gitleaks. The audit's priority 2 #6 directive explicitly
+  # names gitleaks. The community gitleaks-action scans the full git
+  # history and fails on any detected secret.
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Pull the full history so gitleaks can scan every commit,
+          # not just the latest one. fetch-depth=0 is the documented
+          # gitleaks-action requirement.
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # Default: scan the full history and fail on any detected
+          # secret. GITHUB_TOKEN is required by the action for
+          # posting the SARIF results.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 3: uv-lock-check. Post-BBF-sec-03 follow-up. uv.lock is
+  # tracked now; this job catches future PRs that modify
+  # pyproject.toml without updating uv.lock. `uv lock --check` is
+  # silent when the lock is in sync; non-silent when it's stale.
+  uv-lock-check:
+    name: uv lock --check (lockfile freshness)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 0.11.28
+
+      - name: Check uv.lock freshness
+        # `uv lock --check` exits 0 (silent) if pyproject.toml and
+        # uv.lock are in sync, exits 1 (non-silent) if the lock is
+        # stale. Step fails on the non-zero exit; the runner output
+        # shows the diff.
+        run: uv lock --check
+
+  # Job 4: commit-refs-verify. The leaf reviewer of BBF-sec-04
+  # flagged a disclosure-accuracy defect that recurred 5 times in
+  # the BBF-sec-04 amend chain. The defect class: a commit body
+  # (or PR body) cites file:line references that are stale or
+  # point to the wrong section. The reviewer recommended a CI check
+  # that parses every file:line reference and verifies the file
+  # exists + the line number is within range. This is that check.
+  #
+  # The check is implemented at scripts/dev/verify_commit_refs.py
+  # (added by this BBF). The script is run against the current
+  # HEAD's commit body and the PR body (when available).
+  commit-refs-verify:
+    name: commit ref verify (file:line references)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify commit-body refs
+        # Pull the commit body via `git log` and pipe to the script.
+        # The script exits 0 if all references are valid, 1 if any
+        # are stale. The runner surfaces the stale-reference report.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # On PRs, also verify the PR body (which is the durable
+            # record per BBF-sec-04's R5 fix).
+            PR_BODY=$(gh pr view "${{ github.event.pull_request.number }}" --json body --jq .body)
+            COMMIT_BODY=$(git log -1 --format="%B" HEAD)
+            python scripts/dev/verify_commit_refs.py --commit-body "$COMMIT_BODY" --pr-body "$PR_BODY"
+          else
+            # On push to main, only the commit body is available.
+            COMMIT_BODY=$(git log -1 --format="%B" HEAD)
+            python scripts/dev/verify_commit_refs.py --commit-body "$COMMIT_BODY"
+          fi
