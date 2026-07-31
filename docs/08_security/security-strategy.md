@@ -94,9 +94,16 @@
 
 ## Update / supply-chain
 
-- Python deps pinned via `uv.lock` (or `poetry.lock`); CI runs `pip-audit` weekly.
-- JS deps: `pnpm` with `lockfileVersion: 6`, `pnpm audit` in CI.
+- Python deps pinned via `uv.lock` (or `poetry.lock`); CI runs `pip-audit --strict` against the locked dep graph on every push+PR to `main` (`.github/workflows/security-audit.yml`, BBF-sec-05). The audit's pre-existing claim that "CI runs pip-audit weekly" was historically false; BBF-sec-05 made it true on every push+PR.
+- JS deps: `pnpm` with `lockfileVersion: 6`. **`pnpm audit` is NOT yet in CI** (the prior claim at security-strategy.md:98 was historically false; this doc is now honest). A future hardening step would add `pnpm audit --audit-level moderate` to `.github/workflows/security-audit.yml`.
+- Lockfile freshness: `uv lock --check` runs on every push+PR to `main` (BBF-sec-05). Future PRs that modify `pyproject.toml` without updating `uv.lock` will fail CI.
 - Tauri auto-update signed; release artifacts hashed and posted in a SLSA-style provenance file.
+
+## Third-party API hardening
+
+- **chessvision OCR endpoint** (PDF diagram recognition): HTTPS by default as of BBF-sec-01 (2026-07-31). The default URL is `https://app.chessvision.ai/predict` (was `http://...` pre-BBF-sec-01; the audit flagged the plaintext-HTTP channel as MEDIUM severity). The URL is configurable via `CHESS_COACH_OCR_CHESSVISION_URL` (BBF-sec-01 amendment) and threaded through `GatewaySettings.chessvision_url` (Pydantic settings). Implementation: `services/chess_coach/pdf_ocr/adapter.py:50`.
+- **Lichess API**: HTTPS by default (`https://lichess.org/api/games/user/{username}`), bearer-token-protected. No change.
+- **LLM providers** (OpenRouter, OpenAI, Anthropic): HTTPS-only by their respective APIs. Outbound endpoints are allowlist-controlled (see ADR-0007).
 
 ---
 
