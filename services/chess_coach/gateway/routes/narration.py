@@ -16,6 +16,7 @@ import aiosqlite
 from fastapi import APIRouter, Depends, Request
 
 from chess_coach.narration.pipeline import NarrationOutput
+from chess_coach.narration.sanitize import sanitize_user_content
 from chess_coach.protocol_types.narration import (
     NarrationRequest,
     NarrationResponse,
@@ -116,7 +117,16 @@ async def explain_position(
     if body.game_phase:
         context_parts.append(f"Phase: {body.game_phase}")
     if body.context:
-        context_parts.append(body.context)
+        # A-F12 (security-strategy.md §A-F12): the `context` field is
+        # user-supplied free-form text and flows into the LLM prompt.
+        # Sanitize at the boundary: strip controls / zero-width unicode,
+        # cap at 1 KB, wrap in <user_content> delimiters, and detect-flag
+        # common injection patterns. The wrapped string is appended to
+        # the prompt context exactly as the sanitizer returns it.
+        sanitized = sanitize_user_content(
+            body.context, source="narration_context",
+        )
+        context_parts.append(sanitized.text)
 
     prompt_context = " | ".join(context_parts) if context_parts else "No additional context."
 
