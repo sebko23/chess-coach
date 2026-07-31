@@ -41,11 +41,18 @@ from .protection import get_protection_registry
 logger = logging.getLogger(__name__)
 
 DEFAULT_BACKEND = "chessvision"
-CHESSVISION_URL = "http://app.chessvision.ai/predict"
+# BBF-sec-01: HTTPS by default. The previous hardcoded http:// was
+# flagged by the 2026-07-30 security audit (MEDIUM) as a plaintext
+# exfiltration channel for user-uploaded PDFs. The URL remains
+# configurable via the CHESS_COACH_OCR_CHESSVISION_URL env var or
+# the GatewaySettings.chessvision_url field; this default is the
+# trusted value.
+CHESSVISION_URL = "https://app.chessvision.ai/predict"
 CHESSVISION_TIMEOUT_SECONDS = 30
 CHESSVISION_DEFAULT_CONFIDENCE = 0.9
 
 ENV_OCR_BACKEND = "CHESS_COACH_OCR_BACKEND"
+ENV_CHESSVISION_URL = "CHESS_COACH_OCR_CHESSVISION_URL"
 
 Predicter = Callable[[bytes], Awaitable["OcrResult"]]
 
@@ -66,16 +73,81 @@ class UnknownOcrBackend(ValueError):
     """
 
 
-async def predict_fen(image_png_bytes: bytes) -> OcrResult:
+async def predict_fen(
+    image_png_bytes: bytes,
+    *,
+    url: str | None = None,
+) -> OcrResult:
     """Dispatch to the OCR backend selected by env at call time.
 
     Reads ``CHESS_COACH_OCR_BACKEND`` on every call. Cost is one ``os.getenv``;
     not worth caching. If the env var is unset or empty, falls back to
     :data:`DEFAULT_BACKEND` (``chessvision``).
+
+    The optional ``url`` argument overrides the chessvision.ai endpoint
+    used for the call. When ``None`` (default), the module reads
+    ``CHESS_COACH_OCR_CHESSVISION_URL`` then falls back to
+    :data:`CHESSVISION_URL`. The route layer passes the
+    ``GatewaySettings.chessvision_url`` value here so a single Pydantic
+    source-of-truth governs the URL across the gateway.
     """
     backend_name = os.getenv(ENV_OCR_BACKEND) or DEFAULT_BACKEND
-    backend = get_backend(backend_name)
+    if backend_name == DEFAULT_BACKEND and url is not None:
+        # The route gave us an explicit URL via Pydantic settings.
+        # Configure the backend for this call.
+        backend = _chessvision_with_url(url)
+    else:
+        backend = get_backend(backend_name)
     return await backend(image_png_bytes)
+
+
+def _chessvision_with_url(url: str) -> Predicter:
+    """Return a chessvision backend bound to a specific URL.
+
+    The closure captures ``url`` so the route's per-call override
+    reaches the network layer without mutating the module-level
+    ``CHESSVISION_URL`` constant (which would race with other callers
+    in the same process).
+    """
+    async def _predicter(image_png_bytes: bytes) -> OcrResult:
+        b64 = base64.b64encode(image_png_bytes).decode()
+        payload = {
+            "board_orientation": "predict",
+            "cropped": False,
+            "current_player": "white",
+            "image": f"data:image/png;base64,{b64}",
+            "predict_turn": False,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=CHESSVISION_TIMEOUT_SECONDS) as client:
+                resp = await client.post(url, json=payload)
+            if resp.status_code != 200:
+                return OcrResult(None, 0.0, f"HTTP {resp.status_code}")
+            data = resp.json()
+            if not data.get("success"):
+                return OcrResult(None, 0.0, "chessvision returned success=false")
+            fen = data.get("result", "").replace("_", " ").strip()
+            return OcrResult(fen or None, CHESSVISION_DEFAULT_CONFIDENCE, None)
+        except Exception as exc:  # network, JSON, etc.
+            return OcrResult(None, 0.0, str(exc))
+
+    return _predicter
+
+
+def resolve_chessvision_url(explicit: str | None = None) -> str:
+    """Resolve the chessvision.ai URL with a clear precedence.
+
+    Order:
+        1. ``explicit`` argument (the route's Pydantic settings value).
+        2. ``CHESS_COACH_OCR_CHESSVISION_URL`` env var.
+        3. :data:`CHESSVISION_URL` module default (HTTPS as of BBF-sec-01).
+    """
+    if explicit:
+        return explicit
+    env_url = os.getenv(ENV_CHESSVISION_URL, "").strip()
+    if env_url:
+        return env_url
+    return CHESSVISION_URL
 
 
 def get_backend(name: str) -> Predicter:

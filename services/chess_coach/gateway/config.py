@@ -117,3 +117,16 @@ class GatewaySettings(BaseSettings):
         default="",
         description="API key for Qdrant. Empty string = no auth (default for local dev).",
     )
+
+    # --- PDF / vision OCR (BBF-sec-01) ---
+    # The chessvision.ai public endpoint accepts PDF-derived image
+    # bytes. We default to HTTPS so user-uploaded PDFs are sent
+    # encrypted. Operators may override via CHESS_COACH_OCR_CHESSVISION_URL
+    # or by passing a `chessvision_url` to the PDF route.
+    chessvision_url: str = Field(
+        default="https://app.chessvision.ai/predict",
+        description=(
+            "URL for the chessvision.ai OCR endpoint. Defaults to HTTPS. "
+            "Override at deploy time if you run a self-hosted OCR backend."
+        ),
+    )
