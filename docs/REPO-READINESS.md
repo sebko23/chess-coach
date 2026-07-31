@@ -4,13 +4,54 @@
 `github.com/sebko23/chess-coach` and wants to know what works,
 what's broken, and where the sharp edges are.
 
-Last updated: 2026-07-28 (BBF-85 narrowed).  Refreshed to reflect
-post-BBF-87/87.1/87.1.y/88.x state.  Test counts: 369 passed / 1
-skipped / 0 failed (unit); 91 passed / 7 skipped / 0 failed
-(integration).  The previous "Last updated" line was 2026-07-15
-(BBF-52).
+Last updated: 2026-07-31 (BBF-90 regenerated briefs + tracked-brief
+convention).  Reflects post-S-01 cluster state (BBF-sec-01 through
+BBF-sec-05 all shipped).  Test counts: 369 passed / 1 skipped / 0
+failed (unit); 91 passed / 7 skipped / 0 failed (integration).
+Previous "Last updated" line was 2026-07-28 (BBF-85 narrowed).
 
 ---
+
+## BBF brief convention (added 2026-07-31 by BBF-90)
+
+BBF briefs are design docs. They live in `docs/16_audit/BBF-*.md`
+**tracked** (alongside the code they describe).
+
+Why tracked (vs the legacy "untracked = session-internal" convention):
+
+- Tracked briefs survive squash-merge, disaster recovery, and
+  git operations. The legacy convention was well-intentioned
+  (briefs can be noisy and contain session-internal notes) but
+  fragile: the BBF-86 F2 disaster recovery lost 9 host-side briefs
+  because a `git rm --cached` glob wiped them.
+
+How the convention works:
+
+- **Per-brief cleanup happens before commit.** Strip
+  session-internal notes (memory dumps, "I tried X, then Y"),
+  keep design rationale + honest disclosures + ship gate.
+- **New BBFs commit the brief alongside the BBF code change.**
+  The brief is the "why"; the code is the "what."
+- **Briefs are explicit about fidelity.** Regenerated briefs
+  (e.g. by BBF-90) are flagged as approximations, not
+  byte-identical recreations.
+
+What this doc covers (the BBF-90 regeneration, all tracked):
+
+- The BBF-86 release-readiness audit (`docs/16_audit/BBF-86-release-readiness-audit.md`)
+- The external review findings (`docs/16_audit/EXTERNAL-REVIEW-FINDINGS-2026-07-28.md`)
+- 6 BBF briefs (BBF-84B, BBF-85, BBF-87, BBF-87.1, BBF-87.1.y, BBF-88)
+- The v1 handoff (`docs/16_audit/HANDOFF-FOR-EXTERNAL-DEVELOPER-REVIEW-2026-07-28.md`)
+
+The BBF-89 brief was NOT regenerated (it's still held back in the
+Tier-4 queue, per the v2 handoff §13.3). If/when BBF-89 ships,
+its brief should be added here.
+
+The v2 handoff (`docs/16_audit/HANDOFF-FOR-EXTERNAL-DEVELOPER-REVIEW-2026-07-28-v2.md`)
+is also **untracked** for this BBF. Per the BBF-90 brief, existing
+untracked briefs remain untracked; the convention change applies to
+NEW BBFs going forward. The v2 handoff is preserved on disk for
+reference but not tracked.
 
 ## TL;DR
 
