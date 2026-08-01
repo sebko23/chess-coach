@@ -95,7 +95,7 @@
 ## Update / supply-chain
 
 - Python deps pinned via `uv.lock` (or `poetry.lock`); CI runs `pip-audit --strict` against the locked dep graph on every push+PR to `main` (`.github/workflows/security-audit.yml`, BBF-sec-05). The audit's pre-existing claim that "CI runs pip-audit weekly" was historically false; BBF-sec-05 made it true on every push+PR.
-- JS deps: `pnpm` with `lockfileVersion: 6`. **`pnpm audit` is NOT yet in CI** (the prior claim at security-strategy.md:98 was historically false; this doc is now honest). A future hardening step would add `pnpm audit --audit-level moderate` to `.github/workflows/security-audit.yml`.
+- JS deps: `pnpm` with `lockfileVersion: '9.0'` (the doc's historical `lockfileVersion: 6` was drift; current is v9). **`pnpm audit` is in CI as of BBF-pnpm-audit-to-ci** (commit `20b33fe`, PR #56); the prior "NOT yet in CI" claim was historically false and is now true. Current threshold is `--audit-level high --prod` (catches 14 high + 2 critical prod vulns); tightening to `--audit-level moderate` is held back until the high/critical vulns are remediated.
 - Lockfile freshness: `uv lock --check` runs on every push+PR to `main` (BBF-sec-05). Future PRs that modify `pyproject.toml` without updating `uv.lock` will fail CI.
 - Tauri auto-update signed; release artifacts hashed and posted in a SLSA-style provenance file.
 
