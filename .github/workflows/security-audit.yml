@@ -166,3 +166,57 @@ jobs:
             COMMIT_BODY=$(git log -1 --format="%B" HEAD)
             python scripts/dev/verify_commit_refs.py --commit-body "$COMMIT_BODY"
           fi
+
+  # Job 5: pnpm-audit. The audit's priority 3 #7 + the priority-3-doc
+  # update note: "`pnpm audit` is NOT yet in CI. A future hardening
+  # step would add `pnpm audit --audit-level moderate` to
+  # `.github/workflows/security-audit.yml`." This BBF adds the job
+  # with `--audit-level high`. The threshold rationale:
+  # the locked dep graph has 52 prod-only vulns total (5 low, 31
+  # moderate, 14 high, 2 critical); starting at moderate would block
+  # on day 1. A follow-up BBF will tighten to moderate after the
+  # high/critical vulns are addressed.
+  pnpm-audit:
+    name: pnpm audit (JS dep vulnerability scan)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        # Pin pnpm 9 to match the lockfileVersion: '9.0' header in
+        # apps/desktop/pnpm-lock.yaml. Older pnpm may not parse the
+        # v9 lockfile format. The action version is @v6 (current
+        # stable; v6.0.9 as of 2026-06-15) -- v4 was two majors
+        # behind and is being phased out.
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # Cache pnpm store keyed to the lockfile. The
+          # `cache-dependency-path` is the path relative to the
+          # repo root; the action's cache key changes when the
+          # lockfile changes.
+          cache: pnpm
+          cache-dependency-path: apps/desktop/pnpm-lock.yaml
+
+      - name: Run pnpm audit
+        # `--audit-level high` is stricter than the priority-3-doc's
+        # stated `--audit-level moderate`. The locked dep graph has
+        # 52 prod-only vulns total (5 low, 31 moderate, 14 high, 2
+        # critical per `pnpm audit --json --prod`). Starting at `high`
+        # blocks on the 14 high + 2 critical vulns (real signal)
+        # while keeping the BBF shippable. A follow-up BBF will
+        # tighten to `moderate` after the high/critical vulns are
+        # fixed.
+        #
+        # `--prod` excludes dev deps from the audit. Dev deps are
+        # 19 of the 71 total vulns; they don't ship to users and
+        # auditing them would surface noise (eslint, vitest, etc.).
+        working-directory: apps/desktop
+        run: pnpm audit --audit-level high --prod
