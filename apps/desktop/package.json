@@ -76,14 +76,14 @@
     "react-hotkeys-hook": "^4.5.0",
     "react-i18next": "^16.5.4",
     "react-markdown": "^10.1.0",
-    "react-mosaic-component": "^6.1.1",
+    "react-mosaic-component": "^7.0.0",
     "recharts": "^3.7.0",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.0",
     "swr": "^2.4.0",
     "ts-fsrs": "^3.5.1",
     "ts-pattern": "^5.0.8",
-    "vite": "^8.0.0",
+    "vite": "^8.0.16",
     "zod": "^3.22.4",
     "zustand": "^5.0.11"
   },
@@ -105,5 +105,13 @@
     "oxlint": "^1.55.0",
     "oxlint-tsgolint": "^0.16.0",
     "vitest": "^4.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "lodash": "^4.17.24",
+      "linkify-it": "^5.0.2",
+      "protobufjs": "^7.6.1",
+      "seroval": "^1.5.3"
+    }
   }
 }

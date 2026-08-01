@@ -95,7 +95,7 @@
 ## Update / supply-chain
 
 - Python deps pinned via `uv.lock` (or `poetry.lock`); CI runs `pip-audit --strict` against the locked dep graph on every push+PR to `main` (`.github/workflows/security-audit.yml`, BBF-sec-05). The audit's pre-existing claim that "CI runs pip-audit weekly" was historically false; BBF-sec-05 made it true on every push+PR.
-- JS deps: `pnpm` with `lockfileVersion: '9.0'` (the doc's historical `lockfileVersion: 6` was drift; current is v9). **`pnpm audit` is in CI as of BBF-pnpm-audit-to-ci** (commit `20b33fe`, PR #56); the prior "NOT yet in CI" claim was historically false and is now true. Current threshold is `--audit-level high --prod` (catches 14 high + 2 critical prod vulns); tightening to `--audit-level moderate` is held back until the high/critical vulns are remediated.
+- JS deps: `pnpm` with `lockfileVersion: '9.0'` (the doc's historical `lockfileVersion: 6` was drift; current is v9). **`pnpm audit` is in CI as of BBF-pnpm-audit-to-ci** (commit `20b33fe`, PR #56) and was tightened from `--audit-level high` to `--audit-level moderate` by BBF-fix-pnpm-vulns (commit `12c523c`, PR #57). Current threshold: `--audit-level moderate --prod`; the 16 high/critical + 31 moderate + 5 low prod vulns that the previous threshold caught have all been remediated (vite ^8.0.16 + react-mosaic-component ^7.0.0 + pnpm.overrides for lodash/linkify-it/protobufjs/seroval). `pnpm audit --audit-level moderate --prod` returns "No known vulnerabilities found".
 - Lockfile freshness: `uv lock --check` runs on every push+PR to `main` (BBF-sec-05). Future PRs that modify `pyproject.toml` without updating `uv.lock` will fail CI.
 - Tauri auto-update signed; release artifacts hashed and posted in a SLSA-style provenance file.
 

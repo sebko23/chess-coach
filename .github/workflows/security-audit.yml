@@ -171,11 +171,11 @@ jobs:
   # update note: "`pnpm audit` is NOT yet in CI. A future hardening
   # step would add `pnpm audit --audit-level moderate` to
   # `.github/workflows/security-audit.yml`." This BBF adds the job
-  # with `--audit-level high`. The threshold rationale:
-  # the locked dep graph has 52 prod-only vulns total (5 low, 31
-  # moderate, 14 high, 2 critical); starting at moderate would block
-  # on day 1. A follow-up BBF will tighten to moderate after the
-  # high/critical vulns are addressed.
+  # with `--audit-level moderate` (the priority-3-doc's stated
+  # default). The accompanying fix (apps/desktop/package.json
+  # + apps/desktop/pnpm-lock.yaml bump deps and overrides to clear
+  # all 52 prod-only vulns + the 1 remaining moderate via uuid)
+  # ensures the gate passes.
   pnpm-audit:
     name: pnpm audit (JS dep vulnerability scan)
     runs-on: ubuntu-latest
@@ -185,19 +185,27 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install pnpm
-        # Pin pnpm 9 to match the lockfileVersion: '9.0' header in
-        # apps/desktop/pnpm-lock.yaml. Older pnpm may not parse the
-        # v9 lockfile format. The action version is @v6 (current
-        # stable; v6.0.9 as of 2026-06-15) -- v4 was two majors
-        # behind and is being phased out.
+        # Pin pnpm 11 to match the pnpm.overrides resolution that
+        # produced the lockfile. pnpm 9 honors the same
+        # lockfileVersion: '9.0' but its override semantics may
+        # differ from pnpm 11 (this BBF discovered the difference
+        # empirically: with pnpm 11 + overrides, all 16 high/critical
+        # vulns were cleared; with pnpm 9, the overrides may not
+        # propagate to deeply-pinned transitive deps). The action
+        # version is @v6 (current stable; v6.0.9 as of 2026-06-15).
+        # Note: pnpm 11 requires Node 22.13+; the Setup Node step
+        # below pins Node 22 (LTS).
         uses: pnpm/action-setup@v6
         with:
-          version: 9
+          version: 11
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Bump from 20 to 22: pnpm 11 requires Node 22.13+ (the
+          # CI previously failed with `ERR_UNKNOWN_BUILTIN_MODULE:
+          # node:sqlite` on Node 20 + pnpm 11). Node 22 is LTS.
+          node-version: "22"
           # Cache pnpm store keyed to the lockfile. The
           # `cache-dependency-path` is the path relative to the
           # repo root; the action's cache key changes when the
@@ -206,17 +214,15 @@ jobs:
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
 
       - name: Run pnpm audit
-        # `--audit-level high` is stricter than the priority-3-doc's
-        # stated `--audit-level moderate`. The locked dep graph has
-        # 52 prod-only vulns total (5 low, 31 moderate, 14 high, 2
-        # critical per `pnpm audit --json --prod`). Starting at `high`
-        # blocks on the 14 high + 2 critical vulns (real signal)
-        # while keeping the BBF shippable. A follow-up BBF will
-        # tighten to `moderate` after the high/critical vulns are
-        # fixed.
+        # `--audit-level moderate` is the priority-3-doc's stated
+        # default. The locked dep graph now has 0 prod-only
+        # vulnerabilities at moderate-or-higher per
+        # `pnpm audit --audit-level moderate --prod` (verified
+        # locally after the dep upgrades and overrides in
+        # apps/desktop/package.json + apps/desktop/pnpm-lock.yaml).
         #
         # `--prod` excludes dev deps from the audit. Dev deps are
-        # 19 of the 71 total vulns; they don't ship to users and
-        # auditing them would surface noise (eslint, vitest, etc.).
+        # 0 of the 0 total vulns after the upgrade; they don't ship
+        # to users and auditing them would surface noise.
         working-directory: apps/desktop
-        run: pnpm audit --audit-level high --prod
+        run: pnpm audit --audit-level moderate --prod
