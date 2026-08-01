@@ -386,37 +386,25 @@ loss-streaks of length >= 2.
 
 ## archetypes
 
-### Hypothesis
-A player's 6-metric vector matches one of 7 standard
-archetype shapes (Tactician, Positional Player, Grinder,
-Wildcard, Specialist, Tilter, Endgame Specialist) or
-"Unknown".
+**Historical stub (pre-BBF-65).** The original BBF-59 implementation
+was a heuristic shape-matcher (score every archetype against
+hand-coded "signature" metric values; pick the highest score).
+The heuristic was REPLACED by kNN classification in BBF-66.3
+(commit `3900ef6`); the heuristic is no longer in the codebase.
 
-### Computation
+**Current implementation:** kNN classification (k=3, z-scored
+Euclidean) against the archetype-labelled reference corpus at
+`tests/gold/archetypes/v*/corpus.json`. See the
+**[`## Archetype cluster (BBF-65)`](#archetype-cluster-bbf-65)**
+section below for the canonical description of the current
+implementation, including the production behavior (confidence
+gate at 0.3, "Unknown" gate duality at z-score > 2.0, corpus
+version separation v0 vs v1, and Q1 strategic decision).
 
-1. Compute the 6 metric values for the player.
-2. Score every archetype (each has 2-3 "signature" metric
-   values defining its canonical shape).
-3. Pick the archetype with the highest score (>= 0.4).
-   Otherwise "Unknown".
-
-### Effect-size threshold
-`confidence > 0.4` (the minimum score for a confident
-non-Unknown assignment). Below-threshold assignments
-are rendered as "Inconclusive".
-
-### Caveats
-- The implementation is a heuristic shape-match, NOT
-  kNN against the L-2 gold corpus. L-2 v1 has only 12
-  positions (5 opening / 4 middlegame / 3 endgame) which
-  is too small for kNN. The kNN implementation is
-  deferred to a future BBF when L-2 grows.
-- Archetype labels are EXPERIMENTAL. They are a
-  clustering result, not a measurement. The UI renders
-  the label with the "experimental" badge.
-- The canonical shape definitions were hand-coded for
-  BBF-59. Empirical validation against the L-2 v2
-  corpus is a future work item.
+This stub remains in the doc because the per-metric index at
+line 41 (the `## Per-metric index` section above) references
+`[archetypes](#archetypes)`; removing the section would create
+a broken cross-reference.
 
 ## Archetype cluster (BBF-65)
 
