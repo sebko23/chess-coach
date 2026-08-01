@@ -16,7 +16,10 @@ This is binding architectural requirement **P2** (see `docs/08_security/security
 ### For the desktop GUI (`apps/desktop/`)
 
 - **Node.js** ≥ 20.10 (LTS)
-- **pnpm** ≥ 9.0 (`npm install -g pnpm`)
+- **pnpm** ≥ 11.0 (`npm install -g pnpm`). The `.github/workflows/security-audit.yml`
+  pnpm-audit job pins pnpm 11 explicitly; using pnpm 9 or 10 will work
+  for local dev but the audit gate may produce different results
+  (see the "pnpm dep upgrade workflow" section below).
 - **Rust** ≥ 1.77 (`rustup` recommended)
 - **Tauri 2.x system dependencies** (varies by platform — see [tauri.app/start/prerequisites](https://tauri.app/start/prerequisites/))
   - **Windows**: WebView2 (preinstalled on Windows 10 1803+) and the MSVC toolchain (Visual Studio Build Tools 2022 with the "Desktop development with C++" workload)
@@ -48,6 +51,125 @@ and commit the updated `uv.lock` alongside your `pyproject.toml`
 changes. The Dockerfile uses `uv sync --frozen --no-install-project
 --extra dev && uv pip install --system --no-cache -e .` for the
 same reason.
+
+### Reproducible installs for the desktop GUI (BBF-fix-pnpm-vulns)
+
+`apps/desktop/pnpm-lock.yaml` is the source of truth for transitive
+dependencies (lockfileVersion: '9.0'). The `.github/workflows/security-audit.yml`
+`pnpm audit` job runs `pnpm audit --audit-level moderate --prod`
+against this lockfile on every push+PR to `main`.
+
+To install deterministically:
+
+```bash
+cd apps/desktop
+pnpm install --frozen-lockfile
+```
+
+`--frozen-lockfile` refuses to re-resolve if `pnpm-lock.yaml` is
+out of sync with `package.json`. If the lockfile is stale, run
+`pnpm install --no-frozen-lockfile` to refresh it locally, then
+commit the updated `pnpm-lock.yaml` alongside your `package.json`
+changes.
+
+### pnpm dep upgrade workflow (BBF-fix-pnpm-vulns)
+
+This section documents the 5 pnpm-overrides footguns discovered
+during the BBF that cleared the 16 high/critical prod vulns in
+the apps/desktop dep graph. These footguns are pnpm v11 behavior
+gaps that future BBFs attempting dep upgrades will re-encounter.
+
+#### Footgun 1: `pnpm install --lockfile-only` silently skips re-resolution when overrides change
+
+**Symptom:** When `apps/desktop/package.json` has a `pnpm.overrides`
+section but `apps/desktop/pnpm-lock.yaml` already exists, running
+`pnpm install --lockfile-only` reports `Lockfile is up to date,
+resolution step is skipped` and the lockfile keeps the old
+versions. The overrides are silently ignored.
+
+**Why:** pnpm v11's `--lockfile-only` flag is the documented fast-path
+for CI dep-bump scenarios, but it short-circuits re-resolution when
+the lockfile is consistent with the spec. Overrides are not checked.
+
+**Workaround:** Force a fresh re-resolution by deleting the lockfile
+and node_modules before running `pnpm install --lockfile-only`:
+
+```bash
+cd apps/desktop
+rm -rf pnpm-lock.yaml node_modules
+pnpm install --lockfile-only
+```
+
+This cost ~10 seconds in our sandbox; the first attempt hung for
+3+ minutes (see Footgun 4). The fresh lockfile honors the overrides.
+
+#### Footgun 2: `pnpm.overrides` doesn't override direct deps with stricter version ranges
+
+**Symptom:** When a direct dep has `"vite": "^8.0.0"` and the override
+says `"vite": "^8.0.16"`, the override doesn't bump vite.
+
+**Why:** `^8.0.0` already allows `8.0.16+`. The override `^8.0.16`
+is a subset of the direct dep range, so the direct dep is already
+satisfied and the override is moot.
+
+**Workaround:** Bump the direct dep's range to `^8.0.16` (which
+still allows `8.0.16+` but excludes `8.0.0-8.0.15`). The direct
+dep must move past the override's lower bound.
+
+#### Footgun 3: `pnpm.overrides` doesn't propagate to deeply-pinned transitive deps
+
+**Symptom:** When an intermediate package has `dependencies: { uuid: "9.0.1" }`
+(exact pin), the override `uuid: ^11.1.1` is ignored. The dep stays
+at the pinned version.
+
+**Why:** pnpm v11's overrides are processed at the workspace
+level, not at the package level. A hard-pinned transitive dep in an
+intermediate package's own `dependencies` wins over the workspace-level
+override.
+
+**Workaround:** Bump the intermediate package to a version that
+internally uses a newer transitive dep. For example, to bump uuid
+above 11.x, bump `react-mosaic-component` from `^6.x` (which
+exact-pins uuid@9.0.1) to `^7.x` (which uses uuid@^11.1.0).
+
+**Discriminator:** If `pnpm audit` reports the dep, it's not
+effectively overridden. Bump the intermediate package, not the
+override.
+
+#### Footgun 4: `pnpm install` (full) may hang in sandbox environments
+
+**Symptom:** Running `pnpm install` (without `--lockfile-only`)
+hangs for 3+ minutes with no output. No error, just no progress.
+
+**Why:** The sandbox may have limited network, restricted DNS,
+or other environmental factors. The full install requires
+downloading all packages; the lockfile-only path skips downloads.
+
+**Workaround:** Use `pnpm install --lockfile-only` for verification
+steps. The CI workflow uses this pattern; the lockfile is the
+source of truth, not the local node_modules.
+
+#### Footgun 5: pnpm 11 requires Node 22.13+
+
+**Symptom:** Running `pnpm audit` (or any pnpm 11 command) on
+Node 20.x fails with `ERR_UNKNOWN_BUILTIN_MODULE: No such built-in
+module: node:sqlite`.
+
+**Why:** pnpm v11 uses `node:sqlite` which requires Node 22.13+.
+
+**Workaround:** Use Node 22+ for the apps/desktop dev workflow.
+The `.github/workflows/security-audit.yml` pins Node 22 (LTS) in
+the `actions/setup-node@v4` step.
+
+#### Footgun summary table
+
+| Footgun | Symptom | Workaround |
+|---------|---------|------------|
+| 1. Override ignored with lockfile present | pnpm install --lockfile-only is a no-op | rm pnpm-lock.yaml node_modules first |
+| 2. Override subset of direct dep range | Override doesn't bump direct dep | Bump direct dep past override's lower bound |
+| 3. Override ignored for exact-pinned transitive | Override doesn't propagate | Bump intermediate package |
+| 4. pnpm install hangs in sandbox | 3+ minutes, no output | Use --lockfile-only |
+| 5. pnpm 11 requires Node 22.13+ | ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite | Use Node 22+ |
 
 ## Building the desktop GUI
 
