@@ -181,3 +181,47 @@ def test_unknown_label_in_corpus_is_rejected(tmp_path: Path) -> None:
         "is not a corpus label" in error and "'Unknown'" in error
         for error in errors
     )
+
+
+def test_shipped_hand_curated_seed_passes() -> None:
+    """BBF-89: the shipped 2-profile hand-curated-v0 seed validates under
+    the `hand_curated_seed` provenance mode."""
+    errors = validate_completion(version="hand-curated-v0")
+    assert errors == [], f"hand-curated-v0 seed should validate: {errors}"
+
+
+def test_hand_curated_seed_size_and_label_gates_relaxed(tmp_path) -> None:
+    """A 2-entry seed (1 Specialist + 1 Tactician) passes in seed mode."""
+    from tests.unit.test_validate_archetype_gold_script import _valid_entry
+
+    corpus = {
+        "schema_version": 1,
+        "_metadata": {"provenance": "hand_curated_seed"},
+        "entries": [
+            _valid_entry("AG-hand-curated-v0-0001", "Specialist"),
+            _valid_entry("AG-hand-curated-v0-0002", "Tactician"),
+        ],
+    }
+    base = tmp_path / "archetypes"
+    version_dir = base / "hand-curated-v0"
+    version_dir.mkdir(parents=True)
+    (version_dir / "corpus.json").write_text(json.dumps(corpus), encoding="utf-8")
+    errors = validate_completion(version="hand-curated-v0", base_path=base)
+    assert errors == [], f"seed should pass relaxed gates: {errors}"
+
+
+def test_hand_curated_seed_mode_rejects_unknown_label(tmp_path) -> None:
+    """BBF-89: seed mode still rejects the reserved Unknown label."""
+    from tests.unit.test_validate_archetype_gold_script import _valid_entry
+
+    corpus = {
+        "schema_version": 1,
+        "_metadata": {"provenance": "hand_curated_seed"},
+        "entries": [_valid_entry("AG-hand-curated-v0-0001", "Unknown")],
+    }
+    base = tmp_path / "archetypes"
+    version_dir = base / "hand-curated-v0"
+    version_dir.mkdir(parents=True)
+    (version_dir / "corpus.json").write_text(json.dumps(corpus), encoding="utf-8")
+    errors = validate_completion(version="hand-curated-v0", base_path=base)
+    assert any("is not a corpus label" in e and "'Unknown'" in e for e in errors), errors

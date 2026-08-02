@@ -1,7 +1,17 @@
 # BBF-89 — Deferred (hand-curated seed corpus, requires human curator)
 
-**Status (2026-08-02):** DEFERRED — this BBF requires a human
-curator with chess domain expertise. The proposed commit-mc
+**Status (2026-08-02):** DEFERRED-item CLOSED. The minimal hand-curated
+seed (5 narratives + 2 archetype profiles) was supplied by the human
+curator (the maintainer) on 2026-08-02 and shipped as the
+`hand-curated-v0` corpus (see status history below). The ORIGINAL
+deferral reasoning still stands for the FULL corpus: a complete
+20-30/20-40 hand-curated corpus remains human-curator work that an LLM
+must not fabricate. The full-curation gap documented here is partially
+closed; the remaining work is growing the seed to full completion.
+
+Original deferral rationale (preserved for the audit trail):
+
+The proposed commit-mc
 strategy (use a LLM to fabricate 5 narratives with provenance
 citations to chess books and GM games, plus 2 archetype
 profiles) is structurally unsound:
@@ -145,6 +155,22 @@ the relevant books/GMs.
 - **2026-07-XX:** Tier 4 in v2 handoff §13.3 (held back).
 - **2026-08-02:** This BBF (bbf-89) shipped as the honest-deferral
   record + hand-curator handoff.
+- **2026-08-02 (later session):** The human curator supplied the minimal
+  hand-curated seed (5 narratives + 2 archetype profiles). It shipped as
+  the `hand-curated-v0` corpora with a new `provenance ==
+  "hand_curated_seed"` validator/loader mode:
+  - `tests/gold/narrative/hand-curated-v0/corpus.json`
+  - `tests/gold/archetypes/hand-curated-v0/corpus.json`
+  - Loader + validator relaxed mode in
+    `libs/chess_coach/datasets/narrative_gold.py`,
+    `libs/chess_coach/datasets/archetype_gold.py`,
+    `scripts/validate_narrative_gold.py`,
+    `scripts/validate_archetype_gold.py`.
+  Record: `docs/16_audit/bbf-89-hand-curated-seed-record.md` (untracked).
+  Documented NEEDS-SOURCE gaps (curator did not supply): L3/L4/L5
+  `source.chapter`. Remaining work to reach full completion (20-30
+  narratives, 20-40 archetypes with >=2 per label) is human-curated
+  growth, not LLM work.
 
 ## Cross-references
 

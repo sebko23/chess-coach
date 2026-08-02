@@ -24,12 +24,22 @@ _MAX_ENTRIES = 40
 # is relaxed for these corpora.
 _MIN_AUTO_ENTRIES = 1
 _MAX_AUTO_ENTRIES = 30
+# BBF-89: the hand-curated seed corpus (provenance == "hand_curated_seed")
+# ships a minimal 2-profile seed, not the full 20-40 completion corpus.
+# It is validated against its own (relaxed) size bounds.
+_MIN_SEED_ENTRIES = 1
+_MAX_SEED_ENTRIES = 40
 # BBF-88.2a: per-entry provenance strategy. kNN-bootstrapped
 # entries from BBF-88.x use the default strategy. Hand-curated
 # entries use "synthetic_shape_curated" and must include an
 # `archetype_trait_source` field documenting the source.
 _SHAPE_CURATED_STRATEGY = "synthetic_shape_curated"
-_ID_PATTERN = re.compile(r"^AG-v\d+-\d{4}$")
+# Note: kept for documentation/consistency with the loader
+# (libs/chess_coach/datasets/archetype_gold.py `_ID_PATTERN`); this
+# validator's per-entry ID check is a string comparison below, so the
+# pattern is not used for enforcement. BBF-89: accept the
+# hand-curated-vN token; non-numeric versions like AG-vX-0001 stay invalid.
+_ID_PATTERN = re.compile(r"^AG-(?:v\d+|hand-curated-v\d+)-\d{4}$")
 _PLACEHOLDER_PATTERNS = (
     re.compile(r"\bsynthetic placeholder\b", re.IGNORECASE),
     re.compile(r"\bplaceholder\b", re.IGNORECASE),
@@ -111,6 +121,15 @@ def validate_completion(version: str = "v1", base_path: Path | None = None) -> l
         isinstance(metadata, dict)
         and metadata.get("provenance") == "auto"
     )
+    # BBF-89: the hand-curated seed corpus (provenance ==
+    # "hand_curated_seed") is a minimal 2-profile seed validated under
+    # its own relaxed rules (size + per-label gates skipped; WARNING
+    # demoted to advisory).
+    is_seed = (
+        isinstance(metadata, dict)
+        and metadata.get("provenance") == "hand_curated_seed"
+    )
+    relaxed = is_auto or is_seed
 
     for entry in entries:
         errors.extend(
@@ -146,7 +165,13 @@ def validate_completion(version: str = "v1", base_path: Path | None = None) -> l
             file=sys.stderr,
         )
 
-    if is_auto:
+    if is_seed:
+        if not _MIN_SEED_ENTRIES <= len(entries) <= _MAX_SEED_ENTRIES:
+            errors.append(
+                f"hand-curated seed: expected {_MIN_SEED_ENTRIES}-"
+                f"{_MAX_SEED_ENTRIES} entries, found {len(entries)}"
+            )
+    elif is_auto:
         # Auto corpora have their own size floor/ceiling; the
         # hand-curated rule below does not apply.
         if not _MIN_AUTO_ENTRIES <= len(entries) <= _MAX_AUTO_ENTRIES:
@@ -161,10 +186,11 @@ def validate_completion(version: str = "v1", base_path: Path | None = None) -> l
             )
 
     if isinstance(metadata, dict) and "WARNING" in metadata:
-        if is_auto:
+        if relaxed:
             # Auto corpora keep their _metadata.WARNING as a
-            # structural honesty disclosure ("AUTO-DERIVED. ...").
-            # The placeholder marker remains advisory only.
+            # structural honesty disclosure ("AUTO-DERIVED. ...");
+            # hand-curated seed corpora keep theirs as a minimal-seed
+            # disclosure. The placeholder marker remains advisory only.
             pass
         else:
             errors.append(
@@ -213,12 +239,13 @@ def validate_completion(version: str = "v1", base_path: Path | None = None) -> l
 
     for label in _STANDARD_LABELS:
         if label_counts[label] < _MIN_ENTRIES_PER_NON_UNKNOWN_LABEL:
-            if is_auto:
+            if relaxed:
                 # Auto corpora may not cover all 7 archetypes;
                 # the kNN-bootstrap produces whatever archetypes
-                # the metric vectors cluster into. Missing
-                # archetypes are a documented honest limit, not
-                # a completion failure.
+                # the metric vectors cluster into. Hand-curated
+                # seed corpora are minimal (1 profile per label),
+                # so the per-label minimum is not yet met. Both
+                # are documented honest limits, not failures.
                 continue
             errors.append(
                 f"need at least {_MIN_ENTRIES_PER_NON_UNKNOWN_LABEL} entries per "

@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "_metadata": {
+    "WARNING": "HAND-CURATED SEED (minimal). 5 narratives curated by a human chess-knowledgeable curator on 2026-08-02. This is the minimal BBF-89 seed, NOT the full 20-30 completion corpus. Documented NEEDS-SOURCE gaps: entries 0003/0004/0005 omit source.chapter because the curator did not supply it (the acceptance bar forbids guessing). Secondary referencing works (Shankland L2, Kotov L4, Capablanca L5) are attributed in the narrative prose; the primary work is source.",
+    "provenance": "hand_curated_seed",
+    "curated_by": "human chess curator (repo maintainer)",
+    "curated_at": "2026-08-02",
+    "id_pattern": "NG-hand-curated-v0-NNNN",
+    "gaps": [
+      "NG-hand-curated-v0-0003: source.chapter unspecified (NEEDS-SOURCE)",
+      "NG-hand-curated-v0-0004: source.chapter unspecified (NEEDS-SOURCE)",
+      "NG-hand-curated-v0-0005: source.chapter unspecified (NEEDS-SOURCE)"
+    ],
+    "source_distribution": {
+      "book": 4,
+      "gm_game": 1
+    },
+    "provenance_notes": [
+      "L2 (NG-hand-curated-v0-0002) gm_game.author = 'S. Wasielewski' is the annotator/curator, who is also the White player. The game is self-annotated by the maintainer (curator directive 2026-08-02: 'l2 s. wasielewski'). Per narrative-gold-v1.md 'Use author for the annotator or publication, not for either player': this is the annotator whose identity coincides with the player, not a schema violation.",
+      "L3/L4/L5 (NG-hand-curated-v0-0003/4/5) source.chapter is intentionally omitted (NEEDS-SOURCE) because the curator did not supply it; no chapter value was guessed."
+    ]
+  },
+  "entries": [
+    {
+      "id": "NG-hand-curated-v0-0001",
+      "fen": "2r3k1/1p3rp1/2p4p/1p1b2q1/1Q1P4/P4PB1/1P4PP/2RR2K1 b - - 0 1",
+      "narrative_explanation": "This position illustrates the fundamental difference between a club player and a Super-GM's decision-making process. While a tactical player identifies the candidate move 1... Rxf3! almost instantly, co-author Michael Adams spent the vast majority of his calculation time - nearly 85% - attempting to disprove his own intuition. This 'proof phase' is essential for players at the 1800 Elo level who often suffer from confirmation bias, seeking only the lines that lead to a win while ignoring the opponent's defensive resources. True strength lies not in finding the attack, but in the desperate attempt to find the holes within it.",
+      "source": {
+        "type": "book",
+        "title": "Think Like a Super-GM",
+        "author": "Michael Adams & Philip Hurtado",
+        "chapter": "4.3",
+        "page": "399",
+        "edition": "Quality Chess 2022"
+      },
+      "tags": ["middlegame", "tactical", "psychology", "falsification"]
+    },
+    {
+      "id": "NG-hand-curated-v0-0002",
+      "fen": "2kr3r/pp1q1p1p/2n1pbp1/1B1p4/Q2P4/B1P2N1P/P4PP1/R3K2R w KQ - 0 19",
+      "narrative_explanation": "Taken from the game Wasielewski, S. - Bednarska-Bzdega, M. (AZS Cup), this position represents the moment White transitioned from a dynamic attack into a strategic disaster. White played the impulsive 19. e5, violating the core Shankland principle that 'pawn moves are forever'. By closing the center while his own king was still centralized, White surrendered the d5 square to Black's pieces and neutralized his own f4 bishop. Instead of a 'joyride' of pawn pushes, White needed prophylactic consolidation, e.g. 19. Qc4+, to maintain the tension.",
+      "source": {
+        "type": "gm_game",
+        "title": "Wasielewski, S. - Bednarska-Bzdega, M.",
+        "author": "S. Wasielewski",
+        "event": "AZS Chess Cup 2026",
+        "year": "2026"
+      },
+      "tags": ["opening", "middlegame", "pawn-structure", "prophylaxis"]
+    },
+    {
+      "id": "NG-hand-curated-v0-0003",
+      "fen": "r1rb2k1/pb3pp1/n1p1pn1p/Bp5p/1B1PP3/1NQB1N1P/5PP1/R1R3K1 b - - 0 1",
+      "narrative_explanation": "Kuljasevic identifies a common 1800 Elo visualization error regarding the 'status' of pieces. In this exercise, the player often visualizes the immediate pressure on e4 but fails to see that after a sequence of exchanges, the knight on a6 changes status from 'defended' to 'hanging'. This mirrors your loss against Massive_Concession, where your queen on b4 was the 'sole defender' of the d2 square; once its status was challenged by ...a5, the entire defensive wall collapsed.",
+      "source": {
+        "type": "book",
+        "title": "The How to Study Chess on Your Own Workbook, Vol 2",
+        "author": "Davorin Kuljasevic",
+        "page": "381-382",
+        "edition": "New In Chess 2023"
+      },
+      "tags": ["middlegame", "tactical", "visualization", "piece-status"]
+    },
+    {
+      "id": "NG-hand-curated-v0-0004",
+      "fen": "3r1rk1/pp3pp1/2b1pn1p/q7/2PP1P2/2NB3P/P2Q2P1/R4RK1 w - - 0 25",
+      "narrative_explanation": "Alexander Kotov famously warned that 'a wounded lion is most dangerous'. In this position, White holds a clear advantage but suffers from a dulled sense of danger, ignoring Black's tactical counterplay. For a Rapport-Jobava player, this is a vital warning: the excitement of the attack often acts as a narcotic, blinding the player to their own king's safety. Prophylaxis must be the constant shadow of aggression.",
+      "source": {
+        "type": "book",
+        "title": "The How to Study Chess on Your Own Workbook, Vol 2",
+        "author": "Davorin Kuljasevic",
+        "page": "386",
+        "edition": "New In Chess 2023"
+      },
+      "tags": ["middlegame", "psychology", "defense", "prophylaxis"]
+    },
+    {
+      "id": "NG-hand-curated-v0-0005",
+      "fen": "8/pb3kp1/1p2pp1p/3p3P/1P1PP1P1/P3KP2/8/5B2 w - - 0 66",
+      "narrative_explanation": "Capablanca's fundamental endgame rule states: 'If you have a bishop, place your pawns on squares of the opposite color' to ensure maximum mobility. In your games, you frequently box in your own bishop at f4 with pawns on d4 and e3. This position demonstrates how to win an endgame by systematically improving bishop mobility while forcing weaknesses in the opponent's pawn structure.",
+      "source": {
+        "type": "book",
+        "title": "Winning with Chess Psychology",
+        "author": "Pal Benko & Burt Hochberg",
+        "page": "176-177"
+      },
+      "tags": ["endgame", "strategy", "bishop", "pawn-structure"]
+    }
+  ]
+}

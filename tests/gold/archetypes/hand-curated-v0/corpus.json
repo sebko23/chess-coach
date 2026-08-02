@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "_metadata": {
+    "WARNING": "HAND-CURATED SEED (minimal). 2 archetype profiles curated by a human chess-knowledgeable curator on 2026-08-02 from the maintainer's own play. This is the minimal BBF-89 seed, NOT the full 20-40 completion corpus; the >=2 per-label minimum is not met (1 Specialist, 1 Tactician). Metric vectors are the curator's attested assessments, not machine-computed from a verified 30+ game set.",
+    "provenance": "hand_curated_seed",
+    "curated_by": "human chess curator (repo maintainer)",
+    "curated_at": "2026-08-02",
+    "id_pattern": "AG-hand-curated-v0-NNNN",
+    "provenance_strategy_note": "Per-entry _provenance.strategy='hand_curated' is a new BBF-89 token for truly hand-curated profiles, distinct from BBF-88.2a's 'synthetic_shape_curated'. The validator only counts 'synthetic_shape_curated' for its advisory kNN-bootstrap-disclosure WARNING, so this seed's hand_curated entries are covered by the corpus-level _metadata.WARNING instead."
+  },
+  "entries": [
+    {
+      "id": "AG-hand-curated-v0-0001",
+      "archetype_label": "Specialist",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.75,
+        "time_pressure_quality": 0.40,
+        "opening_comfort": 0.90,
+        "conversion_ability": 0.70,
+        "blunder_rate_vs_rating": 0.65,
+        "decision_fatigue": 0.50
+      },
+      "_provenance": {
+        "strategy": "hand_curated",
+        "archetype_trait_source": "The Specialist - high preference for sharp attacking systems like Jobava, very high opening comfort within Rapport-Jobava and Caro-Kann mainlines, strong at finishing once the attack lands (see narrative hand-curated-v0 seed). Metric values are the curator's attested assessment, not machine-computed from a verified game set.",
+        "curated_by": "human chess curator (repo maintainer)",
+        "curated_at": "2026-08-02"
+      }
+    },
+    {
+      "id": "AG-hand-curated-v0-0002",
+      "archetype_label": "Tactician",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.85,
+        "time_pressure_quality": 0.30,
+        "opening_comfort": 0.60,
+        "conversion_ability": 0.55,
+        "blunder_rate_vs_rating": 0.80,
+        "decision_fatigue": 0.45
+      },
+      "_provenance": {
+        "strategy": "hand_curated",
+        "archetype_trait_source": "The Intuitive Tactician - driven by the excitement of the attack rather than logical refutation, impulsive moves despite available calculation time, vulnerable to hidden tactics and change of piece status (see narrative hand-curated-v0 seed). Metric values are the curator's attested assessment, not machine-computed from a verified game set.",
+        "curated_by": "human chess curator (repo maintainer)",
+        "curated_at": "2026-08-02"
+      }
+    }
+  ]
+}

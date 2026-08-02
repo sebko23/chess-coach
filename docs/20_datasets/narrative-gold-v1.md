@@ -251,6 +251,30 @@ real curators are still owed), not a hand-curation gap.
 - Does not auto-derive anything the user has not explicitly opted
   into via `--input-pgn` and `--cloud-eval-workers`.
 
+## Appendix: hand-curated-v0 seed corpus (BBF-89)
+
+**Path:** `tests/gold/narrative/hand-curated-v0/corpus.json`
+**Provenance:** `_metadata.provenance == "hand_curated_seed"`
+**Status:** minimal hand-curated seed (5 entries), 2026-08-02.
+
+The BBF-89 human-curator handoff was fulfilled when the maintainer
+supplied a minimal hand-curated seed (5 narratives + 2 archetype
+profiles). This appendix records where it landed and how it validates:
+
+- **Loader:** `chess_coach.datasets.narrative_gold` accepts the
+  `hand-curated-v0` version token and `NG-hand-curated-v0-NNNN` IDs
+  (`narrative_gold.py` `_ID_PATTERN` / `_VERSION_PATTERN`).
+- **Validator:** `scripts/validate_narrative_gold.py
+  --version hand-curated-v0` uses a relaxed `hand_curated_seed` mode:
+  the 20-30 size gate becomes a 1-30 seed floor, and `book.chapter` is
+  optional (the curator did not supply it on 3 entries — recorded as
+  documented `NEEDS-SOURCE` gaps in `_metadata`, never guessed). FEN
+  validity, 50-200 word count, source-type required fields, dense IDs,
+  and the no-placeholder-marker check are all still enforced in seed
+  mode.
+- This is the **minimal seed**, not the full 20-30 completion corpus;
+  growing it to full completion is human-curated work.
+
 ## Out of scope
 
 - Automatically generating the 20-30 explanations.

@@ -50,13 +50,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# ID pattern: NG-vN-NNNN where vN is the version (e.g. v1) and NNNN
-# is a 4-digit zero-padded sequence. Examples: NG-v1-0001, NG-v1-0023.
-_ID_PATTERN = re.compile(r"^NG-v\d+-\d{4}$")
+# ID pattern: NG-<version>-NNNN where <version> is either a numeric
+# version (e.g. v1) or the hand-curated seed token (hand-curated-v0),
+# and NNNN is a 4-digit zero-padded sequence. Examples: NG-v1-0001,
+# NG-hand-curated-v0-0001.
+# BBF-89: the hand-curated seed corpus (tests/gold/narrative/
+# hand-curated-v0/) uses the hyphenated version token in its IDs.
+# The alternation keeps non-numeric versions like NG-vX-0001 invalid.
+_ID_PATTERN = re.compile(r"^NG-(?:v\d+|hand-curated-v\d+)-\d{4}$")
 
-# Version pattern for the corpus version argument: lowercase 'v'
-# followed by one or more digits. Examples: 'v1', 'v2', 'v42'.
-_VERSION_PATTERN = re.compile(r"^v\d+$")
+# Version pattern for the corpus version argument: either a lowercase
+# 'v' followed by one or more digits (e.g. 'v1', 'v2', 'v42') or the
+# hand-curated seed token (e.g. 'hand-curated-v0'), which the BBF-89
+# seed corpus uses as its directory name.
+_VERSION_PATTERN = re.compile(r"^(?:v\d+|hand-curated-v\d+)$")
 
 # Minimum length for narrative_explanation (50 chars). The BBF-69 plan
 # calls for 50-200 word paragraphs (~300-1200 chars); 50 is the floor
