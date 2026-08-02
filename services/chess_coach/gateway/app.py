@@ -43,6 +43,7 @@ from chess_coach.kb.pipeline import index_positions  # noqa: E402
 from chess_coach.narration import NarrationPipeline  # noqa: E402
 from chess_coach.narration.grounding import (  # noqa: E402
     GroundingIndex,  # noqa: E402  (BBF-87.1; follows existing app.py E402 pattern)
+    resolve_gold_version,  # noqa: E402  (BBF-89 wire: selectable grounding version)
 )
 from chess_coach.storage import ensure_writable, migrate  # noqa: E402
 
@@ -183,10 +184,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # pass it to the pipeline. The pipeline looks up FENs against
     # this index per request; missing FENs are no-ops (the pipeline
     # behaves exactly as before for ungrounded calls).
-    _grounding_index = GroundingIndex(version="v2")
+    _gold_version = resolve_gold_version()
+    _grounding_index = GroundingIndex(version=_gold_version)
     if _grounding_index.size > 0:
         logger.info(
-            "narration: loaded v2 corpus with %d entries for FEN grounding",
+            "narration: loaded %s corpus with %d entries for FEN grounding",
+            _gold_version,
             _grounding_index.size,
         )
     else:
@@ -197,11 +200,15 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         # follow-up), so this WARNING only fires for dev/test
         # environments or mis-configured production.
         logger.warning(
-            "narration: v2 grounding corpus loaded with 0 entries; "
-            "narration will run without FEN-based grounding. This is "
-            "the pre-BBF-87.1 behavior for FENs that don't match the "
-            "v1 corpus. Status 'degraded' will be reported by "
-            "GET /v1/system/health."
+            "narration: grounding corpus (%s) loaded with 0 entries; "
+            "narration will run without FEN-based grounding. If the "
+            "CHESS_COACH_NARRATIVE_GOLD_VERSION env var is set (value=%r), "
+            "verify it names a shipped corpus version (e.g. 'v2' or "
+            "'hand-curated-v0'); otherwise the default corpus may be missing "
+            "in this environment. Status 'degraded' will be reported by "
+            "GET /v1/system/health.",
+            _gold_version,
+            _gold_version,
         )
     app.state.narration_pipeline = NarrationPipeline(  # type: ignore[attr-defined]
         grounding=_grounding_index,

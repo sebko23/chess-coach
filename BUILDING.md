@@ -204,6 +204,7 @@ The backend reads three env vars that the next dev should understand:
 | `CHESS_COACH_DATA_DIR` | `~/.local/share/chess-coach` (Linux/macOS), `%LOCALAPPDATA%\chess-coach` (Windows) | Where the SQLite DB, runtime descriptor, and engine binaries live. The desktop reads `${CHESS_COACH_DATA_DIR}/runtime/backend.json` to find the gateway. Set this to a shared directory if backend and desktop run on different machines. |
 | `CHESS_COACH_BACKEND_TOKEN` | random per-startup | Bearer token the gateway requires on every request. Read from `backend.json` after first startup. **For dev, set this to `devtoken123`** so you can curl without re-reading the descriptor. |
 | `CHESS_COACH_MAX_WORKERS` | `1` | How many Stockfish subprocesses to spawn. Each process is single-coroutine, so `1` is correct for a single-user setup. Set to your CPU core count (4 on the dev machine) for max parallelism, but be aware: each Stockfish process spawns its own OS thread, and running many processes + the gateway itself can hit the per-process thread limit on the host. See "cgroup / thread limit caveat" below. |
+| `CHESS_COACH_NARRATIVE_GOLD_VERSION` | `v2` | Which narrative-gold corpus the gateway grounds FEN narration on. `v2` = the auto-derived production corpus (default). Set to `hand-curated-v0` to ground on the BBF-89 hand-curated seed (the maintainer's curated coach narratives) instead. An unknown value degrades to ungrounded narration with a startup WARNING. |
 
 ### Dev mode (recommended for contributors)
 

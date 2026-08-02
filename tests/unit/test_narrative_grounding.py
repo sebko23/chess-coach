@@ -20,6 +20,7 @@ from chess_coach.narration.grounding import (
     GroundingIndex,
     GroundingMatch,
     build_grounding_block,
+    resolve_gold_version,
 )
 from chess_coach.narration.validator import (
     _grounding_similarity_ok,
@@ -357,3 +358,85 @@ def test_grounding_index_strict_mode_raises_on_missing_corpus(
             base_path=tmp_path,
             fail_on_missing=True,
         )
+
+
+# ---- BBF-89 wire: selectable grounding version + hand-curated-v0 seed ----
+
+
+def test_resolve_gold_version_defaults_to_v2() -> None:
+    """BBF-89 wire: the grounding version defaults to the v2 production corpus."""
+    assert resolve_gold_version(env={}) == "v2"
+
+
+def test_resolve_gold_version_honors_env_override() -> None:
+    """BBF-89 wire: CHESS_COACH_NARRATIVE_GOLD_VERSION selects the corpus."""
+    assert (
+        resolve_gold_version(env={"CHESS_COACH_NARRATIVE_GOLD_VERSION": "hand-curated-v0"})
+        == "hand-curated-v0"
+    )
+
+
+def test_grounding_index_loads_hand_curated_v0_seed() -> None:
+    """BBF-89 wire: the hand-curated-v0 seed is consumable by GroundingIndex."""
+    gi = GroundingIndex(version="hand-curated-v0")
+    assert gi.size == 5, f"expected the 5-entry seed index; got {gi.size}"
+    assert gi.version == "hand-curated-v0"
+
+
+def test_grounding_index_lookup_returns_hand_curated_entry() -> None:
+    """BBF-89 wire: a curated seed FEN looks up to its narrative match."""
+    gi = GroundingIndex(version="hand-curated-v0")
+    l1 = "2r3k1/1p3rp1/2p4p/1p1b2q1/1Q1P4/P4PB1/1P4PP/2RR2K1 b - - 0 1"
+    match = gi.lookup(l1)
+    assert match is not None
+    assert match.entry_id == "NG-hand-curated-v0-0001"
+    assert match.narrative_explanation  # non-empty coaching prose
+    assert match.source.get("type") == "book"
+
+
+def test_summarize_source_handles_gm_game() -> None:
+    """BBF-89 wire: _summarize_source renders the seed's gm_game source."""
+    from chess_coach.narration.grounding import _summarize_source
+
+    summary = _summarize_source(
+        {
+            "type": "gm_game",
+            "title": "Wasielewski, S. - Bednarska-Bzdega, M.",
+            "event": "AZS Chess Cup 2026",
+            "year": "2026",
+        }
+    )
+    assert "gm_game" in summary
+    assert "AZS Chess Cup 2026" in summary
+    assert "2026" in summary
+
+
+def test_resolve_gold_version_empty_value_falls_back_to_v2() -> None:
+    """BBF-89 wire: an empty env value falls back to the default 'v2'."""
+    assert (
+        resolve_gold_version(env={"CHESS_COACH_NARRATIVE_GOLD_VERSION": ""})
+        == "v2"
+    )
+
+
+def test_grounding_index_invalid_version_degrades_to_empty() -> None:
+    """BBF-89 wire: an invalid version token degrades to an empty index, not a crash."""
+    gi = GroundingIndex(version="hand_curated_v0")  # underscore -> invalid token
+    assert gi.size == 0
+    assert (
+        gi.lookup("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+        is None
+    )
+
+
+def test_grounding_index_lookup_returns_real_gm_game_entry() -> None:
+    """BBF-89 wire: the seed's real gm_game entry (L2) looks up + renders end-to-end."""
+    from chess_coach.narration.grounding import _summarize_source
+
+    gi = GroundingIndex(version="hand-curated-v0")
+    l2 = "2kr3r/pp1q1p1p/2n1pbp1/1B1p4/Q2P4/B1P2N1P/P4PP1/R3K2R w KQ - 0 19"
+    match = gi.lookup(l2)
+    assert match is not None
+    assert match.entry_id == "NG-hand-curated-v0-0002"
+    assert match.source.get("type") == "gm_game"
+    assert "AZS Chess Cup 2026" in _summarize_source(match.source)
