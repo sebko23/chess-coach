@@ -7,7 +7,7 @@ import { type ReactNode, startTransition, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Mosaic,
-  type LegacyMosaicNode,
+  type MosaicNode,
 } from "react-mosaic-component";
 import { match } from "ts-pattern";
 import { commands } from "@/bindings";
@@ -276,18 +276,21 @@ const fullLayout: { [viewId: string]: ReactNode } = {
 };
 
 interface WindowsState {
-  currentNode: LegacyMosaicNode<ViewId> | null;
+  currentNode: MosaicNode<ViewId> | null;
 }
 
 const windowsStateAtom = atomWithStorage<WindowsState>("windowsState", {
   currentNode: {
+    type: "split",
     direction: "row",
-    first: "left",
-    second: {
-      direction: "column",
-      first: "topRight",
-      second: "bottomRight",
-    },
+    children: [
+      "left",
+      {
+        type: "split",
+        direction: "column",
+        children: ["topRight", "bottomRight"],
+      },
+    ],
   },
 });
 
@@ -313,11 +316,7 @@ function TabSwitch({
         <Mosaic<ViewId>
           renderTile={(id) => fullLayout[id] as React.ReactElement}
           value={windowsState.currentNode}
-          onChange={(currentNode) =>
-            setWindowsState({
-              currentNode: currentNode as LegacyMosaicNode<ViewId> | null,
-            })
-          }
+          onChange={(currentNode) => setWindowsState({ currentNode })}
           resize={{ minimumPaneSizePercentage: 0 }}
         />
         <BoardGame />
@@ -328,11 +327,7 @@ function TabSwitch({
         <Mosaic<ViewId>
           renderTile={(id) => fullLayout[id] as React.ReactElement}
           value={windowsState.currentNode}
-          onChange={(currentNode) =>
-            setWindowsState({
-              currentNode: currentNode as LegacyMosaicNode<ViewId> | null,
-            })
-          }
+          onChange={(currentNode) => setWindowsState({ currentNode })}
           resize={{ minimumPaneSizePercentage: 0 }}
         />
         <BoardAnalysis />
@@ -348,11 +343,7 @@ function TabSwitch({
         <Mosaic<ViewId>
           renderTile={(id) => fullLayout[id] as React.ReactElement}
           value={windowsState.currentNode}
-          onChange={(currentNode) =>
-            setWindowsState({
-              currentNode: currentNode as LegacyMosaicNode<ViewId> | null,
-            })
-          }
+          onChange={(currentNode) => setWindowsState({ currentNode })}
           resize={{ minimumPaneSizePercentage: 0 }}
         />
         <Puzzles id={tab.value} />
