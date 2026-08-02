@@ -274,6 +274,11 @@ profiles). This appendix records where it landed and how it validates:
   mode.
 - This is the **minimal seed**, not the full 20-30 completion corpus;
   growing it to full completion is human-curated work.
+- **Consumption (BBF-89 wire):** the gateway selects which narrative-gold
+  corpus to ground FEN narration on via the `CHESS_COACH_NARRATIVE_GOLD_VERSION`
+  env var (default `v2`). Set it to `hand-curated-v0` to ground narration on
+  this curated seed instead. See `services/chess_coach/narration/grounding.py`
+  `resolve_gold_version()` and `BUILDING.md`.
 
 ## Out of scope
 

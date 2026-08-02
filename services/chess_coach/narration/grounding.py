@@ -34,6 +34,7 @@ the full design.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,29 @@ from chess_coach.datasets.narrative_gold import (
     NarrativeGoldEntry,
     load_narrative_gold,
 )
+
+
+def resolve_gold_version(env: dict[str, str] | None = None) -> str:
+    """Return the narrative-gold corpus version the gateway should ground on.
+
+    Reads the ``CHESS_COACH_NARRATIVE_GOLD_VERSION`` environment variable and
+    falls back to ``"v2"`` (the auto-derived production corpus). Set it to
+    ``"hand-curated-v0"`` to ground narration on the BBF-89 hand-curated seed
+    instead.
+
+    ``env`` is a test seam: pass a dict to simulate the environment without
+    touching the real ``os.environ``.
+
+    The returned value is passed straight to ``load_narrative_gold``/``GroundingIndex``,
+    which validate the version token; an unknown value degrades gracefully to
+    an empty index (no FEN grounding) with a WARNING.
+    """
+    src = os.environ if env is None else env
+    # Presence check + truthiness: an unset OR empty value falls back to the
+    # default. Treating "" as the default avoids accidentally grounding on an
+    # invalid empty version token if someone exports the var with no value.
+    value = src.get("CHESS_COACH_NARRATIVE_GOLD_VERSION")
+    return value if value else "v2"
 
 
 @dataclass(frozen=True)
@@ -228,6 +252,14 @@ def _summarize_source(source: dict[str, Any]) -> str:
             f"author={source.get('author', '?')}, "
             f"chapter={source.get('chapter', '?')})"
         )
+    if stype == "gm_game":
+        # BBF-89: the hand-curated-v0 seed introduces gm_game sources
+        # (curator-annotated GM/player games). Render the players + event.
+        return (
+            f"gm_game (players={source.get('title', '?')}, "
+            f"event={source.get('event', '?')}, "
+            f"year={source.get('year', '?')})"
+        )
     return f"{stype} (no summary available)"
 
 
@@ -235,4 +267,5 @@ __all__ = [
     "GroundingIndex",
     "GroundingMatch",
     "build_grounding_block",
+    "resolve_gold_version",
 ]
