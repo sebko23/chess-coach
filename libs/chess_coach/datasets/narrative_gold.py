@@ -45,10 +45,13 @@ installed (e.g. doc-only builds).
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # ID pattern: NG-vN-NNNN where vN is the version (e.g. v1) and NNNN
 # is a 4-digit zero-padded sequence. Examples: NG-v1-0001, NG-v1-0023.
@@ -275,6 +278,20 @@ def load_narrative_gold_with_metadata(
             f"Narrative gold corpus at {corpus_path} has "
             f"schema_version {raw.get('schema_version')}, expected 1"
         )
+    # BBF-86.7: advisory version check. If the corpus carries a
+    # `_metadata.version` field, log a WARNING if the requested
+    # version doesn't match. Refusing would break the production
+    # fallback chain (GroundingIndex defaults to v2 but loader
+    # can fall back to v1 if v2 is missing).
+    metadata = raw.get("_metadata")
+    if isinstance(metadata, dict):
+        corpus_version = metadata.get("version")
+        if isinstance(corpus_version, str) and corpus_version != version:
+            logger.warning(
+                "narrative gold corpus version mismatch: requested "
+                "%r but corpus %s reports _metadata.version=%r",
+                version, corpus_path, corpus_version,
+            )
     return raw
 
 

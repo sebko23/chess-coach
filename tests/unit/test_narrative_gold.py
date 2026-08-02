@@ -13,6 +13,8 @@ placeholders with real entries.
 from __future__ import annotations
 
 import json
+import logging
+from pathlib import Path
 
 import pytest
 
@@ -439,3 +441,98 @@ class TestBBF87SourceTypeSchemas:
         assert entry.source["type"] == "book"
         assert "page" not in entry.source
         assert "chapter" in entry.source
+
+
+# ---- BBF-86.7: self-describing _metadata.version + advisory loader check ----
+
+
+class TestBBF867VersionField:
+    """BBF-86.7: every corpus _metadata declares its own version;
+    loader logs an advisory WARNING on mismatch without refusing."""
+
+    def test_v2_shipped_corpus_has_version_field(self) -> None:
+        """The shipped v2 narrative corpus self-describes as v2."""
+        from chess_coach.datasets.narrative_gold import (
+            load_narrative_gold_with_metadata,
+        )
+        raw = load_narrative_gold_with_metadata(version="v2")
+        metadata = raw.get("_metadata")
+        assert isinstance(metadata, dict)
+        assert metadata.get("version") == "v2"
+
+    def test_v2_loader_no_warning_when_requested_matches(
+        self, caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Requesting v2 from a v2 corpus emits no mismatch WARNING."""
+        from chess_coach.datasets.narrative_gold import (
+            load_narrative_gold,
+        )
+        with caplog.at_level(
+            "WARNING", logger="chess_coach.datasets.narrative_gold",
+        ):
+            load_narrative_gold(version="v2")
+        mismatch_records = [
+            r for r in caplog.records
+            if "version mismatch" in r.message.lower()
+        ]
+        assert not mismatch_records, (
+            f"unexpected version-mismatch WARNING(s): "
+            f"{[r.message for r in mismatch_records]}"
+        )
+
+    def test_v2_loader_warns_when_requested_v1_against_v2_corpus(
+        self, caplog: pytest.LogCaptureFixture, tmp_path: Path,
+    ) -> None:
+        """Requesting v1 from a v2 corpus (or vice versa) logs a
+        WARNING but does NOT raise. This is the soft-advisory
+        contract the BBF-86.7 brief amended to avoid breaking
+        production (e.g. GroundingIndex fallback to v1).
+        """
+        from chess_coach.datasets.narrative_gold import load_narrative_gold
+
+        # Build a tmp corpus that self-describes as "v2" but is
+        # loaded under a different version request ("v1"). The
+        # loader must log a WARNING and return entries, not raise.
+        tmp_corpus = {
+            "schema_version": 1,
+            "_metadata": {
+                "version": "v2",
+                "provenance": "auto",
+                "WARNING": "test fixture",
+            },
+            "entries": [
+                {
+                    "id": "NG-v2-0001",
+                    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                    "narrative_explanation": (
+                        "Test fixture entry. The lesson is to identify the "
+                        "key tactical motifs in the position before "
+                        "calculating variations, comparing king safety and "
+                        "piece activity to develop a coherent plan."
+                    ),
+                    "source": {"type": "book", "title": "Test", "author": "T", "chapter": "C"},
+                    "tags": ["test"],
+                },
+            ],
+        }
+        corpus_dir = tmp_path / "v1"
+        corpus_dir.mkdir()
+        (corpus_dir / "corpus.json").write_text(
+            json.dumps(tmp_corpus), encoding="utf-8",
+        )
+
+        with caplog.at_level(
+            logging.WARNING, logger="chess_coach.datasets.narrative_gold",
+        ):
+            entries = load_narrative_gold(version="v1", base_path=tmp_path)
+
+        # The loader must succeed (soft-advisory, not refusing).
+        assert len(entries) == 1
+        assert entries[0].id == "NG-v2-0001"
+
+        # And a version-mismatch WARNING must be logged.
+        mismatch = [
+            r for r in caplog.records
+            if "version mismatch" in r.message.lower()
+        ]
+        assert mismatch, "expected a version-mismatch WARNING to be logged"

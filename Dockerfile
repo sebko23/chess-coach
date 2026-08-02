@@ -92,13 +92,24 @@ COPY apps/ ./apps/
 # stale.
 RUN uv pip install --system --no-cache -e .
 
+# BBF-86.7: BUILD_ARG version flags for the gold corpora. Defaults
+# match what the loaders expect today (v2 narrative, v0 archetype).
+# Future versions can override at build time:
+#   docker build --build-arg NARRATIVE_VERSION=v3 --build-arg ARCHETYPE_VERSION=v0 .
+# The Dockerfile COPY paths use the args so the shipped artifact
+# matches the build-time intent. The loaders' advisory version
+# check (libs/chess_coach/datasets/*_gold.py) logs a WARNING if
+# the requested version doesn't match the corpus _metadata.version.
+ARG NARRATIVE_VERSION=v2
+ARG ARCHETYPE_VERSION=v0
+
 # BBF-87.1: copy the v2 narrative gold corpus into the image.
 # The narration pipeline loads GroundingIndex(version="v2") at
 # startup, and the corpus must be reachable at the path the
 # loader resolves to (tests/gold/narrative/v2/corpus.json
 # relative to the repo root). Production deployments without
 # this COPY would FileNotFoundError at gateway startup.
-COPY tests/gold/narrative/v2/ /app/tests/gold/narrative/v2/
+COPY tests/gold/narrative/${NARRATIVE_VERSION}/ /app/tests/gold/narrative/${NARRATIVE_VERSION}/
 
 # BBF-87.1.y follow-up: copy the v0 archetype gold corpus into
 # the image. The kNN classifier at services/chess_coach/profile/
@@ -107,7 +118,7 @@ COPY tests/gold/narrative/v2/ /app/tests/gold/narrative/v2/
 # code" decision. Without this COPY, gateway startup would
 # FileNotFoundError when the kNN classifier attempts to load
 # its reference vectors.
-COPY tests/gold/archetypes/v0/ /app/tests/gold/archetypes/v0/
+COPY tests/gold/archetypes/${ARCHETYPE_VERSION}/ /app/tests/gold/archetypes/${ARCHETYPE_VERSION}/
 
 # ---- runtime config ----
 ENV CHESS_COACH_HOST=0.0.0.0 \
