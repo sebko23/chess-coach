@@ -439,3 +439,58 @@ class TestBBF87SourceTypeSchemas:
         assert entry.source["type"] == "book"
         assert "page" not in entry.source
         assert "chapter" in entry.source
+
+
+def test_load_hand_curated_seed_version_token_accepted(tmp_path) -> None:
+    """BBF-89: the hyphenated `hand-curated-v0` version token loads via
+    the public loader (relaxed version pattern)."""
+    corpus_dir = tmp_path / "hand-curated-v0"
+    corpus_dir.mkdir()
+    corpus = {
+        "schema_version": 1,
+        "entries": [_valid_entry("NG-hand-curated-v0-0001")],
+    }
+    (corpus_dir / "corpus.json").write_text(json.dumps(corpus))
+    entries = load_narrative_gold(version="hand-curated-v0", base_path=tmp_path)
+    assert [e.id for e in entries] == ["NG-hand-curated-v0-0001"]
+
+
+class TestShippedNarrativeHandCuratedV0:
+    """BBF-89: the shipped hand-curated-v0 (5-entry minimal seed) corpus
+    loads cleanly and is flagged as the hand-curated seed provenance."""
+
+    def test_loads_five_entries(self) -> None:
+        entries = load_narrative_gold(version="hand-curated-v0")
+        assert len(entries) == 5
+
+    def test_validates(self) -> None:
+        entries = load_narrative_gold(version="hand-curated-v0")
+        assert validate_narrative_gold(entries) == []
+
+    def test_schema_version_is_1(self) -> None:
+        raw = load_narrative_gold_with_metadata(version="hand-curated-v0")
+        assert raw["schema_version"] == 1
+
+    def test_provenance_is_hand_curated_seed(self) -> None:
+        raw = load_narrative_gold_with_metadata(version="hand-curated-v0")
+        assert raw["_metadata"].get("provenance") == "hand_curated_seed"
+
+    def test_ids_use_seed_prefix(self) -> None:
+        entries = load_narrative_gold(version="hand-curated-v0")
+        for e in entries:
+            assert e.id.startswith("NG-hand-curated-v0-"), e.id
+
+    def test_all_fens_parse(self) -> None:
+        pytest.importorskip("chess")
+        for e in load_narrative_gold(version="hand-curated-v0"):
+            assert e.fen_parses(), f"{e.id} has unparseable FEN: {e.fen!r}"
+
+    def test_seed_book_entries_may_omit_chapter(self) -> None:
+        """L3/L4/L5 book entries carry no `chapter` (documented NEEDS-SOURCE)."""
+        entries = load_narrative_gold(version="hand-curated-v0")
+        book_wo_chapter = [
+            e
+            for e in entries
+            if e.source.get("type") == "book" and "chapter" not in e.source
+        ]
+        assert len(book_wo_chapter) == 3

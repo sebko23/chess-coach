@@ -33,8 +33,14 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# ID pattern: AG-vN-NNNN where vN is the version and NNNN is 4-digit zero-padded.
-_ID_PATTERN = re.compile(r"^AG-v\d+-\d{4}$")
+# ID pattern: AG-<version>-NNNN where <version> is either a numeric
+# version (e.g. v1) or the hand-curated seed token (hand-curated-v0),
+# and NNNN is 4-digit zero-padded. Examples: AG-v1-0001,
+# AG-hand-curated-v0-0001.
+# BBF-89: the hand-curated seed corpus (tests/gold/archetypes/
+# hand-curated-v0/) uses the hyphenated version token in its IDs.
+# The alternation keeps non-numeric versions like AG-vX-0001 invalid.
+_ID_PATTERN = re.compile(r"^AG-(?:v\d+|hand-curated-v\d+)-\d{4}$")
 
 # Required metric keys (the 6 dimensions cluster_archetypes consumes).
 # Note: sequence_based_tilt is OPTIONAL -- only Tilter uses it.

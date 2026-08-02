@@ -236,3 +236,45 @@ def test_distinct_gm_games_use_event_year_and_round_identity(tmp_path: Path) -> 
             source["round"] = str(index)
     base = _write_corpus(tmp_path, corpus)
     assert validate_completion(base_path=base) == []
+
+
+def test_shipped_hand_curated_seed_passes() -> None:
+    """BBF-89: the shipped 5-entry hand-curated-v0 seed validates under
+    the `hand_curated_seed` provenance mode (its own relaxed gates)."""
+    errors = validate_completion(version="hand-curated-v0")
+    assert errors == [], f"hand-curated-v0 seed should validate: {errors}"
+
+
+def test_hand_curated_seed_size_gate_is_relaxed(tmp_path: Path) -> None:
+    """A small seed (<20 entries, provenance hand_curated_seed) passes."""
+    from tests.unit.test_validate_narrative_gold_script import _complete_corpus as build
+
+    corpus = build()
+    corpus["entries"] = corpus["entries"][:5]
+    corpus["_metadata"] = {"provenance": "hand_curated_seed"}
+    for index, entry in enumerate(corpus["entries"], start=1):
+        entry["id"] = f"NG-hand-curated-v0-{index:04d}"
+    base = tmp_path / "narrative"
+    version_dir = base / "hand-curated-v0"
+    version_dir.mkdir(parents=True)
+    (version_dir / "corpus.json").write_text(json.dumps(corpus), encoding="utf-8")
+    errors = validate_completion(version="hand-curated-v0", base_path=base)
+    assert errors == [], f"seed should pass relaxed gates: {errors}"
+
+
+def test_hand_curated_seed_mode_rejects_illegal_fen(tmp_path: Path) -> None:
+    """BBF-89: seed mode is not a backdoor — an illegal FEN still fails."""
+    from tests.unit.test_validate_narrative_gold_script import _complete_corpus as build
+
+    corpus = build()
+    corpus["entries"] = corpus["entries"][:5]
+    corpus["_metadata"] = {"provenance": "hand_curated_seed"}
+    for index, entry in enumerate(corpus["entries"], start=1):
+        entry["id"] = f"NG-hand-curated-v0-{index:04d}"
+    corpus["entries"][0]["fen"] = "8/8/8/8/8/8/8/Kk6 w - - 0 1"  # illegal
+    base = tmp_path / "narrative"
+    version_dir = base / "hand-curated-v0"
+    version_dir.mkdir(parents=True)
+    (version_dir / "corpus.json").write_text(json.dumps(corpus), encoding="utf-8")
+    errors = validate_completion(version="hand-curated-v0", base_path=base)
+    assert any("FEN is not a legal chess position" in e for e in errors), errors

@@ -153,8 +153,13 @@ validated against real chess data.
 
 ### What it is NOT
 
-- It is NOT a hand-curated corpus. Per project decision, hand
-  curation will not happen. v0 is the corpus, full stop.
+- It is NOT a hand-curated corpus. The v0 corpus is auto-derived
+  (kNN-bootstrapped + `synthetic_shape_curated` shape-contracted entries).
+  A distinct minimal **hand-curated seed** now exists separately as
+  `tests/gold/archetypes/hand-curated-v0/corpus.json` (`provenance ==
+  "hand_curated_seed"`, BBF-89): 2 profiles (Specialist, Tactician)
+  supplied by the human curator. v0 remains the production default; the
+  hand-curated-v0 seed is the beginning of a real hand-curated corpus.
 - It is NOT a real-Stockfish-eval corpus. The score_cp values come
   from the synthetic-analyses fixture (shape-correct, not real).
   Production users wanting real evals run
@@ -218,5 +223,10 @@ all GM-level). The corpus contains 8 entries spanning 4 archetypes
 - Real Stockfish-eval backfill: not planned (per "rely on available
   data" decision; the synthetic-analyses fixture is the available
   data).
-- Real hand-curated corpus: not happening (per project decision).
+- Real hand-curated corpus: NOT in v0. A minimal hand-curated **seed**
+  now ships separately at `tests/gold/archetypes/hand-curated-v0/
+  corpus.json` (`provenance == "hand_curated_seed"`, BBF-89, 2026-08-02):
+  2 profiles (Specialist, Tactician) supplied by the human curator.
+  Growing that seed to the full 20-40 / >=2-per-label completion corpus
+  remains human-curated work.
 - The `STANDARD_ARCHETYPES` tuple is unchanged.

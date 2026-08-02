@@ -284,3 +284,44 @@ def test_cluster_archetypes_gates_low_confidence_in_assignment() -> None:
     assert assignment.confidence < 0.5
     # Section-B4 gate: Unknown is inconclusive by definition.
     assert not assignment.passes_b4_gate
+
+
+# --- BBF-89: hand-curated-v0 seed corpus ---
+
+
+def test_hand_curated_v0_corpus_loads() -> None:
+    """BBF-89: the shipped 2-profile hand-curated seed loads."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+
+    corpus = load_archetype_gold("hand-curated-v0")
+    assert isinstance(corpus, list)
+    assert len(corpus) == 2
+
+
+def test_hand_curated_v0_entries_fields() -> None:
+    """BBF-89: every seed entry has id + valid label + all 6 metrics."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+    from chess_coach.profile import STANDARD_ARCHETYPES
+
+    corpus = load_archetype_gold("hand-curated-v0")
+    required = {
+        "tactical_vs_positional_bias",
+        "time_pressure_quality",
+        "opening_comfort",
+        "conversion_ability",
+        "blunder_rate_vs_rating",
+        "decision_fatigue",
+    }
+    for entry in corpus:
+        assert entry.id.startswith("AG-hand-curated-v0-"), entry.id
+        assert entry.archetype_label in STANDARD_ARCHETYPES
+        for metric in required:
+            assert metric in entry.metrics, f"{entry.id} missing metric {metric}"
+
+
+def test_hand_curated_v0_provenance_seed() -> None:
+    """BBF-89: the seed corpus declares provenance hand_curated_seed."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold_with_metadata
+
+    raw = load_archetype_gold_with_metadata("hand-curated-v0")
+    assert raw["_metadata"].get("provenance") == "hand_curated_seed"
