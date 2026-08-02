@@ -5,7 +5,10 @@ import { IconPlus } from "@tabler/icons-react";
 import { useAtom, useAtomValue } from "jotai";
 import { type ReactNode, startTransition, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Mosaic, type MosaicNode } from "react-mosaic-component";
+import {
+  Mosaic,
+  type LegacyMosaicNode,
+} from "react-mosaic-component";
 import { match } from "ts-pattern";
 import { commands } from "@/bindings";
 import { activeTabAtom, tabsAtom } from "@/state/atoms";
@@ -273,7 +276,7 @@ const fullLayout: { [viewId: string]: ReactNode } = {
 };
 
 interface WindowsState {
-  currentNode: MosaicNode<ViewId> | null;
+  currentNode: LegacyMosaicNode<ViewId> | null;
 }
 
 const windowsStateAtom = atomWithStorage<WindowsState>("windowsState", {
@@ -308,9 +311,13 @@ function TabSwitch({
     .with("play", () => (
       <TreeStateProvider id={tab.value}>
         <Mosaic<ViewId>
-          renderTile={(id) => fullLayout[id]}
+          renderTile={(id) => fullLayout[id] as React.ReactElement}
           value={windowsState.currentNode}
-          onChange={(currentNode) => setWindowsState({ currentNode })}
+          onChange={(currentNode) =>
+            setWindowsState({
+              currentNode: currentNode as LegacyMosaicNode<ViewId> | null,
+            })
+          }
           resize={{ minimumPaneSizePercentage: 0 }}
         />
         <BoardGame />
@@ -319,9 +326,13 @@ function TabSwitch({
     .with("analysis", () => (
       <TreeStateProvider id={tab.value}>
         <Mosaic<ViewId>
-          renderTile={(id) => fullLayout[id]}
+          renderTile={(id) => fullLayout[id] as React.ReactElement}
           value={windowsState.currentNode}
-          onChange={(currentNode) => setWindowsState({ currentNode })}
+          onChange={(currentNode) =>
+            setWindowsState({
+              currentNode: currentNode as LegacyMosaicNode<ViewId> | null,
+            })
+          }
           resize={{ minimumPaneSizePercentage: 0 }}
         />
         <BoardAnalysis />
@@ -335,9 +346,13 @@ function TabSwitch({
     .with("puzzles", () => (
       <TreeStateProvider id={tab.value}>
         <Mosaic<ViewId>
-          renderTile={(id) => fullLayout[id]}
+          renderTile={(id) => fullLayout[id] as React.ReactElement}
           value={windowsState.currentNode}
-          onChange={(currentNode) => setWindowsState({ currentNode })}
+          onChange={(currentNode) =>
+            setWindowsState({
+              currentNode: currentNode as LegacyMosaicNode<ViewId> | null,
+            })
+          }
           resize={{ minimumPaneSizePercentage: 0 }}
         />
         <Puzzles id={tab.value} />
