@@ -301,10 +301,10 @@ function CustomTooltip({
   type,
 }: {
   active?: boolean;
-  payload: readonly { payload: DataPoint }[];
+  payload?: readonly { payload?: DataPoint }[];
   type: "cp" | "wdl";
 }) {
-  if (active && payload && payload.length && payload[0].payload) {
+  if (active && payload && payload.length && payload[0]?.payload) {
     const dataPoint = payload[0].payload;
     return (
       <Paper px="md" py="sm" withBorder shadow="md" radius="md">
