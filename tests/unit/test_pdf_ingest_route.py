@@ -229,3 +229,32 @@ def test_max_diagrams_per_page_field_has_correct_constraints() -> None:
                 )
             ],
         )
+
+
+def test_pdf_ingest_route_app_openapi_succeeds(app) -> None:
+    """The FastAPI app built with the route module must produce a valid OpenAPI schema.
+
+    Regression guard for the v0.7.116 footgun (FastAPI 0.139.x + pydantic 2.13.4):
+    adding `Depends(SomePydanticModel)` to a route signature default triggers pydantic
+    `create_model` to emit a `_cli_parse_args` body field, which pydantic 2.13.4 rejects
+    with `NameError: Fields must not use names with leading underscores`. The error
+    fires at `app.openapi()` time (when FastAPI walks the route tree to build the
+    schema). Constructing the app via the existing `app` fixture and calling
+    `app.openapi()` exercises that code path. PR #68 (bbf-pdf-ingest-depends-fix)
+    replaced the bad `Depends(GatewaySettings)` with a function-based provider; this
+    test would have caught the pre-PR-#68 regression on CI in seconds.
+
+    The test does NOT post a PDF (that requires stockfish + the chessvision adapter);
+    it only exercises the OpenAPI schema build, which is the trigger surface.
+    """
+    # The `app` fixture (tests/conftest.py) builds the FastAPI app via
+    # `create_app(settings)` with an isolated CHESS_COACH_DATA_DIR.
+    # Calling `app.openapi()` walks the route tree and triggers any
+    # `Depends(SomePydanticModel)` body-model generation.
+    schema = app.openapi()
+    # The PDF-import route must be registered. Verify by OpenAPI path.
+    assert "/v1/import/pdf" in schema["paths"], (
+        "POST /v1/import/pdf must be registered after FastAPI walks the route tree;\n"
+        "if missing, FastAPI likely failed to introspect the route signature\n"
+        "(regression of the v0.7.116 Depends(BaseSettings) footgun)."
+    )
