@@ -17,6 +17,8 @@ from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
 from chess_coach.protocol_types.analysis import AnalysisRequest, AnalysisResult
 
+from ..route_guard import route_guard
+
 router = APIRouter(tags=["engines"], dependencies=[Depends(require_bearer)])
 
 
@@ -34,12 +36,14 @@ def _pool(request: Request) -> EnginePool:
 
 
 @router.get("/v1/engines")
+@route_guard
 async def list_engines(pool: EnginePool = Depends(_pool)):
     ids = list(pool._specs.keys())
     return {"data": {"engine_ids": ids}}
 
 
 @router.get("/v1/engines/{engine_id}")
+@route_guard
 async def engine_info(engine_id: str, pool: EnginePool = Depends(_pool)):
     try:
         info = await pool.engine_info(engine_id)
@@ -52,6 +56,7 @@ async def engine_info(engine_id: str, pool: EnginePool = Depends(_pool)):
 
 
 @router.post("/v1/engines/{engine_id}/analyze")
+@route_guard
 async def analyze_position(
     engine_id: str,
     body: AnalysisRequest,

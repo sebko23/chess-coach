@@ -19,6 +19,7 @@ from chess_coach.engine_orch.pool import EnginePool
 from chess_coach.protocol_types.analysis import AnalysisRequest
 
 from ..auth import require_bearer
+from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/repertoire", tags=["repertoire"])
@@ -86,6 +87,7 @@ def _uci_to_san(fen: str, uci: str) -> str:
     response_model=RecommendationsResponse,
     dependencies=[Depends(require_bearer)],
 )
+@route_guard
 async def get_recommendations(
     player: str,
     color: str = Query("white", pattern="^(white|black)$"),

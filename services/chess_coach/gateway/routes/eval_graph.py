@@ -24,6 +24,8 @@ from pydantic import BaseModel
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
 
+from ..route_guard import route_guard
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["games"], dependencies=[Depends(require_bearer)])
@@ -266,6 +268,7 @@ async def _analyze_one_position(
 
 
 @router.get("/v1/games/{game_id}/eval-graph", response_model=list[EvalPoint])
+@route_guard
 async def get_eval_graph(
     game_id: str,
     request: Request,

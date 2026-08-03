@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from ...pdf_ocr import predict_fen
 from ..auth import require_bearer
 from ..config import GatewaySettings
+from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/import", tags=["import"])
@@ -148,6 +149,7 @@ def _validate_fen(fen: str | None) -> bool:
     response_model=PdfImportResponse,
     dependencies=[Depends(require_bearer)],
 )
+@route_guard
 async def import_pdf(
     file: Annotated[UploadFile, File(...)],
     max_pages: int = Query(MAX_PAGES, ge=1, le=200),

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from ..auth import require_bearer
+from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/training", tags=["training"])
@@ -94,6 +95,7 @@ def _priority_score(stability: float, difficulty: float,
     response_model=TrainingScheduleResponse,
     dependencies=[Depends(require_bearer)],
 )
+@route_guard
 async def get_training_schedule(
     player: str,
     days: int = Query(7, ge=1, le=30),

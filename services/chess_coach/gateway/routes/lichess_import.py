@@ -23,6 +23,8 @@ from pydantic import BaseModel, Field
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
 
+from ..route_guard import route_guard
+
 _log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["lichess"], dependencies=[Depends(require_bearer)])
@@ -186,6 +188,7 @@ async def _insert_game(
 
 
 @router.post("/v1/import/lichess", response_model=LichessImportResult)
+@route_guard
 async def import_lichess(body: LichessImportRequest, request: Request):
     """Fetch games from Lichess and import into the local DB."""
     settings = request.app.state.gateway.settings
