@@ -42,6 +42,18 @@ def _db_path(request: Request) -> str:
     return str(request.app.state.gateway.settings.sqlite_path)
 
 
+def _provide_settings() -> GatewaySettings:
+    """Provide gateway settings as a FastAPI dependency.
+
+    Returns a fresh ``GatewaySettings()`` (reads env / .env). Do NOT pass the
+    ``BaseSettings`` class directly as ``Depends(GatewaySettings)``: FastAPI
+    derives a spurious ``_cli_parse_args`` body field from a pydantic-settings
+    model in that position, which pydantic 2.x rejects at import and breaks
+    gateway boot. A function-based dependency sidesteps the mis-derived field.
+    """
+    return GatewaySettings()
+
+
 class DiagramResult(BaseModel):
     page: int
     diagram_index: int = Field(
@@ -140,7 +152,7 @@ async def import_pdf(
     file: Annotated[UploadFile, File(...)],
     max_pages: int = Query(MAX_PAGES, ge=1, le=200),
     db_path: str = Depends(_db_path),
-    settings: GatewaySettings = Depends(GatewaySettings),
+    settings: GatewaySettings = Depends(_provide_settings),
 ) -> PdfImportResponse:
     """Extract chess diagrams from a PDF via chessvision.ai."""
     import_id = str(uuid.uuid4())
