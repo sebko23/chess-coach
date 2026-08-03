@@ -129,7 +129,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 1b. Engine pool (skip if already injected, e.g. by test fixtures)
     if not hasattr(app.state, 'engine_pool') or getattr(app.state, 'engine_pool', None) is None:
-        stockfish_path = '/usr/local/bin/stockfish'
+        # bbf-stockfish-env-var-wiring: hoisted import os here (was line 156)
+        # so the CHESS_COACH_STOCKFISH_PATH read below can resolve `os`.
+        import os
+        stockfish_path = os.environ.get(
+            'CHESS_COACH_STOCKFISH_PATH', '/usr/local/bin/stockfish'
+        )
         if not await asyncio.to_thread(pathlib.Path(stockfish_path).exists):
             stockfish_path = 'stockfish'  # fallback to PATH
         maia_path = '/a0/usr/projects/chess_coach/data/engines/lc0'
@@ -153,7 +158,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 skip_options={"Hash", "Threads"},
             ))
 
-        import os
         # (env_workers / max_workers handling moved into the engine_pool block below; BBF-19)
         # Single Stockfish is single-coroutine, but with N slots we can
         # run N analyses truly in parallel — each slot owns its own
