@@ -1,6 +1,7 @@
 """Integration tests for the engine pool with real Stockfish."""
 from __future__ import annotations
 
+import os
 import subprocess
 
 import pytest
@@ -10,7 +11,15 @@ from chess_coach.protocol_types.analysis import AnalysisRequest, AnalysisResult
 
 
 def _find_stockfish() -> str | None:
-    for p in ["/usr/local/bin/stockfish", "stockfish"]:
+    # bbf-test-engine-orch-env-var: honor CHESS_COACH_STOCKFISH_PATH first,
+    # then fall back to the existing 2-path list. Lets a CI runner or developer
+    # override the binary path without symlinking it into /usr/local/bin.
+    candidates: list[str] = []
+    env_path = os.environ.get("CHESS_COACH_STOCKFISH_PATH")
+    if env_path:
+        candidates.append(env_path)
+    candidates += ["/usr/local/bin/stockfish", "stockfish"]
+    for p in candidates:
         try:
             r = subprocess.run(
                 [p],
