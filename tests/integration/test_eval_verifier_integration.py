@@ -55,6 +55,9 @@ def fake_positions_factory():
     return _factory
 
 
+# Token set by tests/integration/conftest.py autouse fixture.
+_AUTH = {"Authorization": "Bearer devtoken123"}
+
 @pytest.mark.asyncio
 async def test_v2_endpoint_returns_18_positions(fastapi_app, fake_positions_factory):
     """Hit /v1/eval/verify/v2 with a deterministic engine mock;
@@ -64,7 +67,7 @@ async def test_v2_endpoint_returns_18_positions(fastapi_app, fake_positions_fact
                new=AsyncMock(return_value=fakes)):
         transport = httpx.ASGITransport(app=fastapi_app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            r = await client.get("/v1/eval/verify/v2?depth=10&top_n=1")
+            r = await client.get("/v1/eval/verify/v2?depth=10&top_n=1", headers=_AUTH)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["corpus_version"] == "v2"
@@ -95,7 +98,7 @@ async def test_v2_summary_aggregation_when_all_match(fastapi_app, fake_positions
                new=AsyncMock(return_value=fakes)):
         transport = httpx.ASGITransport(app=fastapi_app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            r = await client.get("/v1/eval/verify/v2?depth=10&top_n=1")
+            r = await client.get("/v1/eval/verify/v2?depth=10&top_n=1", headers=_AUTH)
     assert r.status_code == 200
     body = r.json()
     assert body["summary"]["top1_hits"] == 18
@@ -112,7 +115,7 @@ async def test_v1_endpoint_returns_12_positions(fastapi_app, fake_positions_fact
                new=AsyncMock(return_value=fakes)):
         transport = httpx.ASGITransport(app=fastapi_app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            r = await client.get("/v1/eval/verify/v1?depth=10&top_n=1")
+            r = await client.get("/v1/eval/verify/v1?depth=10&top_n=1", headers=_AUTH)
     assert r.status_code == 200
     body = r.json()
     assert body["corpus_version"] == "v1"
@@ -124,5 +127,32 @@ async def test_unknown_version_returns_422(fastapi_app):
     """FastAPI validates path params against the enum; v3 should 422."""
     transport = httpx.ASGITransport(app=fastapi_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        r = await client.get("/v1/eval/verify/v3")
+        r = await client.get("/v1/eval/verify/v3", headers=_AUTH)
     assert r.status_code == 422  # FastAPI enum-validation response
+
+
+@pytest.mark.asyncio
+async def test_no_auth_returns_401(fastapi_app):
+    """No Authorization header -> 401 Unauthorized per require_bearer contract."""
+    transport = httpx.ASGITransport(app=fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/v1/eval/verify/v2?depth=10&top_n=1")
+    assert r.status_code == 401
+    body = r.json()
+    assert body["error"]["code"] == "client.unauthorized"
+    assert "Missing Authorization header." in body["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_wrong_bearer_returns_401(fastapi_app):
+    """Wrong bearer token -> 401 Unauthorized per require_bearer contract."""
+    transport = httpx.ASGITransport(app=fastapi_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get(
+            "/v1/eval/verify/v2?depth=10&top_n=1",
+            headers={"Authorization": "Bearer wrongtoken"},
+        )
+    assert r.status_code == 401
+    body = r.json()
+    assert body["error"]["code"] == "client.unauthorized"
+    assert "Invalid bearer token." in body["error"]["message"]
