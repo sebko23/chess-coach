@@ -15,7 +15,10 @@ from datetime import UTC, datetime
 import aiosqlite
 from fastapi import APIRouter, Depends, Request
 
-from chess_coach.narration.pipeline import NarrationOutput
+from chess_coach.narration.pipeline import (
+    NarrationOutput,
+    _format_pv_fields,
+)
 from chess_coach.narration.sanitize import sanitize_user_content
 from chess_coach.protocol_types.narration import (
     NarrationRequest,
@@ -35,6 +38,18 @@ def _db_path(request: Request) -> str:
 
 def _pipeline(request: Request):
     return request.app.state.narration_pipeline
+
+
+def _engine_pool(request: Request):
+    """Return the engine pool wired into the gateway app state.
+
+    BBF-87.2: the narration route now invokes engine_pool.analyze()
+    to compute a real AnalysisResult (PV + score) when the request
+    supplies any engine field (depth / engine_id / multipv).
+    The pool is constructed and warmed in gateway/app.py lifespan;
+    production code accesses it via this dep so tests can override it.
+    """
+    return request.app.state.engine_pool
 
 
 async def _resolve_position_id(db_path: str, fen: str) -> str:
@@ -102,6 +117,7 @@ async def explain_position(
     body: NarrationRequest,
     db_path: str = Depends(_db_path),
     pipeline=Depends(_pipeline),
+    engine_pool=Depends(_engine_pool),
 ) -> NarrationResponse:
     """Generate grounded coaching commentary for a chess position."""
     narration_id = str(uuid.uuid4())
@@ -130,26 +146,82 @@ async def explain_position(
 
     prompt_context = " | ".join(context_parts) if context_parts else "No additional context."
 
-    # Call narration pipeline
-    try:
-        output = await pipeline.explain_simple(
-            fen=body.fen,
-            move_san=body.move_san,
-            eval_cp=body.eval_cp,
-            game_phase=body.game_phase,
-            context=prompt_context,
-        )
-        # Template fallback prefix from pipeline._template_fallback()
-        grounded = not output.narration.startswith("Stockfish evaluates this position as")
-    except Exception as exc:
-        logger.warning("narration pipeline failed for fen=%s: %s", body.fen[:20], exc)
-        output = NarrationOutput(
-            narration=f"Position after {body.move_san or 'the last move'}. "
-                      f"Evaluation: {body.eval_cp or 0} centipawns.",
-            pv_moves=[],
-            score_display="",
-        )
-        grounded = False
+    # BBF-87.2: branch between engine-backed and synthetic narration.
+    # When the request supplies any of depth/engine_id/multipv, call
+    # engine_pool.analyze() to get a real AnalysisResult with populated
+    # PV + score, then feed it through pipeline.explain() so the LLM
+    # sees real engine output. When no engine fields are present
+    # (backwards-compat with the current GUI call shape), keep the
+    # synthetic AnalysisResult path via pipeline.explain_simple().
+    wants_engine = (
+        body.depth is not None
+        or body.engine_id is not None
+        or body.multipv is not None
+    )
+    # Schema default is depth=12 (libs/chess_coach/protocol_types/narration.py:60)
+    # and engine_id='stockfish' (:64). Apply those defaults when the
+    # caller opts into engine-backed narration but leaves individual
+    # fields unset.
+    default_depth = 12
+    default_engine_id = "stockfish"
+    default_multipv = 1
+    depth = body.depth if body.depth is not None else default_depth
+    engine_id = body.engine_id if body.engine_id is not None else default_engine_id
+    multipv = body.multipv if body.multipv is not None else default_multipv
+    if wants_engine:
+        try:
+            from chess_coach.protocol_types.analysis import AnalysisRequest
+
+            analysis = await engine_pool.analyze(
+                AnalysisRequest(
+                    fen=body.fen,
+                    depth=depth,
+                    multipv=multipv,
+                ),
+                engine_id,
+            )
+            text, corpus_entry_id = await pipeline.explain(analysis)
+            pv_moves, score_display = _format_pv_fields(analysis)
+            # Pipeline returns (narration_str, corpus_entry_id); wrap
+            # into NarrationOutput shape with the real PV from analysis.
+            output = NarrationOutput(
+                narration=text,
+                pv_moves=pv_moves,
+                score_display=score_display,
+                corpus_entry_id=corpus_entry_id,
+            )
+            grounded = not output.narration.startswith("Stockfish evaluates this position as")
+        except Exception as exc:
+            logger.warning("narration engine-backed path failed for fen=%s: %s", body.fen[:20], exc)
+            output = NarrationOutput(
+                narration=f"Position after {body.move_san or 'the last move'}. "
+                          f"Evaluation: {body.eval_cp or 0} centipawns.",
+                pv_moves=[],
+                score_display="",
+            )
+            grounded = False
+    else:
+        # Synthetic path: no engine fields supplied. Keeps the old
+        # behaviour where the LLM sees an empty PV. Backwards-compat
+        # with the current GUI call shape.
+        try:
+            output = await pipeline.explain_simple(
+                fen=body.fen,
+                move_san=body.move_san,
+                eval_cp=body.eval_cp,
+                game_phase=body.game_phase,
+                context=prompt_context,
+            )
+            grounded = not output.narration.startswith("Stockfish evaluates this position as")
+        except Exception as exc:
+            logger.warning("narration pipeline failed for fen=%s: %s", body.fen[:20], exc)
+            output = NarrationOutput(
+                narration=f"Position after {body.move_san or 'the last move'}. "
+                          f"Evaluation: {body.eval_cp or 0} centipawns.",
+                pv_moves=[],
+                score_display="",
+            )
+            grounded = False
 
     # BBF-87.1.y: position_id is now a real FK to positions(id).
     # The route resolves a positions row per call: lookup an
@@ -160,6 +232,17 @@ async def explain_position(
     # a game context.
     position_id_value = await _resolve_position_id(db_path, body.fen)
     corpus_entry_id_value = output.corpus_entry_id
+    # BBF-87.2: populate depth_reached + best_move from the real
+    # AnalysisResult when engine-backed; None on the synthetic path.
+    depth_reached_value = None
+    best_move_value = None
+    if wants_engine and 'analysis' in locals():
+        depth_reached_value = analysis.depth_reached
+        best_move_value = (
+            analysis.pvs[0].moves[0]
+            if analysis.pvs and analysis.pvs[0].moves
+            else None
+        )
 
     # Store in narrations table
     async with aiosqlite.connect(db_path) as db:
@@ -188,7 +271,7 @@ async def explain_position(
         created_at=now,
         pv_moves=output.pv_moves,
         score_display=output.score_display,
-        depth_reached=None,
-        best_move=None,
+        depth_reached=depth_reached_value,
+        best_move=best_move_value,
         corpus_entry_id=output.corpus_entry_id,
     )
