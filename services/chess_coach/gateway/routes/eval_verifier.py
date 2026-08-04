@@ -13,12 +13,13 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from chess_coach.datasets.l2_gold import L2GoldEntry, load_l2_gold
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.protocol_types.analysis import AnalysisRequest
 
+from ..auth import require_bearer
 from ..route_guard import route_guard
 
 router = APIRouter()
@@ -152,7 +153,11 @@ async def verify_corpus(
     return reports
 
 
-@router.get("/v1/eval/verify/{version}", response_model=None)
+@router.get(
+    "/v1/eval/verify/{version}",
+    response_model=None,
+    dependencies=[Depends(require_bearer)],
+)
 @route_guard
 async def verify_endpoint(
     version: CorpusVersion,
