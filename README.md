@@ -262,8 +262,24 @@ backend is Apache-2.0, the protocol spec is CC-BY-4.0.
 
 ## Status
 
-Phase 5 — Repertoire + Training: 85%. Phase 6 — PDF/Vision: not started
-in this repo. The strategic pivot to lazy eval-graph (BBF-22) is
-verified at 6000-game scale (BBF-25): 43.8 s import, ~1 s first-eval
-per game, instant cache hits. See `docs/CHANGELOG.md` for the full
-sprint history.
+Phase-by-phase status, cross-checked against the actual code and
+tests on `main` as of 2026-08-04 (commit `0cf39b6`). Phases
+defined per `docs/10_roadmap/implementation-roadmap-v1.md`.
+
+| Phase | Scope | Status | Evidence on `main` |
+|-------|-------|--------|---------------------|
+| 0 | Architecture + ADRs | Complete (signed off 2026-05-18) | `docs/14_adrs/`, `docs/01_architecture/system-architecture.md` |
+| 1 | Skeleton (Tauri fork, FastAPI boot, Redis, Qdrant, SQLite, structlog, token-auth) | Complete (monolith-first; Redis/Qdrant not deployed as separate services) | `apps/desktop/`, `services/chess_coach/gateway/` |
+| 2 | Engine + Analysis core (Stockfish pool, depth-22 eval, blunder classification, eval-graph) | Complete | `services/chess_coach/engine_orch/pool.py`, `routes/eval_graph.py`, `routes/analysis.py` |
+| 3 | Memory + KB + LLM Router (three-tier memory, Qdrant collections, OpenRouter, narration) | Engine-wired narration shipped (BBF-87.2 + BBF-87.2.1, 2026-08-04). Real-LLM production wiring held back. | `routes/narration.py:177` calls `engine_pool.analyze()` and feeds a real `AnalysisResult` into `pipeline.explain()`; response now carries `depth_reached`, `best_move`, `pv_moves`, `score_display` from the engine. Grounding via v2 corpus at `tests/gold/narrative/v2/corpus.json` (BBF-87.1, BBF-89). |
+| 4 | Profiling (6 psychological metrics, profile dashboard, `/profiles/explain`) | Complete | `routes/profile.py`, `routes/profile_analysis.py` |
+| 5 | Repertoire + Training (tree management, gap detection, FSRS, training dashboard) | Substantially complete | `routes/repertoire.py`, `routes/repertoire_recommendations.py`, `routes/training.py`, `routes/training_planner.py` |
+| 6 | PDF / Vision (book ingest via chessvision.ai) | **Partial.** Chessvision.ai integration shipped at `routes/pdf_ingest.py` and `services/chess_coach/gateway/config.py:121`; tests at `tests/unit/test_pdf_ingest_route.py`, `tests/unit/test_pdftomd_metrics.py`, `tests/integration/test_pdf_import.py`. Per `implementation-roadmap-v1.md` § Phase 6 (lines 94-107), the full Phase 6 deliverable list also includes YOLOv8 diagram detector + piece-classifier CNN, PaddleOCR integration, manual-review queue, and user-correction feedback loop; these remain deferred — local YOLOv8 + PaddleOCR kept as offline fallback only. |
+| 7 | Sync + Research + Reporting polish (Lichess/Chess.com sync, research digests, PDF export) | Partial | `routes/lichess_import.py` ships sync. Reporting/research polish deferred per `implementation-roadmap-v1.md`. |
+| 8 | Hardening + Packaging (MSI/NSIS installer, PyInstaller sidecar, Memurai) | Not started | Windows path is a known deferred item (BBF-37); packaging work has not begun. |
+| 9 | v2 directions (cloud multi-user, voice, mobile, multiplayer) | Not started; candidates only per `implementation-roadmap-v1.md` § Phase 9 | -- |
+
+Strategic pivot to lazy eval-graph (BBF-22) is verified at 6000-game
+scale (BBF-25): 43.8 s import, ~1 s first-eval per game, instant cache
+hits. See `docs/17_lazy_eval_graph/SPEC.md` for the design and
+`docs/CHANGELOG.md` for the full sprint history.
