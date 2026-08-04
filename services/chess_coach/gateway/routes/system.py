@@ -21,6 +21,7 @@ from chess_coach.protocol_types import (
 )
 
 from ..auth import require_bearer
+from ..route_guard import route_guard
 
 #: Signature of the callback that reports the in-process GroundingIndex
 #: entry count. Returns ``None`` when the pipeline has not been
@@ -54,6 +55,7 @@ def build_system_router(
         response_model=OkResponse[SystemInfo],
         summary="Backend identity and protocol-version compatibility.",
     )
+    @route_guard
     async def system_info(
         _: Annotated[None, Depends(require_bearer)],
     ) -> OkResponse[SystemInfo]:
@@ -72,6 +74,7 @@ def build_system_router(
         response_model=OkResponse[HealthCheck],
         summary="Component health rollup.",
     )
+    @route_guard
     async def system_health(
         request: Request,
         _: Annotated[None, Depends(require_bearer)],

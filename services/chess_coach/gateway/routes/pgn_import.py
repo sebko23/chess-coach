@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from ..auth import require_bearer
+from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/import", tags=["import"])
@@ -131,6 +132,7 @@ def _split_games(pgn_text: str) -> list[str]:
     response_model=PgnImportResponse,
     dependencies=[Depends(require_bearer)],
 )
+@route_guard
 async def import_pgn(
     body: PgnImportRequest,
     request: Request,

@@ -37,6 +37,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from ..auth import require_bearer
+from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/import", tags=["import"])
@@ -224,6 +225,7 @@ async def _existing_analysis_ids(
     response_model=BackfillResponse,
     dependencies=[Depends(require_bearer)],
 )
+@route_guard
 async def backfill_analyses(
     body: BackfillRequest,
     request: Request,

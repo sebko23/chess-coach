@@ -19,6 +19,8 @@ from chess_coach.datasets.l2_gold import L2GoldEntry, load_l2_gold
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.protocol_types.analysis import AnalysisRequest
 
+from ..route_guard import route_guard
+
 router = APIRouter()
 
 
@@ -151,6 +153,7 @@ async def verify_corpus(
 
 
 @router.get("/v1/eval/verify/{version}", response_model=None)
+@route_guard
 async def verify_endpoint(
     version: CorpusVersion,
     request: Request,

@@ -15,6 +15,8 @@ from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
 from chess_coach.protocol_types.analysis import AnalysisRequest
 
+from ..route_guard import route_guard
+
 router = APIRouter(tags=["analysis"], dependencies=[Depends(require_bearer)])
 
 
@@ -32,6 +34,7 @@ def _pool_from_request(request: Request) -> EnginePool:
 
 
 @router.post("/v1/analysis/positions")
+@route_guard
 async def analyze_position(
     body: dict[str, Any],
     request: Request,
