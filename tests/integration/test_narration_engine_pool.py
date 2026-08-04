@@ -234,9 +234,19 @@ class TestNarrationEnginePoolWired:
             json={"fen": _STARTING_FEN, "depth": 12},
             headers=AUTH,
         )
-        # route_guard converts unhandled exceptions to a 500 envelope.
-        # The exact status code depends on the route_guard implementation;
-        # the contract is "not 200 with synthetic fallback."
-        assert r.status_code != 200, (
-            f"engine pool failure should not return 200; got {r.status_code}"
+        # BBF-87.2.1: EngineHungError (and other engine-pool failures)
+        # deliberately propagate to @route_guard, which converts
+        # unhandled exceptions to a 5xx with the ADR-0002 error
+        # envelope. Pre-BBF-87.2.1, the route's `except Exception`
+        # caught EngineHungError and returned 200 with a fabricated
+        # synthetic narration -- a silent client-affecting bug.
+        assert 500 <= r.status_code < 600, (
+            f"engine pool failure should produce a 5xx; got {r.status_code}"
         )
+        body = r.json()
+        # ADR-0002 envelope shape: error.code + error.message present.
+        assert "error" in body, (
+            f"5xx response missing ADR-0002 error envelope; body={body}"
+        )
+        assert "code" in body["error"], f"missing code: {body}"
+        assert "message" in body["error"], f"missing message: {body}"

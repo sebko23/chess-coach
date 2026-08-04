@@ -90,6 +90,17 @@ class TestNarrationRouteGrounded:
         app.state.gateway.settings.sqlite_path = tmp_sqlite_db
         app.state.narration_pipeline = pipeline
 
+        # BBF-87.2.1: inject a mock engine_pool so the route's new
+        # _engine_pool dependency resolves. The narration route's
+        # branching (services/chess_coach/gateway/routes/narration.py)
+        # only invokes engine_pool when the request supplies depth/
+        # engine_id/multipv; these tests don't, so the mock's
+        # analyze() is never called. (Mirrors the fixture pattern at
+        # tests/integration/test_narration_engine_pool.py:63-79.)
+        mock_engine_pool = MagicMock()
+        mock_engine_pool.analyze = AsyncMock()
+        app.state.engine_pool = mock_engine_pool
+
         # Override the auth dep with a no-op so the test client
         # doesn't need a Bearer token.
         app.dependency_overrides[require_bearer] = lambda: None
@@ -164,6 +175,17 @@ class TestNarrationRouteGrounded:
         app.state.gateway.settings = MagicMock()
         app.state.gateway.settings.sqlite_path = tmp_sqlite_db
         app.state.narration_pipeline = pipeline
+
+        # BBF-87.2.1: inject a mock engine_pool so the route's new
+        # _engine_pool dependency resolves. The narration route's
+        # branching (services/chess_coach/gateway/routes/narration.py)
+        # only invokes engine_pool when the request supplies depth/
+        # engine_id/multipv; these tests don't, so the mock's
+        # analyze() is never called. (Mirrors the fixture pattern at
+        # tests/integration/test_narration_engine_pool.py:63-79.)
+        mock_engine_pool = MagicMock()
+        mock_engine_pool.analyze = AsyncMock()
+        app.state.engine_pool = mock_engine_pool
         app.dependency_overrides[require_bearer] = lambda: None
         app.include_router(narration_router)
 

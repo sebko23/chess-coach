@@ -13,8 +13,10 @@ import uuid
 from datetime import UTC, datetime
 
 import aiosqlite
+import pydantic
 from fastapi import APIRouter, Depends, Request
 
+from chess_coach.llm_router.router import LLMUnavailableError
 from chess_coach.narration.pipeline import (
     NarrationOutput,
     _format_pv_fields,
@@ -191,8 +193,18 @@ async def explain_position(
                 corpus_entry_id=corpus_entry_id,
             )
             grounded = not output.narration.startswith("Stockfish evaluates this position as")
-        except Exception as exc:
-            logger.warning("narration engine-backed path failed for fen=%s: %s", body.fen[:20], exc)
+        except LLMUnavailableError as exc:
+            # LLM is unavailable (no API key, network down, OpenRouter 5xx).
+            # Synthesize a minimal narration so the client gets *some* text
+            # and the UI doesn't break; the absence of <move>/<eval> tags
+            # already signals to the renderer that this isn't a real
+            # analysis. Engine output is intact; we just couldn't get
+            # the LLM to wrap it.
+            logger.warning(
+                "narration engine-backed path LLM-unavailable for fen=%s: %s",
+                body.fen[:20],
+                exc,
+            )
             output = NarrationOutput(
                 narration=f"Position after {body.move_san or 'the last move'}. "
                           f"Evaluation: {body.eval_cp or 0} centipawns.",
@@ -200,6 +212,28 @@ async def explain_position(
                 score_display="",
             )
             grounded = False
+        except (ValueError, pydantic.ValidationError) as exc:
+            # Malformed request body (invalid FEN, schema drift). Same
+            # fallback shape as LLM-unavailable; this is a 4xx-class
+            # failure that the route_guard will surface separately.
+            logger.warning(
+                "narration engine-backed path bad-request for fen=%s: %s",
+                body.fen[:20],
+                exc,
+            )
+            output = NarrationOutput(
+                narration=f"Position after {body.move_san or 'the last move'}. "
+                          f"Evaluation: {body.eval_cp or 0} centipawns.",
+                pv_moves=[],
+                score_display="",
+            )
+            grounded = False
+        # NOTE: EngineHungError, EngineTimeoutError, RuntimeError, and
+        # other unhandled exceptions deliberately PROPAGATE to
+        # @route_guard above, producing a 5xx with the ADR-0002 error
+        # envelope. Silently fabricating a 200 with fake analysis on
+        # a real engine failure was the BBF-87.2 regression this
+        # BBF-87.2.1 fixes.
     else:
         # Synthetic path: no engine fields supplied. Keeps the old
         # behaviour where the LLM sees an empty PV. Backwards-compat
@@ -213,8 +247,21 @@ async def explain_position(
                 context=prompt_context,
             )
             grounded = not output.narration.startswith("Stockfish evaluates this position as")
-        except Exception as exc:
-            logger.warning("narration pipeline failed for fen=%s: %s", body.fen[:20], exc)
+        except LLMUnavailableError as exc:
+            logger.warning("narration pipeline LLM-unavailable for fen=%s: %s", body.fen[:20], exc)
+            output = NarrationOutput(
+                narration=f"Position after {body.move_san or 'the last move'}. "
+                          f"Evaluation: {body.eval_cp or 0} centipawns.",
+                pv_moves=[],
+                score_display="",
+            )
+            grounded = False
+        except (ValueError, pydantic.ValidationError) as exc:
+            logger.warning(
+                "narration pipeline bad-request for fen=%s: %s",
+                body.fen[:20],
+                exc,
+            )
             output = NarrationOutput(
                 narration=f"Position after {body.move_san or 'the last move'}. "
                           f"Evaluation: {body.eval_cp or 0} centipawns.",
