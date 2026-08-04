@@ -87,7 +87,7 @@ class NarrationOutput:
     """Structured result of a grounded narration.
 
     narration: LLM narration string (or template fallback if LLM failed).
-    pv_moves: principal variation moves in SAN, up to 6 plies.
+    pv_moves: principal variation moves in UCI (e.g. ['e2e4', 'e7e5']), up to 6 plies.
     score_display: formatted score ("+0.30", "mate in 3", or "").
     corpus_entry_id: The v2 narrative corpus entry (NG-v2-NNNN) whose
         narrative_explanation was used to ground the narration, or

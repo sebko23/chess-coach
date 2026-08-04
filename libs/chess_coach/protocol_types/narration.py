@@ -102,13 +102,19 @@ class NarrationResponse(BaseModel):
     best_move: str | None = Field(
         default=None,
         description=(
-            "Best move in SAN notation. "
+            "Best move in UCI notation (e.g. 'e2e4'). "
             "Populated only when narration is engine-backed; "
             "None for template/LLM-only paths."
         ),
     )
     score_display: str = Field(..., description="Human-readable score, e.g. '+0.38' or 'mate in 2'")
-    pv_moves: list[str] = Field(..., description="Top PV line moves in SAN")
+    pv_moves: list[str] = Field(
+        ...,
+        description=(
+            "Top PV line moves in UCI notation "
+            '(e.g. ["e2e4", "e7e5"])'
+        ),
+    )
     # BBF-87.1: which v2 narrative corpus entry grounded this narration.
     # None when the FEN is not in the corpus (no grounding block
     # injected; pipeline ran without narrative grounding).
