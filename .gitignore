@@ -113,3 +113,6 @@ _bb*_input*.json
 **/*Progress _ Problems Report*.md
 **/prompt*.txt
 chess_coach.egg-info/
+
+# Generated artifacts (FU-4 codegen pipeline)
+.openapi.json

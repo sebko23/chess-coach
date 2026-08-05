@@ -117,7 +117,7 @@ export interface paths {
         put?: never;
         /**
          * Explain Position
-         * @description Analyse a position and return grounded coaching narration.
+         * @description Generate grounded coaching commentary for a chess position.
          */
         post: operations["explain_position_v1_narration_explain_post"];
         delete?: never;
@@ -198,6 +198,14 @@ export interface paths {
         /**
          * Get Eval Graph
          * @description Return per-position evaluation scores for a game, ordered by ply.
+         *
+         *     BBF-22: lazy mode. For each position in the game:
+         *       - if an analyses row already exists at the requested depth, return it.
+         *       - otherwise, run Stockfish inline, INSERT the result, and return it.
+         *
+         *     The first call for a new game runs N Stockfish analyses (one per ply).
+         *     Subsequent calls are cache hits. With CHESS_COACH_MAX_WORKERS=4 the
+         *     first call for a 50-ply game takes ~5s; subsequent calls < 100ms.
          */
         get: operations["get_eval_graph_v1_games__game_id__eval_graph_get"];
         put?: never;
@@ -349,10 +357,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Ingest Pdf
-         * @description Ingest a PDF file, detect chess diagrams, and return a summary.
+         * Import Pdf
+         * @description Extract chess diagrams from a PDF via chessvision.ai.
          */
-        post: operations["ingest_pdf_v1_import_pdf_post"];
+        post: operations["import_pdf_v1_import_pdf_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -419,6 +427,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/profile/{player}/explain/{metric_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Explain Metric
+         * @description §B4 rule 4: methodology + raw inputs + intermediate values.
+         *
+         *     Returns the EffectSize result + a full methodology
+         *     text + raw inputs + intermediate values for one
+         *     metric. The dashboard's "Explain" view links to
+         *     this endpoint.
+         *
+         *     Special case: metric_id == "archetypes" returns the
+         *     ArchetypeAssignment (no EffectSize, just a
+         *     label + confidence + per-archetype scores).
+         */
+        get: operations["explain_metric_v1_profile__player__explain__metric_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/profile/{player}/analysis": {
         parameters: {
             query?: never;
@@ -428,7 +465,20 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Get Profile Analysis */
+        /**
+         * Get Profile Analysis
+         * @description Aggregated Phase 4 metrics for a player.
+         *
+         *     The response includes both the legacy flat fields
+         *     (for backward compat with the pre-BBF-61 dashboard)
+         *     AND the new unified `metrics: [{id, value, ...}]` array
+         *     (which the BBF-62 dashboard will consume).
+         *
+         *     The legacy `tilt_index` field is the sequence-based
+         *     tilt point_estimate (a re-implementation of the
+         *     pre-BBF-54 single-loss-window tilt). When the player
+         *     has no qualifying data, the value is 0.0.
+         */
         post: operations["get_profile_analysis_v1_profile__player__analysis_post"];
         delete?: never;
         options?: never;
@@ -448,6 +498,177 @@ export interface paths {
          * @description Generate a prioritized multi-day training schedule.
          */
         get: operations["get_training_schedule_v1_training_schedule__player__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Players
+         * @description Return all distinct player names from the games table.
+         */
+        get: operations["list_players_v1_players_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kb/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Similar Positions
+         * @description Return positions from the KB most similar to the query FEN.
+         */
+        post: operations["similar_positions_v1_kb_similar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/kb/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex
+         * @description Trigger a reindex of the KB from SQLite. Safe to call multiple times.
+         */
+        post: operations["reindex_v1_kb_index_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/import/pgn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Pgn
+         * @description Parse a PGN string and import each game into the local DB.
+         *
+         *     BBF-22: this route is now a pure-insert operation. For each game we:
+         *       - insert one `games` row (one DB connection, single commit at the end).
+         *       - insert one `positions` row per ply (capped by max_plies).
+         *
+         *     No engine analysis happens here. Analyses are computed lazily by
+         *     GET /v1/games/{game_id}/eval-graph on first request and cached in
+         *     the `analyses` table.
+         *
+         *     Import time is O(games * plies) for PGN parsing + DB writes; no
+         *     Stockfish is called. A 6000-game PGN imports in seconds, not hours.
+         */
+        post: operations["import_pgn_v1_import_pgn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/import/backfill-analyses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Backfill Analyses
+         * @description Idempotent: insert missing positions and analyses rows for the given games.
+         *
+         *     BBF-21: two-phase.
+         *       Phase 0: walk every game's PGN (CPU-bound) and check existing
+         *                analyses — pure read, no writes, no analysis.
+         *       Phase 1: ONE big asyncio.gather() of stockfish analyses across
+         *                ALL games' missing plies — the actual bottleneck, fully
+         *                parallel across the pool's N slots (BBF-19).
+         *       Phase 2: per-game INSERTs of positions then analyses, in small
+         *                transactions. Preserves FK ordering (positions.id must
+         *                exist before analyses.position_id) and keeps each
+         *                transaction small so SQLite write-lock contention stays
+         *                low.
+         */
+        post: operations["backfill_analyses_v1_import_backfill_analyses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/eval/verify/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify Endpoint
+         * @description Run the engine against each gold position; return a VerifyResponse.
+         *
+         *     Response shape (dict; not a Pydantic model — dataclass-to-dict pattern is
+         *     faster and the shape is documented here):
+         *
+         *         {
+         *             "corpus_version": "v1" | "v2",
+         *             "summary": {
+         *                 "total": int,
+         *                 "top1_hits": int,
+         *                 "top3_hits": int,
+         *                 "score_within_50cp": int,
+         *                 "mean_delta_cp_abs": float,
+         *                 "max_delta_cp_abs": int,
+         *             },
+         *             "positions": [
+         *                 {
+         *                     "id": str,
+         *                     "fen": str,
+         *                     "gold_move_uci": str,
+         *                     "gold_score_cp": int,
+         *                     "engine_top_move_uci": str,
+         *                     "engine_top_score_cp": int,
+         *                     "delta_cp": int,
+         *                     "status": "match_top1" | "match_topN" | "miss",
+         *                 },
+         *                 ...
+         *             ],
+         *         }
+         */
+        get: operations["verify_endpoint_v1_eval_verify__version__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -506,6 +727,39 @@ export interface components {
              */
             stream: boolean;
         };
+        /** BackfillRequest */
+        BackfillRequest: {
+            /**
+             * Game Ids
+             * @description If empty, back-fill all games with pgn_raw populated
+             */
+            game_ids?: string[];
+            /**
+             * Depth
+             * @default 8
+             */
+            depth: number;
+            /**
+             * Max Plies
+             * @default 200
+             */
+            max_plies: number;
+        };
+        /** BackfillResponse */
+        BackfillResponse: {
+            /** Games Processed */
+            games_processed: number;
+            /** Games Skipped No Pgn */
+            games_skipped_no_pgn: number;
+            /** Plies Analyzed */
+            plies_analyzed: number;
+            /** Plies Skipped Existing */
+            plies_skipped_existing: number;
+            /** Positions Inserted */
+            positions_inserted: number;
+            /** Failures */
+            failures: number;
+        };
         /** BatchBlunderRequest */
         BatchBlunderRequest: {
             /** Fens */
@@ -533,8 +787,8 @@ export interface components {
             /** Cp Delta */
             cp_delta?: number | null;
         };
-        /** Body_ingest_pdf_v1_import_pdf_post */
-        Body_ingest_pdf_v1_import_pdf_post: {
+        /** Body_import_pdf_v1_import_pdf_post */
+        Body_import_pdf_v1_import_pdf_post: {
             /** File */
             file: string;
         };
@@ -575,6 +829,12 @@ export interface components {
             /** Last Review */
             last_review?: string | null;
         };
+        /**
+         * CorpusVersion
+         * @description L-2 corpus versions supported by the verifier.
+         * @enum {string}
+         */
+        CorpusVersion: "v1" | "v2";
         /** DayPlan */
         DayPlan: {
             /** Day */
@@ -593,6 +853,25 @@ export interface components {
             card_type_breakdown: {
                 [key: string]: number;
             };
+        };
+        /** DiagramResult */
+        DiagramResult: {
+            /** Page */
+            page: number;
+            /**
+             * Diagram Index
+             * @description 0-based index of this diagram within the page. The public chessvision.ai /predict endpoint returns at most one FEN per page, so the route always emits 0 for valid responses. A future multi-board backend (or a local page-segmentation model) would emit 0, 1, 2, ... in reading order.
+             * @default 0
+             */
+            diagram_index: number;
+            /** Fen */
+            fen: string | null;
+            /** Valid */
+            valid: boolean;
+            /** Confidence */
+            confidence: number;
+            /** Issue */
+            issue?: string | null;
         };
         /** EvalPoint */
         EvalPoint: {
@@ -705,6 +984,30 @@ export interface components {
              */
             message?: string | null;
         };
+        /** ImportedGame */
+        ImportedGame: {
+            /** Game Id */
+            game_id: string;
+            /** White */
+            white: string | null;
+            /** Black */
+            black: string | null;
+            /** Result */
+            result: string | null;
+            /** Event */
+            event: string | null;
+            /** Date */
+            date: string | null;
+        };
+        /** IndexRequest */
+        IndexRequest: {
+            /**
+             * Limit
+             * @description Max positions to index
+             * @default 5000
+             */
+            limit: number;
+        };
         /** LichessImportRequest */
         LichessImportRequest: {
             /** Username */
@@ -731,8 +1034,75 @@ export interface components {
             errors: string[];
         };
         /**
+         * MetricExplainResponse
+         * @description §B4 rule 4: methodology + raw inputs + intermediate values.
+         *
+         *     Fields:
+         *       player_name: The player this explanation is for.
+         *       metric_id: The metric name (e.g.
+         *           "tactical_vs_positional_bias"). One of the 6
+         *           metrics + "archetypes" + "sequence_based_tilt".
+         *       effect: The EffectSize result from running the
+         *           metric. shape: (point_estimate, d, ci_low,
+         *           ci_high, sample_size, null_value). For the
+         *           archetype clusterer, this carries the
+         *           confidence in [0, 1] (not a per-metric
+         *           EffectSize).
+         *       passes_b4_gate: True iff gate_metric() returns
+         *           True. For the archetype clusterer, this is
+         *           True iff confidence > 0.4.
+         *       methodology: The full text of the metric's
+         *           methodology section (from
+         *           docs/15_methodology/profile-metrics-v1.md).
+         *       raw_inputs: A dict of the raw inputs to the
+         *           metric (player name, db path, SQL filter
+         *           parameters). The keys are metric-specific.
+         *       intermediate_values: A dict of intermediate
+         *           values computed during the metric's run
+         *           (e.g. for tactical_vs_positional_bias:
+         *           {'opportunities': 50, 'taken': 31, 'rate': 0.62}).
+         *       caveats: A list of strings describing caveats
+         *           (e.g. "Sample size is below the §B4
+         *           threshold; the metric's point estimate is
+         *           not surfaced as a coaching insight").
+         */
+        MetricExplainResponse: {
+            /** Player Name */
+            player_name: string;
+            /** Metric Id */
+            metric_id: string;
+            /** Effect */
+            effect: {
+                [key: string]: unknown;
+            };
+            /** Passes B4 Gate */
+            passes_b4_gate: boolean;
+            /** Methodology */
+            methodology: string;
+            /** Raw Inputs */
+            raw_inputs: {
+                [key: string]: unknown;
+            };
+            /** Intermediate Values */
+            intermediate_values: {
+                [key: string]: unknown;
+            };
+            /** Caveats */
+            caveats?: string[];
+        };
+        /**
          * NarrationRequest
          * @description Body of POST /v1/narration/explain.
+         *
+         *     Supports two consumption modes:
+         *       1. Simple narration (no engine call): the route accepts pre-computed
+         *          context (move_san, eval_cp, game_phase, player_name, context) and
+         *          skips engine invocation. depth/engine_id/multipv are ignored.
+         *       2. Engine-backed narration (future Phase 3 endpoint): depth,
+         *          engine_id, multipv drive a real engine analysis before narration.
+         *
+         *     All optional fields default to None so the type remains compatible
+         *     with both modes and with clients that only know the simple contract.
          */
         NarrationRequest: {
             /**
@@ -742,32 +1112,56 @@ export interface components {
              */
             fen: string;
             /**
-             * Depth
-             * @description Engine search depth
-             * @default 12
+             * Move San
+             * @description Move just played in SAN, if known (e.g. 'Nf6', 'e4').
              */
-            depth: number;
+            move_san?: string | null;
+            /**
+             * Eval Cp
+             * @description Pre-computed evaluation in centipawns (positive = white).
+             */
+            eval_cp?: number | null;
+            /**
+             * Game Phase
+             * @description One of "opening", "middlegame", "endgame".
+             */
+            game_phase?: string | null;
+            /**
+             * Player Name
+             * @description Optional player name for personalised narration.
+             */
+            player_name?: string | null;
+            /**
+             * Context
+             * @description Free-form extra context appended to the narration prompt.
+             */
+            context?: string | null;
+            /**
+             * Depth
+             * @description Engine search depth. None = use endpoint default (12).
+             */
+            depth?: number | null;
             /**
              * Engine Id
-             * @description Engine id to use
-             * @default stockfish
+             * @description Engine id to use. None = endpoint default ('stockfish').
              */
-            engine_id: string;
+            engine_id?: string | null;
             /**
              * Multipv
-             * @description Number of PVs
-             * @default 1
+             * @description Number of PVs. None = endpoint default (1).
              */
-            multipv: number;
+            multipv?: number | null;
         };
         /**
-         * NarrationResponse
-         * @description Response from POST /v1/narration/explain.
+         * NarrationRouteResponse
+         * @description Route-layer response wrapper.
          *
-         *     Contains the validated narration text and a compact analysis summary
-         *     (not the raw AnalysisResult dump — the frontend gets what it needs).
+         *     Embeds the canonical NarrationResponse fields plus route-local audit
+         *     metadata (narration_id, grounded, created_at). The audit fields are
+         *     useful to clients -- the grounded flag drives frontend commentary
+         *     rendering (ungrounded/template outputs render with a different style).
          */
-        NarrationResponse: {
+        NarrationRouteResponse: {
             /**
              * Fen
              * @description Position that was analysed
@@ -780,14 +1174,14 @@ export interface components {
             narration: string;
             /**
              * Depth Reached
-             * @description Max engine depth reached
+             * @description Max engine depth reached. Populated only when narration is engine-backed; None for template/LLM-only paths.
              */
-            depth_reached: number;
+            depth_reached?: number | null;
             /**
              * Best Move
-             * @description Best move in SAN notation
+             * @description Best move in UCI notation (e.g. 'e2e4'). Populated only when narration is engine-backed; None for template/LLM-only paths.
              */
-            best_move: string;
+            best_move?: string | null;
             /**
              * Score Display
              * @description Human-readable score, e.g. '+0.38' or 'mate in 2'
@@ -795,9 +1189,20 @@ export interface components {
             score_display: string;
             /**
              * Pv Moves
-             * @description Top PV line moves in SAN
+             * @description Top PV line moves in UCI notation (e.g. ["e2e4", "e7e5"])
              */
             pv_moves: string[];
+            /**
+             * Corpus Entry Id
+             * @description The v2 narrative corpus entry (NG-v2-NNNN) whose narrative_explanation grounded this narration. None when no FEN match in the corpus.
+             */
+            corpus_entry_id?: string | null;
+            /** Narration Id */
+            narration_id: string;
+            /** Grounded */
+            grounded: boolean;
+            /** Created At */
+            created_at: string;
         };
         /** NoveltyItem */
         NoveltyItem: {
@@ -850,7 +1255,87 @@ export interface components {
              */
             children_count: number;
         };
-        /** ProfileAnalysisResponse */
+        /** PdfImportResponse */
+        PdfImportResponse: {
+            /** Import Id */
+            import_id: string;
+            /** Filename */
+            filename: string;
+            /** Pages Processed */
+            pages_processed: number;
+            /** Diagrams Found */
+            diagrams_found: number;
+            /** Diagrams Valid */
+            diagrams_valid: number;
+            /**
+             * Max Diagrams Per Page
+             * @description Upper bound on the number of DiagramResult entries produced from a single PDF page. The public chessvision.ai /predict endpoint emits at most one FEN per page, so this constant is 1 today. A future multi-board backend (or local page-segmentation model) would raise this bound.
+             * @default 1
+             */
+            max_diagrams_per_page: number;
+            /**
+             * Diagrams
+             * @description One DiagramResult per OCR'd page. With the chessvision default backend, at most one DiagramResult is produced per page (max_diagrams_per_page=1). Pages where the OCR backend returned success=false emit a DiagramResult with fen=None and a populated issue field; they do not produce a FEN.
+             */
+            diagrams: components["schemas"]["DiagramResult"][];
+        };
+        /** PgnImportRequest */
+        PgnImportRequest: {
+            /**
+             * Pgn
+             * @description PGN text, single or multi-game
+             */
+            pgn: string;
+            /**
+             * Depth
+             * @description Depth used by future lazy analyses at GET /v1/games/{id}/eval-graph
+             * @default 8
+             */
+            depth: number;
+            /**
+             * Max Games
+             * @default 500
+             */
+            max_games: number;
+            /**
+             * Max Plies
+             * @description Cap on positions stored per game
+             * @default 200
+             */
+            max_plies: number;
+        };
+        /** PgnImportResponse */
+        PgnImportResponse: {
+            /** Import Id */
+            import_id: string;
+            /** Imported Count */
+            imported_count: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Total Games */
+            total_games: number;
+            /** Positions Count */
+            positions_count: number;
+            /** Analyzed Count */
+            analyzed_count: number;
+            /** Analysis Failed Count */
+            analysis_failed_count: number;
+            /** Results */
+            results: components["schemas"]["ImportedGame"][];
+        };
+        /** PlayerListResponse */
+        PlayerListResponse: {
+            /** Players */
+            players: string[];
+        };
+        /**
+         * ProfileAnalysisResponse
+         * @description Unified Phase 4 response shape.
+         *
+         *     The flat legacy fields are kept for backward compat
+         *     with the pre-BBF-61 dashboard. New clients should
+         *     read from `metrics: [{id, value, ...}]`.
+         */
         ProfileAnalysisResponse: {
             /** Player Name */
             player_name: string;
@@ -866,6 +1351,30 @@ export interface components {
             time_pressure_blunders: number;
             /** Opening Breadth */
             opening_breadth: number;
+            /** Metrics */
+            metrics?: components["schemas"]["ProfileMetric"][];
+        };
+        /**
+         * ProfileMetric
+         * @description One metric in the response. Per §B4, carries enough
+         *     metadata for the UI to decide whether to surface as a
+         *     coaching insight.
+         */
+        ProfileMetric: {
+            /** Id */
+            id: string;
+            /** Value */
+            value: number | null;
+            /** Sample Size */
+            sample_size: number;
+            /** D */
+            d: number | null;
+            /** Ci Low */
+            ci_low?: number | null;
+            /** Ci High */
+            ci_high?: number | null;
+            /** Passes B4 Gate */
+            passes_b4_gate: boolean;
         };
         /** ProfileStats */
         ProfileStats: {
@@ -980,6 +1489,46 @@ export interface components {
              * @default default
              */
             player: string;
+        };
+        /** SimilarHit */
+        SimilarHit: {
+            /**
+             * Rank
+             * @description Result rank (1 = most similar)
+             */
+            rank: number;
+            /** Fen */
+            fen: string;
+            /** Ply */
+            ply: number;
+            /** Game Id */
+            game_id: string;
+        };
+        /** SimilarRequest */
+        SimilarRequest: {
+            /**
+             * Fen
+             * @description Query FEN to find similar positions for
+             */
+            fen: string;
+            /**
+             * Top K
+             * @description Number of results to return
+             * @default 5
+             */
+            top_k: number;
+        };
+        /** SimilarResponse */
+        SimilarResponse: {
+            /** Query Fen */
+            query_fen: string;
+            /** Hits */
+            hits: components["schemas"]["SimilarHit"][];
+            /**
+             * Kb Ready
+             * @description False if the KB store has not been indexed yet — hits will be empty
+             */
+            kb_ready: boolean;
         };
         /**
          * SystemInfo
@@ -1294,7 +1843,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["NarrationResponse"];
+                    "application/json": components["schemas"]["NarrationRouteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1417,7 +1966,9 @@ export interface operations {
     };
     get_eval_graph_v1_games__game_id__eval_graph_get: {
         parameters: {
-            query?: never;
+            query?: {
+                depth?: number;
+            };
             header?: {
                 Authorization?: string | null;
             };
@@ -1691,9 +2242,11 @@ export interface operations {
             };
         };
     };
-    ingest_pdf_v1_import_pdf_post: {
+    import_pdf_v1_import_pdf_post: {
         parameters: {
-            query?: never;
+            query?: {
+                max_pages?: number;
+            };
             header?: {
                 Authorization?: string | null;
             };
@@ -1702,7 +2255,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "multipart/form-data": components["schemas"]["Body_ingest_pdf_v1_import_pdf_post"];
+                "multipart/form-data": components["schemas"]["Body_import_pdf_v1_import_pdf_post"];
             };
         };
         responses: {
@@ -1712,9 +2265,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PdfImportResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1833,6 +2384,40 @@ export interface operations {
             };
         };
     };
+    explain_metric_v1_profile__player__explain__metric_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                player: string;
+                metric_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricExplainResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_profile_analysis_v1_profile__player__analysis_post: {
         parameters: {
             query?: never;
@@ -1889,6 +2474,215 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TrainingScheduleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_players_v1_players_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayerListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    similar_positions_v1_kb_similar_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SimilarRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reindex_v1_kb_index_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_pgn_v1_import_pgn_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PgnImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PgnImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backfill_analyses_v1_import_backfill_analyses_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackfillRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackfillResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_endpoint_v1_eval_verify__version__get: {
+        parameters: {
+            query?: {
+                depth?: number;
+                top_n?: number;
+            };
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                version: components["schemas"]["CorpusVersion"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

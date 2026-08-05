@@ -32,10 +32,20 @@ See validate_embedder() for the acceptance test.
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer  # noqa: F401
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
+# NOTE: sentence_transformers (and its torch dependency) is imported lazily
+# inside _get_model() below. This avoids paying the ~600MB torch + CUDA
+# import cost at module load time, which is needed by the codegen pipeline
+# (scripts/dev/export_openapi.py) and by tests that don't actually run the
+# embedder. The package was eager-imported pre-2026-08-05, which caused
+# OOM in CI when the codegen pipeline (and any non-embedder use of the
+# gateway) tried to import this module.
 logger = logging.getLogger(__name__)
 
 _FILES = "abcdefgh"
@@ -45,7 +55,7 @@ _PIECE_NAMES = {
 }
 _CENTER_SQUARES = {"d4", "e4", "d5", "e5", "c4", "c5", "f4", "f5"}
 
-_model: SentenceTransformer | None = None
+_model: "SentenceTransformer | None" = None  # noqa: UP037
 
 # Acceptance-test fixtures -- 6 FENs covering distinct game phases and openings.
 _FIXTURES = {
@@ -110,9 +120,17 @@ def _fen_to_text(fen: str) -> str:
     return " ".join(parts_out)
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model():
     global _model
     if _model is None:
+        # Lazy import: deferred to first model load so the ~600MB
+        # sentence_transformers / torch / CUDA stack is only paid for
+        # when an actual embedder call is made -- not at module import
+        # time. This was the cause of an OOM kill in the codegen CI
+ # job (PR #80 amend, 2026-08-05) which calls create_app().openapi()
+        # without ever invoking the embedder.
+        from sentence_transformers import SentenceTransformer  # noqa: PLC0415
+
         logger.info("embedder: loading all-MiniLM-L6-v2")
         _model = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("embedder: model loaded")
