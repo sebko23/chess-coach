@@ -27,6 +27,48 @@ jobs:
       - name: Check frontend package declarations
         run: python scripts/dev/check_frontend_imports.py
 
+  # FU-4: openapi-typescript codegen CI check. Regenerates the
+  # frontend's api.ts from the backend's OpenAPI schema and fails if
+  # the committed file is stale. Per the directive: D3 (PR-time
+ # check) without D2 (pre-commit hook). Skipping D2 because the
+ # project doesn't yet have enough contributors for local-hook
+ # friction to be worth it; the PR-time gate is what matters.
+  frontend-types-codegen:
+    name: frontend types codegen
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Install the chess-coach Python package in editable mode so
+ # `from chess_coach.gateway.app import create_app` resolves in the
+ # fresh CI venv.
+      - name: Install chess-coach
+        run: pip install -e '.[dev]'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install frontend deps (frozen lockfile)
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify api.ts matches the backend OpenAPI schema
+        run: node scripts/codegen/gen-api.mjs --check
+
   # Fast unit-level guard against the BBF-38/40/41/42/44 missing-dep
   # cascade. Runs the gateway boot regression test in a FRESH venv
   # that only has the declared [project.dependencies] installed,
