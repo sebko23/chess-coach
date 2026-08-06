@@ -61,13 +61,13 @@ class NarrationRequest(BaseModel):
     )
     engine_id: str | None = Field(
         default=None,
-        description="Engine id to use. None = endpoint default ('stockfish').",
+        description="Engine id to use. None = use endpoint default ('stockfish').",
     )
     multipv: int | None = Field(
         default=None,
         ge=1,
         le=5,
-        description="Number of PVs. None = endpoint default (1).",
+        description="Number of PVs. None = use endpoint default (1).",
     )
 
     @field_validator("fen")
@@ -113,6 +113,22 @@ class NarrationResponse(BaseModel):
         description=(
             "Top PV line moves in UCI notation "
             '(e.g. ["e2e4", "e7e5"])'
+        ),
+    )
+    # FU-5: human-display SAN translation of pv_moves. UCI in pv_moves
+    # is authoritative on the wire per
+    # specs/v1.0/chess-coach-protocol-v1.md:42; pv_moves_san is for
+    # display only and is never authoritative. Length is always
+    # aligned 1:1 with pv_moves (same plies, same order).
+    pv_moves_san: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Top PV line moves in SAN notation "
+            '(e.g. ["e4", "e5", "Nf3"]), human-display-only. '
+            "Authoritative on the wire is pv_moves (UCI); "
+            "SAN here is never authoritative "
+            "(specs/v1.0/chess-coach-protocol-v1.md:42). "
+            "Length matches pv_moves 1:1."
         ),
     )
     # BBF-87.1: which v2 narrative corpus entry grounded this narration.

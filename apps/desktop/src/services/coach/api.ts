@@ -1143,12 +1143,12 @@ export interface components {
             depth?: number | null;
             /**
              * Engine Id
-             * @description Engine id to use. None = endpoint default ('stockfish').
+             * @description Engine id to use. None = use endpoint default ('stockfish').
              */
             engine_id?: string | null;
             /**
              * Multipv
-             * @description Number of PVs. None = endpoint default (1).
+             * @description Number of PVs. None = use endpoint default (1).
              */
             multipv?: number | null;
         };
@@ -1192,6 +1192,11 @@ export interface components {
              * @description Top PV line moves in UCI notation (e.g. ["e2e4", "e7e5"])
              */
             pv_moves: string[];
+            /**
+             * Pv Moves San
+             * @description Top PV line moves in SAN notation (e.g. ["e4", "e5", "Nf3"]), human-display-only. Authoritative on the wire is pv_moves (UCI); SAN here is never authoritative (specs/v1.0/chess-coach-protocol-v1.md:42). Length matches pv_moves 1:1.
+             */
+            pv_moves_san?: string[];
             /**
              * Corpus Entry Id
              * @description The v2 narrative corpus entry (NG-v2-NNNN) whose narrative_explanation grounded this narration. None when no FEN match in the corpus.

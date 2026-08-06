@@ -183,12 +183,13 @@ async def explain_position(
                 engine_id,
             )
             text, corpus_entry_id = await pipeline.explain(analysis)
-            pv_moves, score_display = _format_pv_fields(analysis)
+            pv_moves, pv_moves_san, score_display = _format_pv_fields(analysis)
             # Pipeline returns (narration_str, corpus_entry_id); wrap
             # into NarrationOutput shape with the real PV from analysis.
             output = NarrationOutput(
                 narration=text,
                 pv_moves=pv_moves,
+                pv_moves_san=pv_moves_san,
                 score_display=score_display,
                 corpus_entry_id=corpus_entry_id,
             )
@@ -209,6 +210,7 @@ async def explain_position(
                 narration=f"Position after {body.move_san or 'the last move'}. "
                           f"Evaluation: {body.eval_cp or 0} centipawns.",
                 pv_moves=[],
+                pv_moves_san=[],  # FU-5: explicit for symmetry with engine-backed success path
                 score_display="",
             )
             grounded = False
@@ -225,6 +227,7 @@ async def explain_position(
                 narration=f"Position after {body.move_san or 'the last move'}. "
                           f"Evaluation: {body.eval_cp or 0} centipawns.",
                 pv_moves=[],
+                pv_moves_san=[],  # FU-5: explicit for symmetry with engine-backed success path
                 score_display="",
             )
             grounded = False
@@ -253,6 +256,7 @@ async def explain_position(
                 narration=f"Position after {body.move_san or 'the last move'}. "
                           f"Evaluation: {body.eval_cp or 0} centipawns.",
                 pv_moves=[],
+                pv_moves_san=[],  # FU-5: explicit for symmetry with engine-backed success path
                 score_display="",
             )
             grounded = False
@@ -266,6 +270,7 @@ async def explain_position(
                 narration=f"Position after {body.move_san or 'the last move'}. "
                           f"Evaluation: {body.eval_cp or 0} centipawns.",
                 pv_moves=[],
+                pv_moves_san=[],  # FU-5: explicit for symmetry with engine-backed success path
                 score_display="",
             )
             grounded = False
@@ -317,6 +322,7 @@ async def explain_position(
         grounded=grounded,
         created_at=now,
         pv_moves=output.pv_moves,
+        pv_moves_san=output.pv_moves_san,
         score_display=output.score_display,
         depth_reached=depth_reached_value,
         best_move=best_move_value,
