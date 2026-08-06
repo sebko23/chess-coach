@@ -47,7 +47,7 @@ Scope of validation (BBF-86 external-review F3):
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from chess_coach.llm_router.router import LLMRouter, LLMUnavailableError
 from chess_coach.protocol_types.analysis import AnalysisResult
@@ -59,23 +59,113 @@ from .validator import validate_citations
 logger = logging.getLogger(__name__)
 MAX_ATTEMPTS = 3
 
-def _format_pv_fields(result: AnalysisResult) -> tuple[list[str], str]:
-    """Return (pv_moves, score_display) extracted from the first PV line."""
+
+def _pv_to_san(fen: str, uci_moves: list[str]) -> list[str]:
+    """Convert a UCI principal variation to SAN, one SAN per UCI move.
+
+    FU-5: human-display-only translation for the frontend's "Best Line" /
+    "Engine line" rendering. UCI stays authoritative on the wire per
+    specs/v1.0/chess-coach-protocol-v1.md:42 ("SAN may be returned as
+    an additional field for human display but is never authoritative").
+
+    SAN is position-dependent: each successive SAN move needs the board
+    state *after* the prior UCI is applied, not the starting FEN. Naive
+    per-move ``Board(fen).san(uci)`` emits broken SAN for any move where
+    file disambiguation depends on earlier moves (e.g. ``b8c6`` after
+    a knights-only position — naive emits ``Nxc6``, replay emits ``Nc6``).
+
+    Build a single ``chess.Board(fen)`` and apply each UCI in order,
+    recording ``board.san(move)`` from the pre-push state.
+
+    Error semantics: never raise. On any per-move failure (bad FEN,
+    malformed UCI string, illegal-in-position move, missing promotion
+    suffix), fall back to the UCI string for that move and log a warning.
+    UCI is the authoritative wire format; silent fallback preserves the
+    list-length invariant and keeps the response parseable when python-chess
+    cannot resolve an unusual PV entry. ``chess`` is imported lazily so
+    tests that never call this function don't pay the import cost.
+
+    Returns a list aligned 1:1 with ``uci_moves`` (same length).
+    """
+    try:
+        import chess  # noqa: PLC0415 - lazy import; python-chess is a dep
+        # but avoid loading it on every test that imports pipeline.
+    except ImportError:
+        logger.warning(
+            "_pv_to_san: python-chess not available; returning UCI verbatim"
+        )
+        return list(uci_moves)
+    try:
+        board = chess.Board(fen)
+    except ValueError as exc:
+        logger.warning(
+            "_pv_to_san: invalid FEN (%s); returning UCI verbatim", exc,
+        )
+        return list(uci_moves)
+    out: list[str] = []
+    for uci in uci_moves:
+        try:
+            move = chess.Move.from_uci(uci)
+        except (ValueError, chess.InvalidMoveError) as exc:
+            logger.warning(
+                "_pv_to_san: malformed UCI %r (%s); falling back to UCI",
+                uci, exc,
+            )
+            out.append(uci)
+            continue
+        # board.legal_membership is the canonical way to check
+        # legal-shape-but-illegal-in-position; board.san also raises
+        # ValueError on the same case, but checking membership first
+        # gives a cleaner log message.
+        if move not in board.legal_moves:
+            logger.warning(
+                "_pv_to_san: UCI %r not legal in current position; "
+                "falling back to UCI", uci,
+            )
+            out.append(uci)
+            continue
+        try:
+            san = board.san(move)
+        except ValueError as exc:
+            logger.warning(
+                "_pv_to_san: board.san(%r) raised %s; falling back to UCI",
+                uci, exc,
+            )
+            out.append(uci)
+            continue
+        out.append(san)
+        # Apply the move so the next SAN sees the post-move board state.
+        board.push(move)
+    return out
+
+
+def _format_pv_fields(
+    result: AnalysisResult,
+) -> tuple[list[str], list[str], str]:
+    """Return (pv_moves_uci, pv_moves_san, score_display) from the first PV.
+
+    FU-5: extended to also return the SAN translation. UCI stays
+    authoritative on the wire; SAN is purely for human display. Both
+    lists are sliced to the same first-6-plies window so callers can
+    index them 1:1.
+    """
     if not result.pvs:
-        return [], ""
+        return [], [], ""
     pv = result.pvs[0]
     if pv.score.kind == "mate":
         score_str = f"mate in {pv.score.value}"
     else:
         score_str = f"{pv.score.value / 100:+.2f}"
-    return list(pv.moves[:6]), score_str
+    uci_list = list(pv.moves[:6])
+    san_list = _pv_to_san(result.fen, uci_list)
+    return uci_list, san_list, score_str
 
 
 def _template_fallback(result: AnalysisResult) -> str:
     if not result.pvs:
         return "No analysis lines available."
-    moves, score = _format_pv_fields(result)
-    moves_str = " ".join(moves)
+    _uci_moves, san_moves, score = _format_pv_fields(result)
+    moves_str = " ".join(san_moves)
     return (
         f"Stockfish evaluates this position as {score}."
         f" The best continuation is {moves_str}."
@@ -87,7 +177,14 @@ class NarrationOutput:
     """Structured result of a grounded narration.
 
     narration: LLM narration string (or template fallback if LLM failed).
-    pv_moves: principal variation moves in UCI (e.g. ['e2e4', 'e7e5']), up to 6 plies.
+    pv_moves: principal variation moves in UCI (e.g. ['e2e4', 'e7e5']),
+        up to 6 plies. Authoritative on the wire per
+        specs/v1.0/chess-coach-protocol-v1.md:42.
+    pv_moves_san: same PV moves in SAN (e.g. ['e4', 'e5', 'Nf3']), up to
+        6 plies. Human-display-only. Falls back to the UCI string per
+        move if the SAN conversion fails for that move. Length is always
+        aligned 1:1 with pv_moves. Default empty list for legacy
+        callers; the route always populates it.
     score_display: formatted score ("+0.30", "mate in 3", or "").
     corpus_entry_id: The v2 narrative corpus entry (NG-v2-NNNN) whose
         narrative_explanation was used to ground the narration, or
@@ -98,6 +195,7 @@ class NarrationOutput:
     narration: str
     pv_moves: list[str]
     score_display: str
+    pv_moves_san: list[str] = field(default_factory=list)
     corpus_entry_id: str | None = None
 
 def _build_correction_prompt(last_error: str) -> str:
@@ -233,7 +331,8 @@ class NarrationPipeline:
         delegates to the full explain() pipeline with LLM + validation.
 
         Returns a NarrationOutput. The `corpus_entry_id` is populated
-        when the FEN matched a v2 corpus entry (BBF-87.1).
+        when the FEN matched a v2 corpus entry (BBF-87.1). The
+        `pv_moves_san` field is populated alongside `pv_moves` (FU-5).
         """
         from chess_coach.protocol_types.analysis import PVLine, Score
 
@@ -274,11 +373,11 @@ class NarrationPipeline:
             pvs=pvs,
         )
         text, corpus_entry_id = await self.explain(result)
-        pv_moves, score_display = _format_pv_fields(result)
+        pv_moves_uci, pv_moves_san, score_display = _format_pv_fields(result)
         return NarrationOutput(
             narration=text,
-            pv_moves=pv_moves,
+            pv_moves=pv_moves_uci,
+            pv_moves_san=pv_moves_san,
             score_display=score_display,
             corpus_entry_id=corpus_entry_id,
         )
-

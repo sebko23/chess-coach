@@ -228,9 +228,13 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
             <IconArrowRight size={18} style={{ verticalAlign: "middle", marginRight: 6 }} />
             Best Line
           </Title>
+          {/* FU-5: prefer the human-display SAN translation (pv_moves_san)
+              over UCI (pv_moves). Fall back to pv_moves when the field is
+              absent (older cached responses from before FU-5). UCI stays
+              authoritative on the wire per the v1 protocol spec. */}
           <PVLine
             score={result.score_display}
-            moves={result.pv_moves}
+            moves={result.pv_moves_san ?? result.pv_moves}
             isBest
           />
         </Card>
@@ -276,7 +280,7 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
                 points={evalPoints}
                 currentPly={currentPly}
                 onPlyClick={(ply) => onPlyClick(ply)}
-                pvMoves={result.pv_moves}
+                pvMoves={result.pv_moves_san ?? result.pv_moves}
                 scoreDisplay={result.score_display}
                 depthReached={result.depth_reached}
               />

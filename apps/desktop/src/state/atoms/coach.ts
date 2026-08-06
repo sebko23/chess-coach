@@ -29,6 +29,17 @@ export interface NarrationResult {
   best_move: string;
   score_display: string;
   pv_moves: string[];
+  /**
+   * Human-display SAN translation of pv_moves.
+   *
+   * Authoritative on the wire is pv_moves (UCI) per the v1 protocol
+   * spec. pv_moves_san is the frontend's human-display-only string;
+   * length always aligned 1:1 with pv_moves.
+   *
+   * Optional because older cached responses from before FU-5 won't
+   * have it; the rendering code falls back to pv_moves in that case.
+   */
+  pv_moves_san?: string[];
 }
 
 /** One blunder/mistake/inaccuracy record from the backend. */
