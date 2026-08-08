@@ -399,6 +399,11 @@ export interface paths {
         /**
          * Get Recommendations
          * @description Return engine-backed move suggestions for repertoire gaps.
+         *
+         *     When ``polyglot_book_path`` is supplied, also surface book entries for
+         *     the same FENs as additional recommendations tagged ``source="book"``
+         *     (or ``"both"`` when the engine already surfaced that UCI). Caller
+         *     decides ordering — this route never arbitrates between engine and book.
          */
         post: operations["get_recommendations_v1_repertoire__player__recommendations_post"];
         delete?: never;
@@ -1430,6 +1435,14 @@ export interface components {
             alternatives_uci: string[];
             /** Alternatives San */
             alternatives_san: string[];
+            /**
+             * Source
+             * @default engine
+             * @enum {string}
+             */
+            source: "engine" | "book" | "both";
+            /** Book Weight */
+            book_weight?: number | null;
         };
         /** RecommendationsResponse */
         RecommendationsResponse: {
@@ -2325,6 +2338,8 @@ export interface operations {
                 color?: string;
                 limit?: number;
                 engine_id?: string;
+                /** @description Optional path to a Polyglot .bin opening book. When provided, book entries for each gap FEN are surfaced alongside engine PVs (per FU-7 blending (iv): per-move union, no arbitration). Caller decides precedence. Per-call only — not persisted. */
+                polyglot_book_path?: string | null;
             };
             header?: {
                 Authorization?: string | null;
