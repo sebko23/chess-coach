@@ -39,6 +39,11 @@ dependencies = [
     "aiosqlite>=0.20",
     "aiohttp>=3.9",
     "httpx>=0.27",
+    # FU-10 (CVE-2026-71554): pin h2 >= 4.4.1 explicitly.
+    # h2 is a transitive dep of httpx[http2] (pulled in via qdrant-client),
+    # but httpx itself does not constrain h2's version, so a httpx bump
+    # alone will not move h2. Direct pin forces the floor.
+    "h2>=4.4.1",
     "python-chess>=1.999",
     "numpy>=1.26",
     "sentence-transformers>=3.0",
