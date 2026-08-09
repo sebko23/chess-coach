@@ -777,6 +777,71 @@ requires a separate authorization for any dependency change):**
 blocks every PR cycle, low exploitability in chess-coach's usage).
 Should land before the next BBF that touches JS deps to avoid drift.
 
+**Correction appended 2026-08-08 (FU-14 BBF session) — original
+verification above was partially incomplete, please read:**
+
+The original verification narrative said the `overrides` block in
+`apps/desktop/package.json` was what made the lockfile resolve
+`nanoid@3.3.17` and `dompurify@3.4.13`. **This was not correct.**
+
+The directive asked for a confirming empirical test before finalizing
+the FU-14 write-up. That test (branch `empirical-parent-bump-no-override`,
+since deleted) reproduced the FU-12 working-state inputs exactly:
+parent-bumps to `vite@^8.2.1` and `posthog-js@^1.414.0`, **no override
+block in either `package.json` or `pnpm-workspace.yaml`**, full
+`rm -rf node_modules pnpm-lock.yaml && pnpm install` lockfile wipe.
+Result:
+
+| Package | Resolved | Status |
+|---|---|---|
+| `nanoid` | `3.3.18` | patched (`>=3.3.17`) — **without override block** |
+| `dompurify` | `3.4.13` | patched (`>=3.4.13`) — **without override block** |
+| `postcss` | `8.5.26` | (transitive; has the fixed nanoid) |
+
+**Cleaner story, verified empirically:** the parent-bumps (vite to
+`^8.2.1`, posthog-js to `^1.414.0`) combined with a full lockfile
+wipe were sufficient to pull `nanoid` and `dompurify` to patched
+versions via the constraint chain. The `overrides` block in
+`package.json` was silently ignored by pnpm v11 — verified by
+removing it and observing no resolution change.
+
+**Where the original verification went wrong:** last session's
+report focused on the contrast "parent-bump alone (no override
+block) failed → nanoid@3.3.16 stayed vulnerable" vs "with override
+block, nanoid@3.3.17 resolved." The implicit assumption was that
+the override was the variable. The actual variable was the lockfile
+wipe — attempt 2 included `rm -rf node_modules pnpm-lock.yaml`
+before the override-block install, which forced pnpm to re-resolve
+from scratch (and the parent-bumps now in effect steered resolution
+to patched versions). Attempt 1, by contrast, only ran
+`pnpm install --no-frozen-lockfile` against a stale lockfile, which
+in pnpm v11 doesn't reliably trigger re-resolution — it preserves
+the stale pinned versions.
+
+**What this means for FU-12's fix:** the parent-bump approach
+genuinely works for `nanoid` and `dompurify`. FU-12 could have been
+landed without an override block at all. The fix as actually landed
+(FU-12's `package.json` top-level `overrides` block) happens to also
+work because the same parent-bump-and-wipe path resolved patched
+versions, but the override block itself contributed nothing.
+
+**What this means for `js-yaml` (the FU-14 case):** `js-yaml` is the
+genuine exception. `@redocly/openapi-core@1.34.18` exact-pins
+`js-yaml@4.3.0` with no parent path forward, so the parent-bump-and-wipe
+path produces `js-yaml@4.3.0` regardless. **For `js-yaml` the
+override is genuinely load-bearing.** Per pnpm v11 docs, the modern
+location for the `overrides` block is `apps/desktop/pnpm-workspace.yaml`,
+NOT the top-level `package.json` block (the latter is silently
+ignored). FU-14's fix moves the override block to the working
+location.
+
+**Cross-references:**
+
+- FU-14 (this correction is also covered there, but per directive
+  the entry making the original claim carries its own correction).
+- Empirical test branch `empirical-parent-bump-no-override`
+  (since deleted; logs above are the record).
+
 ---
 
 ## FU-13 — Local-vs-CI environment-mismatch threshold tracking (cross-cutting)
@@ -784,7 +849,7 @@ Should land before the next BBF that touches JS deps to avoid drift.
 **Identified:** FU-7 BBF session, 2026-08-08, after the
 openapi-typescript version-pin gap surfaced.
 
-**The two instances so far in this session:**
+**The three instances so far in this session:**
 
 1. **PYTHONPATH leak (FU-10 verification, 2026-08-08).** Hermes-agent's
    venv at `C:\Users\i3\AppData\Local\hermes\hermes-agent\venv\Lib\site-packages`
@@ -805,39 +870,66 @@ openapi-typescript version-pin gap surfaced.
    (`/actions/runs/{run_id}/logs`), saw
    `✨ openapi-typescript 7.13.0` in the log; compared my local 7.4.0
    output to the committed `api.ts` and confirmed the version drift.
+3. **pnpm version drift (FU-14/PR #86 verification, 2026-08-09).** Local
+   pnpm `11.1.2` generated a lockfile whose `pnpm-workspace.yaml`
+   `overrides` block produces a different lockfile signature than CI's
+   pnpm `10.34.5`. Result: CI's `pnpm install --frozen-lockfile` step
+   in the smoke workflow's `frontend types codegen` job failed with
+   `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. The override entries resolve to
+   the same versions under both pnpm major versions, but the lockfile
+   metadata (snapshot IDs, resolution metadata) differs — pnpm 10 and
+   pnpm 11 are not byte-for-byte lockfile-compatible. **This is the
+   second recurrence of the pnpm-version problem specifically** — the
+   same failure mode surfaced and was patched around during FU-4
+   (2026-08-05, see commit history of PR #80 amend 1, which moved from
+   pnpm 11 to pnpm 10). Patching around at the point of failure each
+   time is the failure mode flagged at the very start of this
+   engagement: narrow patches accumulating without ever fixing the
+   thing that keeps causing them. **Detection:** pulled CI log content
+   via the run-level ZIP endpoint, saw
+   `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH ... The current "overrides"
+   configuration doesn't match the value found in the lockfile` —
+   same diagnostic shape as the FU-4 patch-around.
 
 **Why this is FU-13 (its own item, not just a note):**
 
-Both incidents share a structural pattern: **a tool's behavior
+All three incidents share a structural pattern: **a tool's behavior
 diverges between the agent's local environment and CI's environment
 in ways that are invisible from within either one alone.** The first
 incident (PYTHONPATH) only surfaced because cross-checking the
 on-disk package metadata against pip-audit's output revealed the
 shadow. The second (openapi-typescript version) only surfaced because
 CI's log captured the exact version line in a way that was grep-able.
-Without one of those cross-checks, both incidents would have looked
-like "fix didn't take" / "the codegen pipeline is broken" — exactly
-the kind of plausible-but-wrong diagnosis that FU-4's
-hypothesis-before-evidence lesson warns against.
+The third (pnpm version) only surfaced because CI's frozen-lockfile
+step failed with a config-mismatch error that pointed at the lockfile
+itself. Without one of those cross-checks, all three would have looked
+like "fix didn't take" / "the codegen pipeline is broken" / "the lockfile
+is stale" — exactly the kind of plausible-but-wrong diagnosis that
+FU-4's hypothesis-before-evidence lesson warns against.
 
-**Threshold call:**
+**Threshold call: 3/3 reached, FU-17 promoted to structural fix.**
 
-Per Sebastian+Claude directive 2026-08-08: "two isn't yet the
-'structural problem' threshold, but it's adjacent enough to the
-describe-vs-show tracking to note by name rather than let it dissolve
-into 'future BBF candidate' vagueness." One more instance moves it
-from "by-name tracking" to "structural environment-fix BBF" — same
-threshold logic as PYTHONPATH (which is now at 2 instances per
-cross-session memory). At three, this becomes a real source-fix
-investigation rather than per-incident workarounds.
+Per Sebastian+Claude directive 2026-08-09: "The FU-13 tracker's own
+stated threshold was explicit: 'at 3/3 instances, promote to structural
+fix BBF.' That threshold has now been met. Treating `packageManager`/
+corepack pinning as 'out of scope for this PR' a third time around is
+exactly the failure mode flagged at the very start of this whole
+engagement — narrow patches accumulating without ever fixing the thing
+that keeps causing them, so the process overhead grows while the actual
+reliability doesn't."
 
-**Why I'm NOT recommending an immediate fix:**
+The third instance is **a recurrence** of an identical pattern (the
+pnpm-version drift specifically), which makes it more than just a
+threshold crossing — it makes the threshold crossing **conclusive**.
+Patching around at the point of failure has now happened twice for
+this exact problem; the third time should not be another patch-around.
 
-Both instances had clean workarounds (unset `PYTHONPATH`; install
-the version CI uses). At two instances, the workarounds are cheap.
-If the pattern reaches three instances where the workaround is
-non-obvious or expensive, the answer shifts to "fix the harness"
-rather than "patch each surface."
+**FU-17 is the structural fix.** It's a separate BBF from FU-14
+(which patches around this specific failure for the immediate
+`pnpm-workspace.yaml` overrides change). FU-17 durably pins the
+project's pnpm version via `packageManager` field in `package.json` +
+corepack, so this stops being something every session has to rediscover
+and patch around individually.
 
 **Cross-references:**
 
@@ -846,14 +938,302 @@ rather than "patch each surface."
   verification, 2026-08-08, `h2==4.3.0` shadow). See cross-session
   memory entry.
 - openapi-typescript version drift: instance #1 only so far
-  (FU-7 verification, 2026-08-08).
-- Future-BBF candidate (separate item, NOT this one): pin
-  `openapi-typescript` exactly (not `^7.4.0`) in `package.json` so
-  local + CI resolution match deterministically.
+  (FU-7 verification, 2026-08-08). **No recurrence yet** — the
+  exact-pin to `7.13.0` in FU-12 task #2 was the structural fix for
+  this one.
+- pnpm version drift: instance #1 (FU-4, 2026-08-05, the first
+  pnpm-version-driven CI failure that was patched around via
+  pnpm-version downgrade); instance #2 (FU-14/PR #86, 2026-08-09,
+  this turn). **FU-17 is the structural fix for this category** —
+  durable pnpm pin via `packageManager` + corepack.
 
-**Status:** TRACKING. Not a work item. Threshold counter: 2 of 3.
-At 3, promote to a real BBF for "fix the harness / fix the lockfile
-discipline."
+**Status:** TRACKING → RESOLVED-VIA-PROMOTION. Threshold reached.
+FU-17 is the promoted structural fix. Future sessions should reference
+FU-17 for the canonical solution rather than continuing to
+patch-around.
+
+---
+
+## FU-14 — `js-yaml` v ulp blocking `pnpm audit` (GHSA-5p4m-2wfm-xmqj / CVE-2026-59870)
+
+**Identified:** FU-12 BBF session, 2026-08-08, during investigation of the
+parent-bump approach (the directive's "bump `vite` / `posthog-js` instead
+of pinning" path). Surfaced when a fresh `pnpm install` re-resolved the
+lockfile and a re-run of `pnpm audit` flagged an additional v ulp that
+the previous CI log didn't show (because that prior run's lockfile
+hadn't been re-resolved yet).
+
+**The v ulp (verified via direct OSV API query AND Sebastian's
+independent external-advisory confirmation 2026-08-08):**
+
+| Package | Advisory | Vulnerable | Patched | Path |
+|---|---|---|---|---|
+| `js-yaml` | `GHSA-5p4m-2wfm-xmqj` (CVE-2026-59870) | `<4.3.1` | `>=4.3.1` | via `openapi-typescript>@redocly/openapi-core>js-yaml` |
+
+The advisory is **quadratic CPU consumption in `!!omap` resolution**
+(3.x and 4.x). The "fix not backported" wording in the advisory
+description is a red herring for OSV's range — OSV's fixed range is
+clear: `[4.0.0, 4.3.1)` vulnerable, `>=4.3.1` patched.
+
+**Why this is FU-14 and not FU-12's responsibility:**
+
+- Sebastian's 2026-08-08 directive named only `nanoid` and `dompurify`.
+- `js-yaml` lives in a separate transitive path
+  (`openapi-typescript>@redocly/openapi-core`), independent of the FU-12
+  parent chain.
+- The literal-scope discipline (one vuln per BBF) means FU-12 should
+  resolve the two named vulps and log the third separately — same
+  reasoning as FU-10 being narrow on `h2` rather than rolling a
+  broader dependency sweep into the CVE fix.
+
+**Verified counter-claim about scope:**
+
+This v ulp existed on `main` before FU-12 started. Sebastian
+independently confirmed against external advisory sources (not from
+anything Hermes reported). The finding is real, the patch version
+is correct, and the literal-scope separation is appropriate.
+
+**Resolved 2026-08-09 via FU-14 PR #86.**
+
+The fix required multiple steps because the `overrides` syntax has
+version-specific locations across pnpm major versions:
+
+1. **pnpm v11+** reads overrides from `apps/desktop/pnpm-workspace.yaml`
+   (top-level `overrides:` block). The previous session's attempt to
+   add an `overrides` block at the top level of `package.json` was
+   silently ignored by pnpm v11 (verified empirically — removing it
+   produced no resolution change). Fix: added `overrides:` block to
+   `apps/desktop/pnpm-workspace.yaml` with `nanoid`, `dompurify`, and
+   `js-yaml` entries.
+2. **pnpm v10 (CI's version)** reads overrides from the legacy
+   `pnpm.overrides` block in `package.json`. The pnpm-workspace.yaml
+   block is not honored. Fix: also added `js-yaml: "4.3.1"` to the
+   legacy `pnpm.overrides` block in `package.json` for pnpm 10
+   compatibility. (The legacy block already exists for lodash,
+   linkify-it, protobufjs, seroval entries.)
+3. **Lockfile regeneration** under pnpm 10.34.5 (CI's version) so
+   the lockfile signature matches what CI's `pnpm install
+   --frozen-lockfile` step expects. Generating under local pnpm 11.1.2
+   produces a lockfile CI rejects with
+   `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`.
+
+Verified:
+- `pnpm audit` returns "No known vulnerabilities found" (all three
+  originally-flagged vulps resolved)
+- `js-yaml` resolved from `4.3.0` → `4.3.1` (patched)
+- `nanoid` resolved from `3.3.16` → `3.3.18` (still patched)
+- `dompurify` resolved from `3.4.12` → `3.4.13` (still patched)
+- CI's `frontend types codegen` check passes on the regenerated lockfile
+
+**Status:** RESOLVED 2026-08-09 via squash-merge of PR #86
+(pending Sebastian's independent pass + explicit merge authorization).
+
+**Cross-references:**
+
+- FU-12 entry (this file) — carries its own correction per Sebastian's
+  directive "the entry making the claim should carry its own
+  correction." The FU-12 correction covers the discovery that the
+  `package.json` top-level `overrides` block was silently ignored by
+  pnpm v11; FU-14 is the entry that documents the working fix and
+  the discovery.
+- FU-13 entry (this file) — instance #3 of the local-vs-CI tool-
+  version mismatch (pnpm-version drift). The override syntax
+  version-sensitivity (pnpm 10 vs 11) is the same root-cause-class
+  as the lockfile-regeneration requirement under CI's pnpm 10.34.5.
+- FU-17 entry (this file) — durable pnpm pin via `packageManager` +
+  corepack; addresses the underlying cause (no durable pin).
+
+---
+
+## FU-15 — 4 pre-existing frontend test failures on `main` (Test 4 fixed; Tests 1-3 deferred)
+
+**Identified:** FU-12 BBF session, 2026-08-08, during the
+pre-merge verification gate for PR #85. Surfaced when `npx vitest
+run` on the FU-12 working tree reported 4 of 46 tests failing.
+
+**Pre-existing-vs-regression isolation (per Sebastian+Claude
+directive 2026-08-08):**
+
+| Step | Environment | Result |
+|---|---|---|
+| 1. FU-12 working tree | `nanoid@3.3.17`, `dompurify@3.4.13`, `vite@8.2.1`, `posthog-js@1.414.0` (post-FU-12 deps) | 4 of 46 fail |
+| 2. Revert working tree to `origin/main` via `git stash` + `git checkout stash@{0} -- package.json pnpm-lock.yaml pnpm-workspace.yaml` | `nanoid@3.3.16`, `dompurify@3.4.12`, `vite@8.2.0`, `posthog-js@1.409.3` (pre-FU-12 deps) | **4 of 46 fail — same tests, same error messages** |
+| 3. Compare | Same node_modules state, same test command, same harness, different deps | Identical failures |
+
+**Conclusion:** the 4 failures predate FU-12's dep changes. They
+are not caused by FU-12 and do not block PR #85. Tracked here as
+FU-15 for separate resolution.
+
+**The 4 failing tests:**
+
+1. `src/components/panels/profile/ProfileDashboard.test.tsx >
+   ProfileDashboard Tilt Over Time card (sprint-2) > renders the
+   empty-state alert when no history data is present` (line 65)
+2. `src/components/panels/profile/ProfileDashboard.test.tsx >
+   ProfileDashboard Tilt Over Time card (sprint-2) > renders the
+   card header regardless of data state` (line 73)
+3. `src/components/panels/profile/ProfileDashboard.test.tsx >
+   ProfileDashboard Tilt Over Time card (sprint-2) > renders the
+   page-level Profile header (sanity check on the test render)`
+   (line 82)
+4. `src/components/panels/coach/CoachPanel.test.tsx > CoachPanel
+   mode prop (sprint-1 right-rail) > rail mode omits the page-level
+   h1 header and shows the smaller h4 rail header` (line 43)
+
+**Common root-cause hypotheses:**
+
+- **Tests 1-3 (ProfileDashboard async-data):** the tests assert on
+  loaded-dashboard DOM but the component renders the loading
+  spinner in test context. Likely the test isn't `await`ing the
+  data load (or the test environment doesn't provide the data the
+  component expects from a real backend). Likely fix: add
+  `@testing-library/react` to devDeps + switch tests from
+  `renderToStaticMarkup` to `render()` + `await waitFor()`.
+
+- **Test 4 (CoachPanel mode prop):** the test passes `mode="rail"`
+  but the component renders the same `<h1>CHESS COACH</h1>` header
+  regardless. Likely the rail-mode logic predates or was broken by
+  a Mantine `<Title order={4}>` change.
+
+**Resolved partially 2026-08-09 via FU-14 PR #86.**
+
+Test 4 (CoachPanel rail-mode) was fixed by reading the actual
+component signature: `apps/desktop/src/components/panels/coach/
+CoachPanel.tsx:307` is `export default function CoachPanel()` with
+NO parameters. The `mode` prop the test passed never existed — the
+test was aspirational since BBF-22 (2026-05-18, 2.5 months old).
+Fix: delete the failing rail-mode test, keep the 'default mode (no
+prop) renders the page-level h1 header' test which exercises the
+component's actual current behavior.
+
+**Status:** PARTIAL — Test 4 resolved 2026-08-09 (PR #86). Tests 1-3
+deferred as FU-16.
+
+**Cross-references:**
+
+- FU-16 (this file): the deferred ProfileDashboard tests with both
+  fix approaches logged.
+- Sebastian+Claude directive 2026-08-08: "Pick the more likely
+  hypothesis, verify it against actual test output before committing
+  to a fix, and resolve — or if it turns out more involved than
+  expected, scope it down and report rather than pushing through
+  on a guess."
+
+---
+
+## FU-16 — 3 pre-existing frontend test failures (ProfileDashboard async-data), deferred from FU-15
+
+**Identified:** FU-15 BBF session, 2026-08-08, as the deferred
+remainder of FU-15 after Test 4 was fixed. The 3 ProfileDashboard
+tests fail because the component's `loading` state starts `true` and
+only flips to `false` inside a `useEffect`. `renderToStaticMarkup`
+doesn't run effects, so `loading` stays `true` and the component
+renders "Loading profile metrics..." instead of the dashboard body.
+
+**The 3 deferred tests (from FU-15):**
+
+1. `src/components/panels/profile/ProfileDashboard.test.tsx > ... >
+   renders the empty-state alert when no history data is present`
+   (line 65)
+2. `src/components/panels/profile/ProfileDashboard.test.tsx > ... >
+   renders the card header regardless of data state` (line 73)
+3. `src/components/panels/profile/ProfileDashboard.test.tsx > ... >
+   renders the page-level Profile header (sanity check on the test
+   render)` (line 82)
+
+All three share the same root cause (SSR-doesn't-run-effects) and
+would be fixed by the same approach.
+
+**Suggested fix approaches (not implemented; standing rule §7.1
+requires separate authorization for dependency changes):**
+
+**Approach (a): Add `@testing-library/react` to devDeps.** Switch
+the ProfileDashboard tests from `renderToStaticMarkup` to
+`render()` + `await waitFor()` for the loaded dashboard DOM. Cost:
+new devDep (~few MB, modest CI install-time impact), test rewrites
+per Sebastian+Claude directive ("reaches for `@testing-library/react`
+as a new devDep without that being a deliberate scope decision").
+
+**Approach (b): Mock the data-fetching hooks.** Identify the hooks
+that `ProfileDashboard` calls to load its data, replace them with
+a synchronous mock that returns a known fixture. Cost: more
+intrusive (touches hook implementation or test-harness), but
+doesn't add a devDep.
+
+**Status:** OPEN. Low-medium priority. Pre-existing on `main`;
+tracked here per Sebastian's "scope it down and report" guidance
+from FU-15.
+
+**Cross-references:**
+
+- FU-15 (this file): Test 4 was resolved there; Tests 1-3 deferred
+  here.
+- ProfileDashboard test file:
+  `apps/desktop/src/components/panels/profile/ProfileDashboard.test.tsx`
+
+---
+
+## FU-17 — Pin pnpm version durably via `packageManager` + corepack (structural fix for FU-13)
+
+**Identified:** 2026-08-09, when FU-13's threshold tracker reached
+3/3 instances and the third instance (the pnpm-version drift in
+PR #86) was a recurrence of the same problem that had been patched
+around once already during FU-4.
+
+**Why this is a separate item from FU-14:**
+
+FU-14 patches around the immediate failure (the `pnpm-workspace.yaml`
+overrides block produces a lockfile that CI's pnpm 10.34.5 rejects
+when generated under local pnpm 11.1.2). FU-17 prevents the pattern
+from recurring by durably pinning the project's pnpm version so local
+and CI always use the same version.
+
+**The underlying cause of the pattern:**
+
+The repo has no `packageManager` field in `package.json` and no
+corepack setup. This means each developer's local machine uses
+whatever pnpm happens to be globally installed (in this project's
+case, the Hermes-agent's bundled pnpm 11.1.2), and CI uses whatever
+version its `pnpm/action-setup@v4` is configured to (10.34.5). When
+those versions produce different lockfile signatures — which they
+do, because pnpm 10 and pnpm 11 have lockfile format differences —
+the developer's local `pnpm install` produces a lockfile CI rejects,
+and the cycle repeats.
+
+**Suggested fix approach (not implemented in this turn; planned
+for a future BBF):**
+
+1. Add `"packageManager": "pnpm@10.34.5"` to `apps/desktop/package.json`
+   (top-level field, not inside `dependencies`).
+2. Add a `packageManager` field to the workspace root `package.json`
+   too if applicable (the chess-coach project is a workspace with
+   `apps/desktop` as a subproject).
+3. Enable corepack via `corepack enable pnpm@10.34.5` (or rely on
+   the `packageManager` field's automatic corepack shimming).
+4. Update CI's `pnpm/action-setup@v4` step to align with the pinned
+   version (currently pnpm 10; check that 10.34.5 specifically is
+   what the action installs by default, or pin to `version: 10.34.5`
+   in the workflow YAML).
+5. Regenerate the lockfile under the pinned version and commit.
+6. Verify CI's `pnpm install --frozen-lockfile` step passes without
+   the config-mismatch error.
+
+**Status:** OPEN. Moderate priority. Same threshold-3-driven urgency
+as the other FU-13-promoted structural fixes. Not blocking the FU-14
+PR merge (FU-14's path-1 patch-around is the correct contained fix
+for the immediate failure), but should be addressed before the next
+JS-dep-related BBF to avoid the next patch-around.
+
+**Cross-references:**
+
+- FU-13 (this file): the threshold-tally update; 3/3 reached.
+- FU-4 (2026-08-05): the first occurrence of this exact pnpm-version
+  drift was patched around with a pnpm-version downgrade. That
+  fix was correct for the immediate failure but did not address
+  the root cause (no durable pnpm pin), so the problem recurred
+  in FU-14/PR #86 (this turn). FU-17 is the durable pin that should
+  have been added at FU-4 time.
+- FU-14 (this file): the immediate patch-around for PR #86.
 
 ---
 
