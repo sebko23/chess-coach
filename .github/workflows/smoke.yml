@@ -55,12 +55,26 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Bump from 20 to 22: pnpm 11 requires Node 22.13+ (the
+          # CI previously failed with `ERR_UNKNOWN_BUILTIN_MODULE:
+          # node:sqlite` on Node 20 + pnpm 11). Node 22 is LTS.
+          # Aligned with security-audit.yml which also runs Node 22.
+          node-version: "22"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          # FU-17: align with apps/desktop/package.json's
+          # packageManager: pnpm@11 pin. Both CI workflows now
+          # resolve to the same pnpm version, so the lockfile
+          # generated locally under pnpm 11 matches what CI
+          # installs. The dual-location pnpm.overrides block
+          # (in this file's apps/desktop/package.json) plus the
+          # pnpm-workspace.yaml `overrides:` block (read by pnpm
+          # 11+) provide defense-in-depth: js-yaml@4.3.1 is pinned
+          # in both locations so the v ulp resolution is robust
+          # regardless of which pnpm major version reads the file.
+          version: 11
 
       - name: Install frontend deps (frozen lockfile)
         working-directory: apps/desktop
