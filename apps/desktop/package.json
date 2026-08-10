@@ -3,6 +3,7 @@
   "version": "0.15.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "start-vite": "vite",
     "build-vite": "tsgo --noEmit && vite build",
@@ -108,14 +109,5 @@
     "oxlint-tsgolint": "^0.16.0",
     "vitest": "^4.1.0",
     "openapi-typescript": "7.13.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "lodash": "^4.17.24",
-      "linkify-it": "^5.0.2",
-      "protobufjs": "^7.6.1",
-      "seroval": "^1.5.3",
-      "js-yaml": "4.3.1"
-    }
   }
 }
