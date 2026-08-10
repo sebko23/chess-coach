@@ -1164,6 +1164,50 @@ doesn't add a devDep.
 tracked here per Sebastian's "scope it down and report" guidance
 from FU-15.
 
+**Resolved 2026-08-10 via FU-16 PR #89.**
+
+The fix landed with approach (a) — adding `@testing-library/react`
+as a devDep — combined with `vi.spyOn` + `vi.mock` for fetch and
+Jotai atom mocking (no new fetch-mocking dependency). The
+implementation:
+
+1. Added `@testing-library/react@^16.3.2` as a devDep (peer-dep
+   `react: ^18.0.0 || ^19.0.0` confirms React 19 compat; 16.1.0+
+   supports React 19, so the `^16` floor satisfies both).
+2. New file `apps/desktop/src/test/setup.ts` — 5-line
+   `window.matchMedia` polyfill (jsdom doesn't implement it;
+   Mantine's color-scheme provider calls it during render).
+3. `vite.config.ts` — added `setupFiles: ["./src/test/setup.ts"]`.
+4. `ProfileDashboard.test.tsx` rewritten to use `render()` +
+   `vi.spyOn(global, 'fetch').mockResolvedValue(emptyAnalysis)` +
+   `vi.mock("@/state/atoms/coach")` (in-place mutation of
+   `backendDescriptorAtom.onMount` to disable disk-read racing).
+5. Test assertions corrected: the ORIGINAL assertions asserted
+   on text strings that don't exist in the component source
+   ("No tilt history data yet", "Tilt Over Time", `<h2>Profile</h2>`).
+   The CORRECTED assertions verify the component's actual
+   behavior: "No data" (the per-card empty-state copy at
+   `ProfileDashboard.tsx:347`), "Sequence-Based Tilt" (the
+   metric's friendly name per `METRIC_DISPLAY_LABELS`), and any
+   h2 heading (Mantine's `<Title order={2}>` renders as `<h2>`;
+   the actual heading is "Playing Style Patterns").
+
+Per Sebastian+Claude directive 2026-08-10: option (b) was
+investigated first empirically before treating (a) as fallback.
+A hand-rolled `createRoot()` approach failed verification (smoke
+test: even `<div>hello jsdom</div>` rendered empty under React 19
++ vitest + jsdom due to `act()` requirements); @testing-library
+was the correct tool. The corrected assertions preserve the
+original test's PURPOSE (verify the dashboard renders correctly
+with empty metrics) — option (b) substitution that would have
+replaced assertions with error-state checks was rejected per
+Sebastian+Claude's precise reasoning about coverage reduction.
+
+Verification: 3/3 ProfileDashboard tests pass; 44/44 unit tests
+pass overall (3 pre-existing e2e failures unrelated — they import
+`@playwright/test` which isn't installed, pre-dating this PR);
+`pnpm audit` clean (no new vulns from `@testing-library/react`).
+
 **Cross-references:**
 
 - FU-15 (this file): Test 4 was resolved there; Tests 1-3 deferred
@@ -1269,4 +1313,4 @@ JS-dep-related BBF to avoid the next patch-around.
   scripts + .github/workflows/smoke.yml frontend-types-codegen CI job +
   one-time regeneration of api.ts (864-line diff capturing ~2.5 months of drift).
 
-— Last updated 2026-08-08, post-FU-10 fix landed (PR #83) and FU-11 logged (β trigger for FU-7's α).
+— Last updated 2026-08-10, post-FU-16 fix landed (PR #89).
