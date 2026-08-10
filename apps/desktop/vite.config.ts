@@ -45,6 +45,13 @@ export default defineConfig({
     },
     test: {
         environment: "jsdom",
+        // FU-16 (2026-08-10): setup file polyfills window.matchMedia
+        // (jsdom doesn't implement it; Mantine's color-scheme provider
+        // calls it during render). Without this polyfill, every test
+        // that renders a Mantine component throws "TypeError:
+        // window.matchMedia is not a function". See src/test/setup.ts
+        // for details.
+        setupFiles: ["./src/test/setup.ts"],
     },
     define: {
         "import.meta.env.VITE_PLATFORM": JSON.stringify(os.platform()),
