@@ -21,7 +21,6 @@ from chess_coach.narration.pipeline import (
     NarrationOutput,
     _format_pv_fields,
 )
-from chess_coach.narration.sanitize import sanitize_user_content
 from chess_coach.protocol_types.narration import (
     NarrationRequest,
     NarrationResponse,
@@ -125,28 +124,17 @@ async def explain_position(
     narration_id = str(uuid.uuid4())
     now = datetime.now(UTC).isoformat()
 
-    # Build prompt context
-    context_parts = []
-    if body.move_san:
-        context_parts.append(f"Move played: {body.move_san}")
-    if body.eval_cp is not None:
-        side = "+" if body.eval_cp >= 0 else ""
-        context_parts.append(f"Evaluation: {side}{body.eval_cp/100:.2f}")
-    if body.game_phase:
-        context_parts.append(f"Phase: {body.game_phase}")
-    if body.context:
-        # A-F12 (security-strategy.md §A-F12): the `context` field is
-        # user-supplied free-form text and flows into the LLM prompt.
-        # Sanitize at the boundary: strip controls / zero-width unicode,
-        # cap at 1 KB, wrap in <user_content> delimiters, and detect-flag
-        # common injection patterns. The wrapped string is appended to
-        # the prompt context exactly as the sanitizer returns it.
-        sanitized = sanitize_user_content(
-            body.context, source="narration_context",
-        )
-        context_parts.append(sanitized.text)
-
-    prompt_context = " | ".join(context_parts) if context_parts else "No additional context."
+    # FU-8: the prior `prompt_context` construction (which gathered
+    # body.move_san / body.eval_cp / body.game_phase / body.context and
+    # sanitized body.context) has been removed. Per FU-8 entry: the
+    # collected string was silently dropped before reaching the LLM
+    # prompt (pipeline.explain_simple accepted move_san / game_phase /
+    # context but never referenced them; build_user_prompt's signature
+    # has no context parameter). The removal is "safe by design" instead
+    # of "safe by accident" — the LLM-facing prompt construction surface
+    # no longer has any route for user-controlled free-form text to reach
+    # it. Tests in tests/unit/test_narration.py assert this surface
+    # stays gone (TestFU8DeadPlumbingRemoved).
 
     # BBF-87.2: branch between engine-backed and synthetic narration.
     # When the request supplies any of depth/engine_id/multipv, call
@@ -244,10 +232,7 @@ async def explain_position(
         try:
             output = await pipeline.explain_simple(
                 fen=body.fen,
-                move_san=body.move_san,
                 eval_cp=body.eval_cp,
-                game_phase=body.game_phase,
-                context=prompt_context,
             )
             grounded = not output.narration.startswith("Stockfish evaluates this position as")
         except LLMUnavailableError as exc:

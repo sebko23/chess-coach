@@ -320,16 +320,23 @@ class NarrationPipeline:
     async def explain_simple(
         self,
         fen: str,
-        move_san: str | None = None,
         eval_cp: int | None = None,
-        game_phase: str | None = None,
-        context: str | None = None,
     ) -> NarrationOutput:
         """Convenience wrapper for the route handler.
 
-        Builds a minimal AnalysisResult from simple user inputs and
-        delegates to the full explain() pipeline with LLM + validation.
+        Builds a minimal AnalysisResult from `fen` (required) and
+        optional `eval_cp` (consumed to construct the synthetic
+        AnalysisResult.pvs[0].score). Per FU-8 (2026-08-10): the
+        prior signature also accepted `move_san`, `game_phase`, and
+        `context`; those parameters were collected at the route
+        boundary but never referenced in this function body, so they
+        were dead plumbing that existed "safe by accident." If a
+        future feature needs user-context plumbing into the LLM
+        prompt, it should be designed with sanitization built in from
+        the start (security-strategy.md §A-F12) rather than
+        resurrected from this dead code.
 
+        Delegates to the full explain() pipeline with LLM + validation.
         Returns a NarrationOutput. The `corpus_entry_id` is populated
         when the FEN matched a v2 corpus entry (BBF-87.1). The
         `pv_moves_san` field is populated alongside `pv_moves` (FU-5).

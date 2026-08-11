@@ -238,8 +238,11 @@ class TestExplainSimple:
     async def test_explain_simple_positive_eval(self):
         router = await _make_router(["Nice central control."])
         pipeline = NarrationPipeline(router=router)
+        # FU-8: explain_simple signature no longer accepts move_san.
+        # Previously this test passed move_san="e4" even though the
+        # param was never used -- exercising the dead plumbing.
         result = await pipeline.explain_simple(
-            fen=START_FEN, move_san="e4", eval_cp=38
+            fen=START_FEN, eval_cp=38
         )
         assert result.score_display == "+0.38"
         assert result.pv_moves == []
@@ -270,3 +273,156 @@ class TestExplainSimple:
         assert result.narration.startswith("Stockfish evaluates")
         assert result.score_display == "+0.50"
         assert result.pv_moves == []
+
+class TestFU8DeadPlumbingRemoved:
+    """FU-8: dead-code narration-context plumbing removal.
+
+    Verifies that the LLM-facing prompt construction surface has
+    no route for arbitrary user-controlled text to reach it. The
+    removed plumbing was:
+      - prompt_context constructed at the route boundary
+        (services/chess_coach/gateway/routes/narration.py)
+      - context, move_san, game_phase parameters on
+        pipeline.explain_simple()
+        (services/chess_coach/narration/pipeline.py)
+      - body.context user-supplied free-form text + sanitization
+        call site at the route boundary
+
+    Per FU-8 entry, the dead plumbing was "safe by accident":
+    the sanitized string was silently dropped before reaching the
+    LLM prompt. These tests assert the SURFACE ITSELF is gone, not
+    just that the current code happens to not call it. Any future
+    addition that re-introduces a route for user-controlled text
+    into the LLM prompt will fail one of these tests; failure
+    messages point to the sanitization pipeline that would need to
+    be exercised end-to-end before re-introduction.
+    """
+
+    # Sanitization-pipeline context for failure messages. Reused as
+    # a constant so any single-point edit propagates to all tests.
+    _SANITIZE_REF = (
+        "Per FU-8 (docs/16_audit/OPEN-FOLLOWUPS.md FU-8 entry): the\n"
+        "removed plumbing collected body.context user-supplied\n"
+        "free-form text and called sanitize_user_content at the\n"
+        "route boundary, but the sanitized string was silently\n"
+        "dropped before reaching the LLM prompt. If you are\n"
+        "re-introducing this parameter, the sanitization pipeline\n"
+        "(services/chess_coach/narration/sanitize.py + security-\n"
+        "strategy.md section A-F12) MUST be exercised end-to-end\n"
+        "before re-adding -- not just on the call site, but with\n"
+        "a test that asserts the sanitization flows through to the\n"
+        "LLM prompt. Also confirm with project lead (per 7.1) that\n"
+        "context-aware narration is actually a desired feature before\n"
+        "re-introducing the plumbing."
+    )
+
+    def test_explain_simple_signature_has_no_user_context_params(self):
+        """explain_simple() must not accept user-controlled context fields."""
+        import inspect
+        params = list(inspect.signature(NarrationPipeline.explain_simple).parameters.keys())
+        # eval_cp is the only user-context-style param that should remain
+        # (it feeds the synthetic PVLine). The others are dead per FU-8.
+        forbidden = ("move_san", "game_phase", "context")
+        leaked = [p for p in forbidden if p in params]
+        assert not leaked, (
+            "explain_simple() still accepts " + str(leaked)
+            + " -- should be removed per FU-8 (dead plumbing,\n"
+            "safe-by-accident surface).\n" + self._SANITIZE_REF
+        )
+
+    def test_build_user_prompt_signature_has_no_user_context_params(self):
+        """build_user_prompt() must not accept user-controlled context fields."""
+        import inspect
+        from chess_coach.narration.prompt import build_user_prompt
+        params = list(inspect.signature(build_user_prompt).parameters.keys())
+        forbidden = ("context", "user_context", "prompt_context")
+        leaked = [p for p in forbidden if p in params]
+        assert not leaked, (
+            "build_user_prompt() still accepts " + str(leaked)
+            + " -- user-controlled text has no route into the\n"
+            "prompt construction per FU-8.\n" + self._SANITIZE_REF
+        )
+
+    def test_format_analysis_for_prompt_only_uses_analysis_result(self):
+        """format_analysis_for_prompt() must take only AnalysisResult."""
+        import inspect
+        from chess_coach.narration.prompt import format_analysis_for_prompt
+        params = list(inspect.signature(format_analysis_for_prompt).parameters.keys())
+        assert params == ["result"], (
+            "format_analysis_for_prompt() params are " + str(params)
+            + "; expected only [result]. Any additional param\n"
+            "is a potential user-controlled-text injection vector\n"
+            "into the LLM prompt.\n" + self._SANITIZE_REF
+        )
+
+    def test_route_does_not_construct_prompt_context(self):
+        """The narration route must not construct prompt_context or context_parts.
+
+        Uses AST (not raw source-text scan) so the FU-8 marker
+        comment in the route module documenting this removal is
+        not itself counted as a "leaked" identifier. The marker
+        is checked separately by test_route_has_fu8_marker_comment.
+        """
+        import ast
+        import inspect
+        from chess_coach.gateway.routes import narration
+        src = inspect.getsource(narration)
+        tree = ast.parse(src)
+        # Walk all identifier names referenced in actual code (Name +
+        # Attribute contexts). Comments and docstrings are excluded
+        # because they are not executable code.
+        code_identifiers = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name):
+                code_identifiers.add(node.id)
+            elif isinstance(node, ast.Attribute):
+                code_identifiers.add(node.attr)
+        forbidden = ("prompt_context", "context_parts")
+        leaked = [i for i in forbidden if i in code_identifiers]
+        assert not leaked, (
+            str(leaked) + " still referenced as code in narration\n"
+            "route -- dead plumbing should be removed per FU-8.\n"
+            "(Note: the FU-8 marker comment in the route docstring\n"
+            "mentions these identifiers by name; that is expected\n"
+            "and is checked by test_route_has_fu8_marker_comment.\n"
+            "This test only flags executable code references.)\n"
+            + self._SANITIZE_REF
+        )
+
+    def test_route_does_not_sanitize_user_content(self):
+        """The narration route must not call sanitize_user_content.
+
+        The sanitize_user_content function itself remains in the
+        library (services/chess_coach/narration/sanitize.py) for
+        future use when context-aware narration is properly designed.
+        But the call site that fed the dead prompt_context plumbing
+        should be gone.
+        """
+        from chess_coach.gateway.routes import narration
+        import inspect
+        src = inspect.getsource(narration)
+        assert b"sanitize_user_content" not in src.encode(), (
+            "sanitize_user_content still called in narration route\n"
+            "-- the sanitization that fed the dropped prompt_context\n"
+            "should be removed too (the call site, not the library\n"
+            "function).\n" + self._SANITIZE_REF
+        )
+
+    def test_route_has_fu8_marker_comment(self):
+        """Route must have an FU-8 marker comment linking to the decision.
+
+        Regression guard beyond signatures/source-checks: a future
+        refactor that removes the FU-8 explanatory comment would lose
+        the rationale context for why this plumbing was removed.
+        This test catches that drift and points back to the FU-8
+        entry in OPEN-FOLLOWUPS.md.
+        """
+        from chess_coach.gateway.routes import narration
+        import inspect
+        src = inspect.getsource(narration)
+        assert "FU-8" in src, (
+            "narration route module has no FU-8 marker comment.\n"
+            "If the comment was accidentally removed during a refactor,\n"
+            "restore it -- it documents the rationale for the dead\n"
+            "plumbing removal (see docs/16_audit/OPEN-FOLLOWUPS.md FU-8)."
+        )
