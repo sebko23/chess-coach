@@ -204,6 +204,17 @@ new optional field. Scope spec-citation:
 `specs/v1.0/chess-coach-protocol-v1.md:42` (UCI authoritative, SAN
 "additional field, never authoritative").
 
+**Resolved 2026-08-06 via FU-5 PR #81.** Documentation drift
+corrected 2026-08-10 — the original status field above was never
+updated to reflect the squash-merge commit `cada4ab` landing
+on `main`. Implementation: backend additive `pv_moves_san`
+field on `NarrationResponse`, backend helper `_pv_to_san()`,
+frontend fallback chain `pv_moves_san ?? pv_moves`, codegen
+regen of `api.ts`. Per Sebastian+Claude audit
+2026-08-10: this Resolved block was added as part of the
+doc-drift fix-up PR (FU-5 was already on `main`; the status
+field lag was bookkeeping).
+
 ---
 
 ## FU-6 — 3 narration integration tests broken by BBF-87.2's unconditional `Depends(_engine_pool)`
@@ -1268,6 +1279,38 @@ PR merge (FU-14's path-1 patch-around is the correct contained fix
 for the immediate failure), but should be addressed before the next
 JS-dep-related BBF to avoid the next patch-around.
 
+**Resolved 2026-08-09 via FU-17 PR #87.** Documentation drift
+corrected 2026-08-10 — the original status field above was never
+updated to reflect the squash-merge commit `20792f4` landing
+on `main`. Implementation: `packageManager: pnpm@11.21.0` pinned
+in `apps/desktop/package.json`, `apps/desktop/pnpm-workspace.yaml`
+`allowBuilds` populated with the four required build-approval
+entries (`@swc/core: true`, `core-js: true`, `esbuild: true`,
+`protobufjs: true`) — this also fixed a pre-existing latent
+build-approval gap where the file's `allowBuilds` had been a
+template (`'@swc/core': set this to true or false`) that never
+got populated, leaving all 4 packages unbuilt under pnpm 11.
+Plus `.github/workflows/smoke.yml` aligned to pnpm 11 / Node 22
+to match `.github/workflows/security-audit.yml`, and
+`apps/desktop/pnpm-lock.yaml` regenerated under pnpm 11.21.0.
+As side effects: legacy `pnpm.overrides` block in `package.json`
+became redundant and was removed (pnpm 11 ignores it, per the
+warning pnpm emits when both blocks coexist); the FU-14
+commit-body stale reference (`CoachPanel.tsx:307` without the
+`apps/desktop/...` prefix) became stale-but-unevaluated because
+`scripts/dev/verify_commit_refs.py` evaluates only `HEAD`, not
+accumulated history, so `main`'s `commit ref verify` job became
+green as a side effect of the merge commit being replaced.
+
+Verification: `pnpm install --frozen-lockfile` succeeds under
+pnpm 11.21.0; `pnpm audit` returns "No known vulnerabilities
+found"; `frontend types codegen` CI check passes (was failing
+in the first iteration of PR #87 before the `allowBuilds`
+fix); all 10 CI checks green. Per Sebastian+Claude audit
+2026-08-10: this Resolved block was added as part of the
+doc-drift fix-up PR (FU-17 was already on `main`; the status
+field lag was bookkeeping).
+
 **Cross-references:**
 
 - FU-13 (this file): the threshold-tally update; 3/3 reached.
@@ -1313,4 +1356,4 @@ JS-dep-related BBF to avoid the next patch-around.
   scripts + .github/workflows/smoke.yml frontend-types-codegen CI job +
   one-time regeneration of api.ts (864-line diff capturing ~2.5 months of drift).
 
-— Last updated 2026-08-10, post-FU-16 fix landed (PR #89).
+— Last updated 2026-08-10, post-FU-16 fix landed (PR #89); doc-drift fix-up added Resolved blocks for FU-5 (PR #81) and FU-17 (PR #87) that were missing on `main`.
