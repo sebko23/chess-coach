@@ -319,6 +319,17 @@ but real."
 
 **Status:** OPEN. Low urgency. Not blocking. Pick up after FU-5 ships.
 
+**Resolved 2026-08-08 via FU-6 PR #82.** Documentation drift
+corrected 2026-08-10 (third-round doc-drift fix-up) -- the original
+status field above was never updated to reflect the squash-merge
+commit `e091988` landing on `main`. Implementation: BBF-FU-6 added
+`engine_pool` mock to `test_narrative_position_fk` fixtures so the
+tests no longer depended on the BBF-87.2 `Depends(_engine_pool)`
+change breaking the unconditional import. Per Sebastian+Claude
+audit 2026-08-10: this Resolved block was added as part of the
+third-round doc-drift fix-up PR (FU-6 was already on `main`; the
+status field lag was bookkeeping).
+
 ---
 
 ## FU-7 — Polyglot `.bin` opening-book import/export (low-priority feature gap)
@@ -362,6 +373,34 @@ Brief: `docs/16_audit/MASTERBOARD-DESIGN-REFERENCE-BRIEF.md`.
 
 **Status:** OPEN. Low priority. Not blocking. Pick up only if/when
 repertoire becomes a Phase 3 priority.
+
+**Status (clarified 2026-08-10, third-round doc-drift fix-up):**
+**alpha shipped 2026-08-08 via FU-7 PR #84** (commit
+`7180433`, `feat(gateway): FU-7 additive polyglot_book_path on
+repertoire recommendations`). The alpha is the in-memory per-call
+`polyglot_book_path` field on `NarrationRequest` /
+`NarrationResponse` -- the caller supplies a path to a Polyglot
+`.bin` file on each request, and the gateway reads it once. This
+was the BBF-FU-7 scope and the original Status field above did
+not distinguish alpha from beta. The original Status field is
+preserved as historical context; the LIVE status is the alpha-
+shipped line below.
+
+**beta deferred to FU-11.** The file-format I/O feature
+(import/export of Polyglot `.bin` books to/from external tools,
+as described in the body of this entry) was never part of the
+BBF-FU-7 scope; per FU-11 it is the Phase 2 trigger, correctly
+blocked on alpha observation period. See FU-11 entry for the
+live beta status.
+
+**Resolved (alpha) 2026-08-08 via FU-7 PR #84.** Documentation
+drift corrected 2026-08-10 (third-round doc-drift fix-up) --
+originally flagged in the 2026-08-10 audit by Sebastian. The
+alpha implementation landed on `main` at commit `7180433` and
+has been there for several sessions; FU-11's own entry at line
+744 (in the alpha-vs-beta preamble at lines 739-743) already refers back to "alpha (FU-7): caller supplies
+`polyglot_book_path`" as something already implemented, which
+is the cross-reference that surfaced this drift.
 
 **Sebastian+Claude directive 2026-08-06:** "Correct the Svelte→React
 error in the brief. Correct the FSRS claim — mark item B as 'already
@@ -492,6 +531,25 @@ the chess-coach source as of commit `cada4ab2` on
 discoverability — the dead code is correctly safe today; the
 risk is that it becomes load-bearing through an incomplete
 future wiring, and the note is here to make that discoverable.
+
+**Resolved 2026-08-11 via FU-8 PR #92.** Documentation drift
+corrected 2026-08-11 (third-round doc-drift fix-up) -- the
+original status field above was never updated to reflect the
+squash-merge commit `ef3bda74` landing on `main`. Implementation:
+removed the dead narration-context plumbing that collected
+`body.move_san` / `body.eval_cp` / `body.game_phase` /
+`body.context` at the route boundary, sanitized `body.context`
+via A-F12, then silently dropped the result before reaching the
+LLM prompt. The dead plumbing was "safe by accident" per the
+original entry but fragile -- a future PR could have wired it up
+without exercising the sanitization pipeline end-to-end, creating
+a prompt-injection vector. Per Sebastian+Claude audit 2026-08-10:
+Option A (remove) chosen over Option B (wire up correctly) --
+the SKILL.md decision ladder puts "can I delete code" ahead of
+"write new code" and the dead code had no current product
+requirement. PR #92 also added `TestFU8DeadPlumbingRemoved` (6
+tests) that positively assert the surface is gone (signatures +
+AST-walked code refs + FU-8 marker comment regression guard).
 
 **Sebastian+Claude directive 2026-08-06:** "Log Finding 1+2 as
 a new follow-up (FU-8) in `OPEN-FOLLOWUPS.md`: dead-code
@@ -1120,6 +1178,16 @@ component's actual current behavior.
 **Status:** PARTIAL — Test 4 resolved 2026-08-09 (PR #86). Tests 1-3
 deferred as FU-16.
 
+**Status (clarified 2026-08-10, third-round doc-drift fix-up):**
+**FULLY RESOLVED 2026-08-10 via PR #86 (Test 4) + PR #89 (Tests 1-3, deferred as FU-16).**
+The original PARTIAL status was accurate at the time it was written
+(2026-08-09): Test 4 had been resolved via PR #86 and Tests 1-3
+were deferred as FU-16. FU-16 was then resolved via PR #89 (squash
+merge commit `77a8379`, landed 2026-08-10), bringing Tests 1-3
+back into the resolved bucket. The original PARTIAL status line is
+preserved as historical context; the LIVE status is the FULLY
+RESOLVED line below.
+
 **Cross-references:**
 
 - FU-16 (this file): the deferred ProfileDashboard tests with both
@@ -1311,6 +1379,15 @@ fix); all 10 CI checks green. Per Sebastian+Claude audit
 doc-drift fix-up PR (FU-17 was already on `main`; the status
 field lag was bookkeeping).
 
+**Status (clarified 2026-08-11, third-round doc-drift fix-up):**
+**FULLY RESOLVED** -- the Resolved block above (added in PR #91
+doc-drift fix-up, landed 2026-08-10) already records the
+resolution. The original "Status: OPEN. Moderate priority." block
+at the top of this entry is preserved as historical context
+(it was accurate when written on 2026-08-08, before PR #87
+landed); the LIVE status is the Resolved block above. No further
+correction needed beyond this clarification note, which is added
+third-round to make the historical-vs-live distinction explicit.
 **Cross-references:**
 
 - FU-13 (this file): the threshold-tally update; 3/3 reached.
@@ -1356,4 +1433,4 @@ field lag was bookkeeping).
   scripts + .github/workflows/smoke.yml frontend-types-codegen CI job +
   one-time regeneration of api.ts (864-line diff capturing ~2.5 months of drift).
 
-— Last updated 2026-08-10, post-FU-16 fix landed (PR #89); doc-drift fix-up added Resolved blocks for FU-5 (PR #81) and FU-17 (PR #87) that were missing on `main`.
+— Last updated 2026-08-11, post-FU-8 fix landed (PR #92); third-round doc-drift fix-up (third doc-drift cycle after PR #90 + PR #91) added Resolved blocks + clarifications for FU-6 (PR #82), FU-7 (PR #84, alpha-shipped + beta-deferred-to-FU-11 framing per Sebastian+Claude), FU-8 (PR #92), FU-15 (FULLY RESOLVED via PR #86 + PR #89), and FU-17 (status-line clarification). Original OPEN status fields preserved as historical context per the doc-drift fix-up convention.
