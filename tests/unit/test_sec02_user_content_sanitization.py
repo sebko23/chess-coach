@@ -242,29 +242,27 @@ def test_safe_input_unchanged_under_all_mitigations():
 
 
 # ---------------------------------------------------------------------------
-# Integration: the route handler actually calls the sanitizer
+# A-F12 contract coverage (moved to TestFU8DeadPlumbingRemoved)
 # ---------------------------------------------------------------------------
 
+# The previous ``test_route_uses_sanitize_user_content_at_boundary``
+# is removed. Its assertion (route imports + calls
+# sanitize_user_content at the context boundary) is no longer the
+# correct A-F12 contract check: the context field on the narration
+# request was removed by FU-8 (PR #92, 2026-08-10), so the attack
+# surface the test was protecting is gone.
 
-def test_route_uses_sanitize_user_content_at_boundary():
-    """Static-regret assertion: the narration route imports and calls
-    ``sanitize_user_content`` at the context boundary. This is the
-    integration contract that A-F12 promises — the public route
-    cannot ship and bypass the sanitizer.
+# The post-FU-8 A-F12-relevant coverage now lives in
+# ``TestFU8DeadPlumbingRemoved`` (tests/unit/test_narration.py:277,
+# 6 test methods). That class positively asserts the LLM-facing
+# prompt construction surface has no route for user-controlled text
+# to reach it — the relevant A-F12 contract given the current state.
 
-    We read the file as text rather than importing the route module
-    to avoid the FastAPI 0.139.x body-model compatibility issue that
-    affects ``GatewaySettings`` construction in this sandbox (see
-    the BBF-86.7 legacy doc on the FastAPI/pydantic env gap)."""
-    path = Path(
-        r"C:\Users\i3\verify_chess_coach\chess-coach"
-        r"\services\chess_coach\gateway\routes\narration.py"
-    )
-    text = path.read_text(encoding="utf-8")
-    # The import is present
-    assert "from chess_coach.narration.sanitize import sanitize_user_content" in text
-    # The call is at the context boundary (the `if body.context:` block)
-    assert "sanitize_user_content(" in text
-    assert "source=\"narration_context\"" in text
-    # The old direct-append is gone
-    assert "    context_parts.append(body.context)" not in text
+# The sanitizer library itself (services/chess_coach/narration/sanitize.py)
+# remains in place per FU-8's directive: "if context-aware narration is
+# ever reintroduced, the sanitization pipeline (security-strategy.md
+# section A-F12) MUST be exercised end-to-end before re-adding".
+
+# If you are re-introducing context-aware narration or PGN-comment
+# threading and need the sanitizer re-applied, write the new test
+# against the new call site, do not restore this stale assertion.

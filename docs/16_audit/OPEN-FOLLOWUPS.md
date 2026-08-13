@@ -1401,6 +1401,112 @@ third-round to make the historical-vs-live distinction explicit.
 
 ---
 
+## FU-18 — A-F10 (Windows Credential Manager secrets) has no test
+
+**Identified:** 2026-08-11, during the phase-completion audit session.
+Per `docs/08_security/security-strategy.md` §A-F10, "Same-user secrets
+access (Windows Credential Manager)": the credential store for
+LLM API keys, Lichess PATs, etc. MUST use the OS-native secret
+store (Windows Credential Manager on Windows, libsecret on
+Linux, Keychain on macOS). Plaintext env vars and on-disk config
+files are NOT acceptable for production secrets.
+
+**The gap:**
+
+- No test exists in the repo verifying that secrets are read from
+  the OS-native store. The contract is documented in the security
+  strategy but unenforced.
+- `services/chess_coach/llm_router/config.py` may use plaintext env
+  vars (OPENROUTER_API_KEY, etc.); the audit did not confirm this
+  is the production path vs. an OS-native store.
+
+**Status:** OPEN. Real contract gap, no external blocker. Logged
+for record-keeping per the directive "real, correctly out of scope,
+agreed." Investigation-first BBF would: (1) read security-strategy.md
+ §A-F10 in full, (2) audit the secret-access path in
+  `llm_router/config.py` and any other modules that read secrets,
+  (3) confirm whether the OS-native store is actually used in
+  production (vs. plaintext env vars as a development-only path),
+  (4) if the contract is unenforced, design + implement a test
+  that verifies secrets come from the OS-native store and are NOT
+  visible in plaintext on disk or in env-var listings, (5) add the
+  test to smoke.yml so it is CI-enforced going forward.
+
+**Why this is FU-18, not part of another FU:**
+
+- This is a real security contract (A-F10) that has never been
+  tested. Same shape as the sec02 portability fix in this session:
+  contract documented in security-strategy.md, no enforcement,
+  latent risk.
+- The sec02 fix is FU-19's sibling: sec02 had a test that was
+  broken + unenforced; A-F10 has no test at all. The investigation
+  surface is wider (a brand-new test design, not just an update
+  to an existing one).
+
+**Cross-references:**
+
+- `docs/08_security/security-strategy.md` §A-F10 (canonical contract)
+- `services/chess_coach/llm_router/config.py` (likely location of
+  secret access; needs investigation)
+
+---
+
+## FU-19 — A-F11 (PDF parsing subprocess sandbox) has no test
+
+**Identified:** 2026-08-11, during the phase-completion audit session.
+Per `docs/08_security/security-strategy.md` §A-F11, "PDF parsing hard
+requirement": PDF parsing MUST run in an isolated subprocess with
+no network access, read-only filesystem (except per-book artifact
+dir), 2 GB memory limit, and a 5-minute-per-page timeout. See
+`docs/02_modules/module-decomposition.md` § A-F7 for the full
+subprocess sandbox spec.
+
+**The gap:**
+
+- No test exists in the repo verifying that PDF parsing is
+  subprocess-isolated. The contract is documented in the security
+  strategy but unenforced.
+- `services/chess_coach/pdf_ocr/adapter.py` and
+  `services/chess_coach/pdf_ocr/protection.py` exist; whether they
+  implement the subprocess sandbox (network isolation, filesystem
+  read-only enforcement, memory/time limits) was not confirmed by
+  the audit.
+
+**Status:** OPEN. Real contract gap, no external blocker. Logged
+for record-keeping per the directive. Investigation-first BBF would:
+(1) read security-strategy.md §A-F11 + module-decomposition.md
+  § A-F7 in full, (2) audit pdf_ocr/adapter.py and
+  pdf_ocr/protection.py to determine what isolation (if any) is
+  currently in place, (3) confirm whether the subprocess sandbox is
+  actually used in production or whether pdf parsing is running
+  in-process, (4) if the contract is unenforced, design + implement
+  a test that asserts subprocess isolation (e.g. attempt network
+  egress from the sandbox and verify it is denied; verify the
+  filesystem is read-only; verify the memory limit is enforced),
+  (5) add the test to smoke.yml so it is CI-enforced going forward.
+
+**Why this is FU-19, not part of another FU:**
+
+- This is a real security contract (A-F11) that has never been
+  tested. Same shape as FU-18 (A-F10) and the sec02 portability
+  fix in this session: contract documented in security-strategy.md,
+  no enforcement, latent risk.
+- The investigation surface is wider than FU-18: PDF parsing has
+  multiple attack surfaces (network, filesystem, memory, time) and
+  the test design is correspondingly larger.
+- Independent from FU-18 (A-F10) which is about secret storage;
+  FU-19 is about PDF parser isolation. Both are security contract
+  gaps but they have different investigation paths.
+
+**Cross-references:**
+
+- `docs/08_security/security-strategy.md` §A-F11 (canonical contract)
+- `docs/02_modules/module-decomposition.md` § A-F7 (subprocess sandbox spec)
+- `services/chess_coach/pdf_ocr/adapter.py` (likely location of the PDF parser)
+- `services/chess_coach/pdf_ocr/protection.py` (likely name suggests protection layer)
+
+---
+
 **Resolved section** (audit trail of closed follow-ups):
 
 **Resolved section** (audit trail of closed follow-ups):
@@ -1433,4 +1539,4 @@ third-round to make the historical-vs-live distinction explicit.
   scripts + .github/workflows/smoke.yml frontend-types-codegen CI job +
   one-time regeneration of api.ts (864-line diff capturing ~2.5 months of drift).
 
-— Last updated 2026-08-11, post-FU-8 fix landed (PR #92); third-round doc-drift fix-up (third doc-drift cycle after PR #90 + PR #91) added Resolved blocks + clarifications for FU-6 (PR #82), FU-7 (PR #84, alpha-shipped + beta-deferred-to-FU-11 framing per Sebastian+Claude), FU-8 (PR #92), FU-15 (FULLY RESOLVED via PR #86 + PR #89), and FU-17 (status-line clarification). Original OPEN status fields preserved as historical context per the doc-drift fix-up convention.
+— Last updated 2026-08-11, post-FU-8 fix landed (PR #92); third-round doc-drift fix-up (third doc-drift cycle after PR #90 + PR #91) added Resolved blocks + clarifications for FU-6 (PR #82), FU-7 (PR #84, alpha-shipped + beta-deferred-to-FU-11 framing per Sebastian+Claude), FU-8 (PR #92), FU-15 (FULLY RESOLVED via PR #86 + PR #89), and FU-17 (status-line clarification). Original OPEN status fields preserved as historical context per the doc-drift fix-up convention. Phase-completion audit 2026-08-11 surfaced two real security contract gaps (A-F10 = Windows Credential Manager secrets, A-F11 = PDF parsing subprocess sandbox) that have no tests at all; logged as FU-18 and FU-19 respectively (not implemented, just recorded).
