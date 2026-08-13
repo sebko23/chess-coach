@@ -147,6 +147,7 @@ jobs:
                  tests/unit/test_explain_endpoint.py \
                  tests/unit/test_phase4_golden.py \
                  tests/unit/test_gateway_system.py \
+                 tests/unit/test_sec02_user_content_sanitization.py \
                  tests/integration/test_eval_verifier_integration.py \
                  tests/integration/test_narrative_pipeline_grounded.py \
                  tests/integration/test_narration_engine_pool.py \
