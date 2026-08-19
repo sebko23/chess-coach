@@ -149,6 +149,7 @@ jobs:
                  tests/unit/test_gateway_system.py \
                  tests/unit/test_pdf_ingest_security.py \
                  tests/unit/test_sec02_user_content_sanitization.py \
+                 tests/unit/test_sec01_https_chessvision.py \
                  tests/integration/test_eval_verifier_integration.py \
                  tests/integration/test_narrative_pipeline_grounded.py \
                  tests/integration/test_narration_engine_pool.py \
