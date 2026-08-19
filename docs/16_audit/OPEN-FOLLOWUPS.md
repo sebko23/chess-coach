@@ -1502,8 +1502,154 @@ for record-keeping per the directive. Investigation-first BBF would:
 
 - `docs/08_security/security-strategy.md` §A-F11 (canonical contract)
 - `docs/02_modules/module-decomposition.md` § A-F7 (subprocess sandbox spec)
-- `services/chess_coach/pdf_ocr/adapter.py` (likely location of the PDF parser)
-- `services/chess_coach/pdf_ocr/protection.py` (likely name suggests protection layer)
+## FU-20 — A-F11 property 2 (network isolation) has no implementation or test
+
+**Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
+Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
+property 2: "No network access. *Not currently enforced.* The subprocess
+inherits the parent’s full outbound network access. Closing this gap requires
+either a Linux network namespace via `preexec_fn` or a Windows Job Object"
+(security-strategy.md line 127). The doc cited "logged as future FUs (FU-22+)"
+but those entries did not actually exist when checked 2026-08-13; this entry,
+plus FU-21 and FU-22, are the missing log entries.
+
+**The gap:**
+
+- `services/chess_coach/gateway/routes/pdf_ingest.py` calls `pdf2image.convert_from_bytes`
+  which internally uses `Popen([pdftoppm, ...args...], env=env, stdout=PIPE, stderr=PIPE)`
+  with `env = os.environ.copy()` -- the subprocess inherits the FastAPI
+  process’s full outbound network access. The PDF parser can therefore reach any
+  IP the FastAPI process can reach.
+- On Linux: closing this requires a network namespace via `preexec_fn`
+  (e.g. `os.setsid` plus an `unshare -n` invocation), or `seccomp` on
+  the subprocess.
+- On Windows: closing this requires a Windows Job Object with the
+  JOB_OBJECT_NET_RATE_CONTROL flag, plus firewall-rules-by-app.
+- Neither is currently implemented.
+
+**Status:** OPEN. Real contract gap, but heavy-lift caveat applies:
+both Linux network-namespace and Windows Job-Object paths are significant
+implementation work, not a small test addition. Investigation-first BBF
+would: (1) confirm the platform scope (Linux-only? Windows-first? both?),
+(2) design a subprocess-wrapper module that wraps `preexec_fn` for
+Linux and Job Object for Windows, (3) refactor `pdf_ingest.py` to use
+that wrapper instead of calling `convert_from_bytes` directly,
+(4) verify with a test that the subprocess can NOT reach an external IP.
+Per `docs/07_risk/risk-analysis.md`: R25+R26 (eliminated) reference
+monolith-extraction as the trigger for sandbox isolation; A-F11
+properties 2/3/4 are post-monolith-extraction scope.
+
+**Why this is FU-20, not part of FU-19:**
+
+- FU-19 logged the broader A-F11 "5 properties partially enforced" gap;
+  this entry, plus FU-21 and FU-22, are the per-property follow-ons that
+  the doc cited but never materialized as entries.
+- Implementation lift is an order of magnitude heavier than FU-19:
+  FU-19 was a route-level change using pdf2image’s existing machinery;
+  this requires a new subprocess-wrapper module with platform-specific code.
+- Heavy lift is the reason this entry (and FU-21, FU-22) were deferred
+  rather than included in FU-19. Whether the lift is worth doing now
+  depends on threat-model input (real-world concern about malicious
+  PDFs reaching the parser, current threat surface vs alternative
+  mitigations like macOS/Windows sandbox execution).
+
+**Cross-references:**
+
+- `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
+  property 2 (line 127 of the file)
+- `docs/02_modules/module-decomposition.md` § A-F7 (subprocess sandbox spec)
+- `services/chess_coach/gateway/routes/pdf_ingest.py` (route that invokes
+  the parser; would need to use a new subprocess-wrapper module)
+- FU-19 (this file) for the broader A-F11 gap that this entry is a
+  follow-on to.
+
+---
+
+## FU-21 — A-F11 property 3 (read-only filesystem) has no implementation or test
+
+**Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
+Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
+property 3: "Read-only filesystem (except per-book artifact dir). *Not
+currently enforced.* `pdf2image` writes its own temp file via `tempfile.mkstemp()`
+(typically `%TEMP%\tmp<random>` on Windows, `/tmp/tmp<random>` on Linux);
+no filesystem read-only enforcement on the parent" (line 128).
+
+**The gap:**
+
+- The subprocess inherits the FastAPI process’s full read-write filesystem
+  access, so `pdftoppm` (and any PDF-parser CVE that achieves code execution)
+  can read or modify anything the FastAPI process can.
+- `tempfile.mkstemp()` writes to `%TEMP%\tmp<random>` (Windows) or
+  `/tmp/tmp<random>` (Linux) — those directories are writable by the
+  running user, but the rest of the filesystem is also accessible.
+- Per A-F11 the per-book artifact dir at `data/debug/books/<book_id>/`
+  is the ONLY allowed write target for the parser. This is not enforced.
+
+**Status:** OPEN. Real contract gap. Investigation-first BBF would:
+(1) design a subprocess-wrapper that uses `chroot` (Linux), AppLocker/WDAC
+  (Windows), or a sandboxed-filesystem-profile (macOS) to isolate the parser,
+(2) refactor pdf_ingest.py to use that wrapper, (3) add a test that asserts
+  the subprocess cannot write outside the per-book artifact dir.
+
+**Why this is FU-21:**
+
+- Per-property follow-on to FU-19; same heavy-lift caveat as FU-20.
+- Implementation lift similar to FU-20 (subprocess-wrapper module).
+
+**Cross-references:**
+
+- `docs/08_security/security-strategy.md` §A-F11 line 128
+- FU-20 (this file) for the related network-isolation work; both properties
+  require a subprocess-wrapper module but with different Linux/Windows
+  primitives (namespace/Job Object for network; chroot/AppLocker for FS).
+
+---
+
+## FU-22 — A-F11 property 4 (2GB memory cap) has no implementation or test
+
+**Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
+Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
+property 4: "2 GB memory cap. *Not currently enforced.* No `RLIMIT_AS`
+(Linux) or Job Object memory cap (Windows) is applied to the `Popen`
+invocation. A malicious PDF can balloon `pdftoppm` RSS without bound"
+(line 129).
+
+**The gap:**
+
+- No `RLIMIT_AS` (Linux resource limit on virtual address space) or
+  equivalent Windows Job Object memory cap is applied to the `Popen`
+  invocation of `pdftoppm`.
+- A malicious PDF can balloon `pdftoppm` RSS without bound. Some PDF CVEs
+  in the wild have historically triggered unbounded allocations.
+- The only existing upper bound is `MAX_PAGES=50` (default) /
+  `le=200` (query-param cap) on the page count, which limits CPU work and
+  page-by-page allocation but not within-page explosive allocations.
+- FU-19 / PR #95 added a 5-minute wall-clock timeout (PARSER_TIMEOUT_SECONDS=300)
+  + outer asyncio.wait_for(330), which bounds RUNTIME but not MEMORY.
+  A PDF that fattens up RSS in the first few seconds will not be caught by
+  either timeout.
+
+**Status:** OPEN. Real contract gap. Investigation-first BBF would:
+(1) confirm whether `pdftoppm` has any inherent memory ceiling of its own,
+(2) design a subprocess-wrapper that applies `RLIMIT_AS` (Linux) or
+  Job Object memory cap (Windows), (3) wire it into pdf_ingest.py,
+(4) add a test that asserts the subprocess is killed when RSS exceeds 2GB.
+
+**Why this is FU-22:**
+
+- Per-property follow-on to FU-19; same heavy-lift caveat as FU-20/FU-21.
+- Possibly the most actionable of the three for first implementation:
+  `RLIMIT_AS` is a single `setrlimit()` call (no namespace setup, no Job Object
+  API to interact with), and the test surface is straightforward (force a
+  synthetic large-PDF scenario, assert subprocess killed at 2GB RSS).
+- Still significant work, but lighter than FU-20 (network) and FU-21 (FS read-only).
+
+**Cross-references:**
+
+- `docs/08_security/security-strategy.md` §A-F11 line 129
+- FU-20, FU-21 (this file) for the related network/FS isolation work;
+  all three ideally combine into one subprocess-wrapper module, but the
+  memory cap (FU-22) is implementable as a standalone `setrlimit` shim.
 
 ---
 
