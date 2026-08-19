@@ -119,6 +119,40 @@ Credentials stored in Windows Credential Manager are readable by **any process r
 
 Promoting from "opened by PyMuPDF in a Celery worker" to a hard architectural requirement: PDF parsing **MUST** run in an isolated subprocess with no network access, read-only filesystem (except per-book artifact dir), 2 GB memory limit, and a 5-minute-per-page timeout. See `docs/02_modules/module-decomposition.md` § A-F7 for the full subprocess sandbox spec.
 
+**Implementation (as of 2026-08-13):** the local parsing step is `pdf2image` shelling out to `pdftoppm` (Poppler), not PyMuPDF. This is a different binary than the historical A-F11 description anticipated, but it is the same threat model: an untrusted user-uploaded PDF being parsed by a native-code binary with the attack surface of historical CVE bugs (poppler has had multiple RCE-class CVEs in its PDF parser; see e.g. CVE-2017-18267, CVE-2018-13988, CVE-2019-12293 series).
+
+**Properties enforced today (and the tests that hold them):**
+
+1. **Subprocess isolation (partial).** `pdf2image.convert_from_bytes` invokes `pdftoppm` via `Popen`, so parsing IS in a separate OS process. However, the subprocess inherits the FastAPI process’s environment, current working directory, user/group identity, network access, and filesystem access — the four canonical sandbox properties (no network, read-only filesystem, memory cap, timeout) are NOT all enforced by pdf2image by default. This is the open gap.
+2. **No network access.** *Not currently enforced.* The subprocess inherits the parent’s full outbound network access. Closing this gap requires either a Linux network namespace via `preexec_fn` or a Windows Job Object — both are out of scope for this PR (FU-19, 2026-08-13). Logged as future FUs (FU-22+).
+3. **Read-only filesystem (except per-book artifact dir).** *Not currently enforced.* `pdf2image` writes its own temp file via `tempfile.mkstemp()` (typically `%TEMP%\tmp<random>` on Windows, `/tmp/tmp<random>` on Linux); no filesystem read-only enforcement on the parent. Closing this gap is out of scope for this PR; logged as future FUs.
+4. **2 GB memory cap.** *Not currently enforced.* No `RLIMIT_AS` (Linux) or Job Object memory cap (Windows) is applied to the `Popen` invocation. A malicious PDF can balloon `pdftoppm` RSS without bound. Closing this gap is out of scope for this PR; logged as future FUs.
+5. **5-minute-per-page timeout.** Enforced, with the interpretation noted below.
+
+**Interpretation of property 5 (5-minute timeout):**
+
+The literal "5-minute-per-page" figure is impractical given `pdf2image`’s threading model. With the default `thread_count=1` (documented across pdf2image’s reference docs), one `Popen` invocation processes the FULL page range passed via `first_page` / `last_page`, so a literal per-page interpretation would imply up to 1000 minutes for a `max_pages=200` request — that defeats the defensive purpose of the timeout, since the attacker controls the request and can just bump `max_pages` to force a pathologically long wait.
+
+The operative contract is: **5-minute wall-clock budget per request, regardless of page count**. Rationale:
+
+- `max_pages` is independently capped at 200 via the query-param `le=200` validation in `services/chess_coach/gateway/routes/pdf_ingest.py`, so the budget can’t be indefinitely inflated.
+- 5 minutes is generous for any legitimate book-chapter PDF (typical render time at `dpi=200` is seconds per page).
+- Above 5 minutes for ANY sized PDF, the input is overwhelmingly likely to be an attack or pathological — abort and surface a clean error to the user rather than stranding the FastAPI worker on the upload.
+
+Mechanism (in `services/chess_coach/gateway/routes/pdf_ingest.py`):
+
+- Inner: `convert_from_bytes(pdf_bytes, dpi=DPI, first_page=1, last_page=max_pages, timeout=300)` — `pdf2image` passes this to `proc.communicate(timeout=timeout)` on each `Popen`, killing the subprocess on `TimeoutExpired` and raising `PDFPopplerTimeoutError`.
+- Outer: `await asyncio.wait_for(asyncio.to_thread(convert_from_bytes, ...), timeout=330)` — a 30-second slack over the inner timeout, so a hung subprocess at the FastAPI worker level (rare, but possible if the inner exception is swallowed somewhere) gets caught by asyncio instead of stranding the worker indefinitely.
+
+- Pre-validation, also added by this PR: file-size cap (rejecting uploads > 50 MB before any parsing work) and 4-byte PDF magic-bytes check (`%PDF-`) before the parser is invoked.
+
+**Cross-references:**
+
+- `services/chess_coach/gateway/routes/pdf_ingest.py` — the route that invokes the parser; carries the `timeout=300` and the outer `asyncio.wait_for` wrapping.
+- `tests/unit/test_pdf_ingest_security.py` — the regression test for the pre-validation + timeout contract (file-size 413, non-PDF magic 400, `timeout` triggers `PDFPopplerTimeoutError`, asyncio wait_for outer 330s safety net).
+- `.github/workflows/smoke.yml` — the new test is wired into the hand-curated pytest list so it is CI-enforced going forward.
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-19 (this PR) and the follow-on contract gaps (A-F11 properties 2, 3, 4 — network isolation, filesystem read-only, memory cap; logged as future FUs).
+
 ### A-F12. PGN comment sanitization (prompt injection)
 
 PGN files contain user-editable comment fields, NAG glyphs, and `[%cmd …]` annotation tags. These flow into LLM prompts when narrating analysis. A crafted comment is a **realistic prompt-injection vector** (e.g. shared PGN files, downloaded tournament reports, or imported correspondence games).

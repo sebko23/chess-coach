@@ -22,9 +22,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
+import asyncio
+
 import aiosqlite
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pdf2image import convert_from_bytes
+from pdf2image.exceptions import PDFPopplerTimeoutError
 from pydantic import BaseModel, Field
 
 from ...pdf_ocr import predict_fen
@@ -37,6 +40,12 @@ router = APIRouter(prefix="/v1/import", tags=["import"])
 
 DPI = 200
 MAX_PAGES = 50
+# FU-19 (A-F11): reject oversized PDFs BEFORE any parsing work.
+MAX_PDF_BYTES = 50 * 1024 * 1024  # 50 MB cap on the upload size.
+
+
+# FU-19 (A-F11): fast-fail magic-bytes check before invoking the parser.
+PDF_MAGIC = b"%PDF-"
 
 
 def _db_path(request: Request) -> str:
@@ -164,9 +173,53 @@ async def import_pdf(
     if not pdf_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    # FU-19 (A-F11): file-size cap. Prevents the parser from being
+    # asked to handle pathologically large uploads.
+    if len(pdf_bytes) > MAX_PDF_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"PDF exceeds maximum size of {MAX_PDF_BYTES} bytes",
+        )
+
+    # FU-19 (A-F11): magic-bytes check before parser invocation.
+    # Catches renamed non-PDF uploads (e.g. .exe renamed to .pdf)
+    # that would otherwise reach pdf2image and pdftoppm.
+    if pdf_bytes[: len(PDF_MAGIC)] != PDF_MAGIC:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file is not a PDF (missing %PDF- header)",
+        )
+
+    # FU-19 (A-F11): inner timeout (per-Popen, with pdf2image; outer
+    # wait_for is the FastAPI-level safety net). Per security-strategy.md
+    # "Implementation (as of 2026-08-13)" section: the operative contract
+    # is a 5-minute wall-clock budget per request regardless of page count;
+    # a literal "5-min per page" reading is impractical with pdf2image's
+    # single-threaded batched Popen model (one call processes the full
+    # page range, so timeout applies to the entire batch).
+    PARSER_TIMEOUT_SECONDS = 300
+    ASYNCIO_WAIT_SLACK_SECONDS = 30  # outer wait_for slack over inner.
+
     try:
-        pages = convert_from_bytes(
-            pdf_bytes, dpi=DPI, first_page=1, last_page=max_pages
+        pages = await asyncio.wait_for(
+            # Run the synchronous pdf2image call in the default thread
+            # pool so the FastAPI event loop is not blocked during the
+            # potentially long-running pdftoppm subprocess.
+            asyncio.to_thread(
+                convert_from_bytes,
+                pdf_bytes,
+                dpi=DPI,
+                first_page=1,
+                last_page=max_pages,
+                timeout=PARSER_TIMEOUT_SECONDS,
+            ),
+            timeout=PARSER_TIMEOUT_SECONDS + ASYNCIO_WAIT_SLACK_SECONDS,
+        )
+    except (PDFPopplerTimeoutError, asyncio.TimeoutError):
+        raise HTTPException(
+            status_code=504,
+            detail=f"PDF parsing exceeded the {PARSER_TIMEOUT_SECONDS}s budget; "
+            "the file may be malicious or pathological. Rejected per A-F11.",
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"PDF conversion failed: {exc}") from exc
