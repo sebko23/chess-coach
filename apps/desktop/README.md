@@ -2,9 +2,9 @@
 
 **License**: GPL-3.0-only (inherited from upstream [en-croissant](https://github.com/franciscoBSalgueiro/en-croissant)).
 
-**Status**: not yet populated. Phase 1 implementation will fork en-croissant from a pinned upstream commit and place the working tree here.
+**Status**: populated. This directory holds the CHESS COACH GUI — a fork of [en-croissant](https://github.com/franciscoBSalgueiro/en-croissant) at upstream tag `v0.15.0` (commit `6f2d2628f0fbe11cb62a7dd2f9c102bb52907d53`, forked 2026-05-18; see `UPSTREAM.md` for the binding fork record and `.upstream-ref` for the machine-readable pin).
 
-Until that fork happens, this directory holds only this README and (after fork) `UPSTREAM.md` and `.upstream-ref` per `docs/15_integration_surfaces/en-croissant.md`.
+The fork relationship is governed by `docs/15_integration_surfaces/en-croissant.md`; what we may and may not edit in this directory is defined there (§3 edit allowlist).
 
 ## Required reading before editing
 
