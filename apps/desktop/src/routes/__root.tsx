@@ -285,7 +285,7 @@ function RootLayout() {
             label: t("Menu.Help.OpenLogs"),
             id: "logs",
             action: async () => {
-              const path = await resolve(await appLogDir(), "en-croissant.log");
+              const path = await resolve(await appLogDir(), "chess-coach.log");
               notifications.show({
                 title: "Logs",
                 message: `Opened logs in ${path}`,
