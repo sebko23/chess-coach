@@ -23,8 +23,8 @@
         "bundleMediaFramework": true
       }
     },
-    "publisher": "Francisco Salgueiro",
-    "shortDescription": "Ultimate Chess Toolkit",
+    "publisher": "CHESS COACH",
+    "shortDescription": "Grandmaster-level autonomous chess coaching platform.",
     "longDescription": "",
     "macOS": {
       "entitlements": null,
@@ -45,9 +45,9 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
-  "productName": "en-croissant",
-  "mainBinaryName": "en-croissant",
-  "identifier": "org.encroissant.app",
+  "productName": "Chess Coach",
+  "mainBinaryName": "chess-coach",
+  "identifier": "org.chesscoach.app",
   "plugins": {
     "cli": {
       "args": [
@@ -56,12 +56,6 @@
           "index": 1,
           "takesValue": true
         }
-      ]
-    },
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGOTBFNjg2MzFGM0RDODUKUldTRjNQTXhodWFRZjc2MTNVeXRONGJkRjdGUXlCeW1MSlZESUczT0U4eE5hKzBmY3M2S0U2L0oK",
-      "endpoints": [
-        "https://www.encroissant.org/updates"
       ]
     },
     "fs": {
