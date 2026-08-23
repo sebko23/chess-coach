@@ -1,6 +1,6 @@
 [package]
 name = "chess-coach"
-version = "0.15.0"
+version = "0.1.0"
 description = "A Modern Chess Database"
 authors = ["CHESS COACH project"]
 license = "GPL-3.0-only"
