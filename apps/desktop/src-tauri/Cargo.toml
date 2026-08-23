@@ -1,10 +1,10 @@
 [package]
-name = "en-croissant"
+name = "chess-coach"
 version = "0.15.0"
 description = "A Modern Chess Database"
-authors = ["Francisco Salgueiro <fgcdbs@gmail.com>"]
+authors = ["CHESS COACH project"]
 license = "GPL-3.0-only"
-repository = "https://github.com/franciscoBSalgueiro/en-croissant"
+repository = "https://github.com/sebko23/chess-coach"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
