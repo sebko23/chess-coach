@@ -13,19 +13,11 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import {
-  IconAlertCircle,
-  IconDatabase,
-  IconRefresh,
-  IconUpload,
-} from "@tabler/icons-react";
+import { IconAlertCircle, IconDatabase, IconRefresh, IconUpload } from "@tabler/icons-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAtomValue, useAtom, useSetAtom } from "jotai";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  backendBaseUrlAtom,
-  backendTokenAtom,
-} from "@/state/atoms/coach";
+import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
 import { activeTabAtom, tabsAtom } from "@/state/atoms";
 import { createTab } from "@/utils/tabs";
 import type { FC } from "react";
@@ -92,7 +84,7 @@ const GamesPage: FC = () => {
     if (!baseUrl || !token) return;
     try {
       const resp = await fetch(`${baseUrl}/v1/games/${g.game_id}/pgn`, {
-        headers: { "Authorization": `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
@@ -127,7 +119,7 @@ const GamesPage: FC = () => {
       const resp = await fetch(`${baseUrl}/v1/import/pgn`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -150,7 +142,6 @@ const GamesPage: FC = () => {
       );
 
       await fetchGames();
-
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -169,7 +160,7 @@ const GamesPage: FC = () => {
       const resp = await fetch(`${baseUrl}/v1/import/backfill-analyses`, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -195,9 +186,7 @@ const GamesPage: FC = () => {
 
       await fetchGames();
     } catch (e) {
-      setBackfillError(
-        e instanceof Error ? e.message : "Backfill failed",
-      );
+      setBackfillError(e instanceof Error ? e.message : "Backfill failed");
     } finally {
       setBackfilling(false);
     }
@@ -212,7 +201,9 @@ const GamesPage: FC = () => {
     return (
       <Stack align="center" p="xl">
         <Loader />
-        <Text c="dimmed" size="sm">Loading imported games…</Text>
+        <Text c="dimmed" size="sm">
+          Loading imported games…
+        </Text>
       </Stack>
     );
   }
@@ -233,8 +224,12 @@ const GamesPage: FC = () => {
     return (
       <Stack align="center" p="xl" gap="xs">
         <IconDatabase size={48} opacity={0.3} />
-        <Text size="lg" fw={500} c="dimmed">No games imported yet</Text>
-        <Text size="sm" c="dimmed" mb="sm">Import a PGN to see your games here.</Text>
+        <Text size="lg" fw={500} c="dimmed">
+          No games imported yet
+        </Text>
+        <Text size="sm" c="dimmed" mb="sm">
+          Import a PGN to see your games here.
+        </Text>
         <input
           type="file"
           accept=".pgn"
@@ -249,8 +244,16 @@ const GamesPage: FC = () => {
         >
           Import PGN
         </Button>
-        {importSuccess && <Text size="sm" c="green" mt="xs">{importSuccess}</Text>}
-        {importError && <Text size="sm" c="red" mt="xs">{importError}</Text>}
+        {importSuccess && (
+          <Text size="sm" c="green" mt="xs">
+            {importSuccess}
+          </Text>
+        )}
+        {importError && (
+          <Text size="sm" c="red" mt="xs">
+            {importError}
+          </Text>
+        )}
       </Stack>
     );
   }
@@ -261,15 +264,15 @@ const GamesPage: FC = () => {
       <Group justify="apart" mb="md">
         <Box>
           <Title order={3}>Imported Games</Title>
-          <Text size="sm" c="dimmed">{total} game{total !== 1 ? "s" : ""} total</Text>
+          <Text size="sm" c="dimmed">
+            {total} game{total !== 1 ? "s" : ""} total
+          </Text>
         </Box>
         <Group gap="xs">
           <NumberInput
             aria-label="Backfill depth"
             value={backfillDepth}
-            onChange={(v) =>
-              setBackfillDepth(typeof v === "number" ? v : 6)
-            }
+            onChange={(v) => setBackfillDepth(typeof v === "number" ? v : 6)}
             min={1}
             max={30}
             step={1}
@@ -304,22 +307,46 @@ const GamesPage: FC = () => {
         </Group>
       </Group>
       {importSuccess && (
-        <Alert icon={<IconAlertCircle size={16} />} color="green" mb="md" withCloseButton onClose={() => setImportSuccess(null)}>
+        <Alert
+          icon={<IconAlertCircle size={16} />}
+          color="green"
+          mb="md"
+          withCloseButton
+          onClose={() => setImportSuccess(null)}
+        >
           <Text size="sm">{importSuccess}</Text>
         </Alert>
       )}
       {importError && (
-        <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" withCloseButton onClose={() => setImportError(null)}>
+        <Alert
+          icon={<IconAlertCircle size={16} />}
+          color="red"
+          mb="md"
+          withCloseButton
+          onClose={() => setImportError(null)}
+        >
           <Text size="sm">{importError}</Text>
         </Alert>
       )}
       {backfillSuccess && (
-        <Alert icon={<IconRefresh size={16} />} color="blue" mb="md" withCloseButton onClose={() => setBackfillSuccess(null)}>
+        <Alert
+          icon={<IconRefresh size={16} />}
+          color="blue"
+          mb="md"
+          withCloseButton
+          onClose={() => setBackfillSuccess(null)}
+        >
           <Text size="sm">{backfillSuccess}</Text>
         </Alert>
       )}
       {backfillError && (
-        <Alert icon={<IconAlertCircle size={16} />} color="red" mb="md" withCloseButton onClose={() => setBackfillError(null)}>
+        <Alert
+          icon={<IconAlertCircle size={16} />}
+          color="red"
+          mb="md"
+          withCloseButton
+          onClose={() => setBackfillError(null)}
+        >
           <Text size="sm">{backfillError}</Text>
         </Alert>
       )}
@@ -344,11 +371,18 @@ const GamesPage: FC = () => {
               <Table.Td>{g.white ?? "—"}</Table.Td>
               <Table.Td>{g.black ?? "—"}</Table.Td>
               <Table.Td>
-                <Badge color={
-                  g.result === "1-0" ? "green" :
-                  g.result === "0-1" ? "red" :
-                  g.result === "½-½" ? "yellow" : "gray"
-                } variant="light">
+                <Badge
+                  color={
+                    g.result === "1-0"
+                      ? "green"
+                      : g.result === "0-1"
+                        ? "red"
+                        : g.result === "½-½"
+                          ? "yellow"
+                          : "gray"
+                  }
+                  variant="light"
+                >
                   {g.result ?? "—"}
                 </Badge>
               </Table.Td>

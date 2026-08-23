@@ -25,10 +25,7 @@ import {
 } from "@tabler/icons-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useAtomValue } from "jotai";
-import {
-  backendBaseUrlAtom,
-  backendTokenAtom,
-} from "@/state/atoms/coach";
+import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
 import EvalGraph from "@/components/panels/coach/EvalGraph";
 import type { FC } from "react";
 
@@ -100,13 +97,15 @@ const GameDetailPage: FC = () => {
       }
 
       // Fetch blunders (use first position FEN)
-      const firstPosResp = await fetch(`${baseUrl}/v1/games/${gameId}/eval-graph?limit=1`, { headers });
+      const firstPosResp = await fetch(`${baseUrl}/v1/games/${gameId}/eval-graph?limit=1`, {
+        headers,
+      });
       if (firstPosResp.ok) {
         const firstPos: EvalPoint[] = await firstPosResp.json();
         if (firstPos.length > 0 && firstPos[0].move_san) {
           const blunderResp = await fetch(
             `${baseUrl}/v1/blunders/by-fen?fen=${encodeURIComponent(firstPos[0].move_san)}`,
-            { headers }
+            { headers },
           );
           if (blunderResp.ok) {
             const blunderData: BlunderEnvelope = await blunderResp.json();
@@ -139,11 +138,10 @@ const GameDetailPage: FC = () => {
     setComputeError(null);
     const t0 = Date.now();
     try {
-      const headers = { 'Authorization': 'Bearer ' + token };
-      const resp = await fetch(
-        `${baseUrl}/v1/games/${gameId}/eval-graph?depth=${computeDepth}`,
-        { headers },
-      );
+      const headers = { Authorization: "Bearer " + token };
+      const resp = await fetch(`${baseUrl}/v1/games/${gameId}/eval-graph?depth=${computeDepth}`, {
+        headers,
+      });
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}`);
       }
@@ -151,15 +149,11 @@ const GameDetailPage: FC = () => {
       const n = data.length;
       const withScore = data.filter((p) => p.score_cp != null).length;
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-      setComputeResult(
-        `Computed ${withScore}/${n} plies at depth ${computeDepth} in ${elapsed}s`,
-      );
+      setComputeResult(`Computed ${withScore}/${n} plies at depth ${computeDepth} in ${elapsed}s`);
       // Refresh the displayed eval-graph with the new data.
       setEvalPoints(data);
     } catch (e) {
-      setComputeError(
-        e instanceof Error ? e.message : "Compute failed",
-      );
+      setComputeError(e instanceof Error ? e.message : "Compute failed");
     } finally {
       setComputing(false);
     }
@@ -169,7 +163,9 @@ const GameDetailPage: FC = () => {
     return (
       <Stack align="center" p="xl">
         <Loader />
-        <Text c="dimmed" size="sm">Loading game details…</Text>
+        <Text c="dimmed" size="sm">
+          Loading game details…
+        </Text>
       </Stack>
     );
   }
@@ -209,9 +205,7 @@ const GameDetailPage: FC = () => {
           <NumberInput
             aria-label="Compute depth"
             value={computeDepth}
-            onChange={(v) =>
-              setComputeDepth(typeof v === "number" ? v : 6)
-            }
+            onChange={(v) => setComputeDepth(typeof v === "number" ? v : 6)}
             min={1}
             max={30}
             step={1}
@@ -257,11 +251,15 @@ const GameDetailPage: FC = () => {
       {/* Eval Graph */}
       <Card withBorder mb="md">
         <Card.Section p="md">
-          <Title order={5} mb="xs">Evaluation Graph</Title>
+          <Title order={5} mb="xs">
+            Evaluation Graph
+          </Title>
           {evalPoints.length > 0 ? (
             <EvalGraph />
           ) : (
-            <Text c="dimmed" size="sm">No evaluation data available.</Text>
+            <Text c="dimmed" size="sm">
+              No evaluation data available.
+            </Text>
           )}
         </Card.Section>
       </Card>
@@ -270,7 +268,9 @@ const GameDetailPage: FC = () => {
       {blunders.length > 0 && (
         <Card withBorder mb="md">
           <Card.Section p="md">
-            <Title order={5} mb="xs">Blunders & Mistakes ({blunders.length})</Title>
+            <Title order={5} mb="xs">
+              Blunders & Mistakes ({blunders.length})
+            </Title>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
@@ -284,7 +284,9 @@ const GameDetailPage: FC = () => {
                 {blunders.map((b, i) => (
                   <Table.Tr key={i}>
                     <Table.Td>{b.ply}</Table.Td>
-                    <Table.Td><Text ff="monospace">{b.move_san}</Text></Table.Td>
+                    <Table.Td>
+                      <Text ff="monospace">{b.move_san}</Text>
+                    </Table.Td>
                     <Table.Td>
                       <Badge
                         color={CLASSIFICATION_COLORS[b.classification] ?? "gray"}
@@ -297,8 +299,8 @@ const GameDetailPage: FC = () => {
                       {b.score_cp != null
                         ? `${(b.score_cp / 100).toFixed(2)}`
                         : b.score_mate != null
-                        ? `#${b.score_mate}`
-                        : "—"}
+                          ? `#${b.score_mate}`
+                          : "—"}
                     </Table.Td>
                   </Table.Tr>
                 ))}

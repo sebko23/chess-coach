@@ -5,67 +5,64 @@
  * Falls back gracefully when no backend is running.
  */
 import { atom } from "jotai";
-import {
-  resolve,
-  homeDir,
-} from "@tauri-apps/api/path";
+import { resolve, homeDir } from "@tauri-apps/api/path";
 import { readTextFile } from "@tauri-apps/plugin-fs";
 
 /** Shape of backend.json */
 export interface BackendDescriptor {
-  backend_version: string;
-  host: string;
-  port: number;
-  protocol_version: string;
-  session_token: string;
-  started_at?: string;
+    backend_version: string;
+    host: string;
+    port: number;
+    protocol_version: string;
+    session_token: string;
+    started_at?: string;
 }
 
 /** Shape of the narration API response */
 export interface NarrationResult {
-  fen: string;
-  narration: string;
-  depth_reached: number;
-  best_move: string;
-  score_display: string;
-  pv_moves: string[];
-  /**
-   * Human-display SAN translation of pv_moves.
-   *
-   * Authoritative on the wire is pv_moves (UCI) per the v1 protocol
-   * spec. pv_moves_san is the frontend's human-display-only string;
-   * length always aligned 1:1 with pv_moves.
-   *
-   * Optional because older cached responses from before FU-5 won't
-   * have it; the rendering code falls back to pv_moves in that case.
-   */
-  pv_moves_san?: string[];
+    fen: string;
+    narration: string;
+    depth_reached: number;
+    best_move: string;
+    score_display: string;
+    pv_moves: string[];
+    /**
+     * Human-display SAN translation of pv_moves.
+     *
+     * Authoritative on the wire is pv_moves (UCI) per the v1 protocol
+     * spec. pv_moves_san is the frontend's human-display-only string;
+     * length always aligned 1:1 with pv_moves.
+     *
+     * Optional because older cached responses from before FU-5 won't
+     * have it; the rendering code falls back to pv_moves in that case.
+     */
+    pv_moves_san?: string[];
 }
 
 /** One blunder/mistake/inaccuracy record from the backend. */
 export interface BlunderItem {
-  ply: number;
-  move_san: string;
-  best_move: string;
-  score_cp_white: number;
-  cp_delta: number;
-  classification: string;
+    ply: number;
+    move_san: string;
+    best_move: string;
+    score_cp_white: number;
+    cp_delta: number;
+    classification: string;
 }
 
 /** Shape of the blunder-by-fen API response. */
 export interface BlunderByFenResult {
-  game_id: string;
-  fen: string;
-  current_ply: number;
-  blunders: BlunderItem[];
-  position_classification: BlunderItem | null;
+    game_id: string;
+    fen: string;
+    current_ply: number;
+    blunders: BlunderItem[];
+    position_classification: BlunderItem | null;
 }
 
 /** Mantine Badge color per classification. */
 export const BLUNDER_COLORS: Record<string, string> = {
-  blunder: "red",
-  mistake: "orange",
-  inaccuracy: "yellow",
+    blunder: "red",
+    mistake: "orange",
+    inaccuracy: "yellow",
 };
 
 /**
@@ -73,8 +70,8 @@ export const BLUNDER_COLORS: Record<string, string> = {
  * The gateway writes this to ``~/.local/share/chess-coach/runtime/backend.json``.
  */
 export const backendDescriptorPathAtom = atom(async () => {
-  const home = await homeDir();
-  return await resolve(home, ".local", "share", "chess-coach", "runtime", "backend.json");
+    const home = await homeDir();
+    return await resolve(home, ".local", "share", "chess-coach", "runtime", "backend.json");
 });
 
 /**
@@ -89,22 +86,29 @@ export const backendDescriptorAtom = atom<BackendDescriptor | null>(null);
  * Returns true if the descriptor changed compared to the atom's current value.
  */
 export async function loadDescriptor(
-  setAtom: (value: BackendDescriptor | null) => void,
+    setAtom: (value: BackendDescriptor | null) => void,
 ): Promise<void> {
-  try {
-    const home = await homeDir();
-    const path = await resolve(home, ".local", "share", "chess-coach", "runtime", "backend.json");
-    const raw = await readTextFile(path);
-    const descriptor: BackendDescriptor = JSON.parse(raw);
-    setAtom(descriptor);
-  } catch {
-    setAtom(null);
-  }
+    try {
+        const home = await homeDir();
+        const path = await resolve(
+            home,
+            ".local",
+            "share",
+            "chess-coach",
+            "runtime",
+            "backend.json",
+        );
+        const raw = await readTextFile(path);
+        const descriptor: BackendDescriptor = JSON.parse(raw);
+        setAtom(descriptor);
+    } catch {
+        setAtom(null);
+    }
 }
 
 // ── onMount: read once at startup ──
 backendDescriptorAtom.onMount = (setAtom) => {
-  loadDescriptor(setAtom);
+    loadDescriptor(setAtom);
 };
 
 /**
@@ -123,18 +127,18 @@ backendDescriptorAtom.onMount = (setAtom) => {
  * gateway versions.
  */
 function resolveHost(host: string): string {
-  return host === "0.0.0.0" ? "127.0.0.1" : host;
+    return host === "0.0.0.0" ? "127.0.0.1" : host;
 }
 
 export const backendBaseUrlAtom = atom<string | null>((get) => {
-  const d = get(backendDescriptorAtom);
-  if (!d) return null;
-  return `http://${resolveHost(d.host)}:${d.port}`;
+    const d = get(backendDescriptorAtom);
+    if (!d) return null;
+    return `http://${resolveHost(d.host)}:${d.port}`;
 });
 
 /** Bearer token extracted from the descriptor. */
 export const backendTokenAtom = atom<string | null>((get) => {
-  return get(backendDescriptorAtom)?.session_token ?? null;
+    return get(backendDescriptorAtom)?.session_token ?? null;
 });
 
 /** Whether the backend connection has been attempted. */
@@ -146,8 +150,8 @@ export const backendCheckedAtom = atom<boolean>(false);
  * them will cause the descriptor to be loaded.
  */
 export const ensureBackendCheckedAtom = atom<boolean>((get) => {
-  const checked = get(backendCheckedAtom);
-  return checked;
+    const checked = get(backendCheckedAtom);
+    return checked;
 });
 
 /** The result of the last narration request, or null. */
@@ -157,7 +161,6 @@ export const narrationResultAtom = atom<NarrationResult | null>(null);
 export const narrationLoadingAtom = atom<boolean>(false);
 
 /** Error message from last failed narration request, or null. */
-
 
 /** The last blunder-by-fen result, or null. */
 export const blunderResultAtom = atom<BlunderByFenResult | null>(null);
@@ -201,48 +204,63 @@ export const DEFAULT_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -
 export const boardFenAtom = atom<string | null>(null);
 
 boardFenAtom.onMount = (set) => {
-  // Re-read backend descriptor every 30s to auto-recover from gateway restarts
-  const descriptorInterval = setInterval(() => {
-    loadDescriptor(set as Parameters<typeof loadDescriptor>[0]);
-  }, 30_000);
+    // Re-read backend descriptor every 30s to auto-recover from gateway restarts
+    const descriptorInterval = setInterval(() => {
+        loadDescriptor(set as Parameters<typeof loadDescriptor>[0]);
+    }, 30_000);
 
-  const interval = setInterval(() => {
-    try {
-      // Read the "tabs" array — en-croissant does NOT persist an activeTab
-      // atom to sessionStorage.  Instead it stores an array of tab objects
-      // (each with name, value, type) under the "tabs" key.
-      const tabsRaw = sessionStorage.getItem("tabs");
-      if (!tabsRaw) { set(null); return; }
+    const interval = setInterval(() => {
+        try {
+            // Read the "tabs" array — en-croissant does NOT persist an activeTab
+            // atom to sessionStorage.  Instead it stores an array of tab objects
+            // (each with name, value, type) under the "tabs" key.
+            const tabsRaw = sessionStorage.getItem("tabs");
+            if (!tabsRaw) {
+                set(null);
+                return;
+            }
 
-      const tabs = JSON.parse(tabsRaw);
-      if (!Array.isArray(tabs) || tabs.length === 0) { set(null); return; }
+            const tabs = JSON.parse(tabsRaw);
+            if (!Array.isArray(tabs) || tabs.length === 0) {
+                set(null);
+                return;
+            }
 
-      const activeTabId = sessionStorage.getItem("activeTab");
-      const activeTab = tabs.find((t: {value: string; type: string}) => t.value === activeTabId)
-        ?? tabs.find((t: {value: string; type: string}) => t.type === "analysis")
-        ?? null;
-      if (!activeTab?.value) { set(null); return; }
+            const activeTabId = sessionStorage.getItem("activeTab");
+            const activeTab =
+                tabs.find((t: { value: string; type: string }) => t.value === activeTabId) ??
+                tabs.find((t: { value: string; type: string }) => t.type === "analysis") ??
+                null;
+            if (!activeTab?.value) {
+                set(null);
+                return;
+            }
 
-      const raw = sessionStorage.getItem(activeTab.value);
-      if (!raw) { set(null); return; }
+            const raw = sessionStorage.getItem(activeTab.value);
+            if (!raw) {
+                set(null);
+                return;
+            }
 
-      const parsed = JSON.parse(raw);
-      const treeState = parsed?.state;
-      if (!treeState) return;
+            const parsed = JSON.parse(raw);
+            const treeState = parsed?.state;
+            if (!treeState) return;
 
-      // Traverse position path through root.children to find leaf FEN.
-      const path: number[] = treeState.position ?? [];
-      let node = treeState.root;
-      for (const idx of path) {
-        node = node?.children?.[idx];
-        if (!node) break;
-      }
-      const fen = node?.fen ?? treeState.root?.fen ?? DEFAULT_FEN;
-      set(fen);
-    } catch {
-      // sessionStorage parse errors are transient; leave current value.
-    }
-  }, 200);
-  return () => { clearInterval(interval); clearInterval(descriptorInterval); };
+            // Traverse position path through root.children to find leaf FEN.
+            const path: number[] = treeState.position ?? [];
+            let node = treeState.root;
+            for (const idx of path) {
+                node = node?.children?.[idx];
+                if (!node) break;
+            }
+            const fen = node?.fen ?? treeState.root?.fen ?? DEFAULT_FEN;
+            set(fen);
+        } catch {
+            // sessionStorage parse errors are transient; leave current value.
+        }
+    }, 200);
+    return () => {
+        clearInterval(interval);
+        clearInterval(descriptorInterval);
+    };
 };
-

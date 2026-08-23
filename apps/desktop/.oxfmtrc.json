@@ -5,6 +5,10 @@
     "src-tauri/**/*",
     ".github/**/*",
     "src/bindings/generated.ts",
-    "src/routeTree.gen.ts"
+    "src/routeTree.gen.ts",
+    "UPSTREAM.md",
+    "LICENSE",
+    "src/translation/**/*",
+    "src/locales/**/*"
   ]
 }

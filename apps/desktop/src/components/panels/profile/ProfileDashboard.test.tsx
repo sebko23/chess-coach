@@ -12,9 +12,7 @@ import ProfileDashboard from "./ProfileDashboard";
 // rather than returning a new atom object — Jotai atoms are
 // registered globally by reference.
 vi.mock("@/state/atoms/coach", async () => {
-  const actual = await vi.importActual<typeof import("@/state/atoms/coach")>(
-    "@/state/atoms/coach",
-  );
+  const actual = await vi.importActual<typeof import("@/state/atoms/coach")>("@/state/atoms/coach");
   actual.backendDescriptorAtom.onMount = () => {};
   return actual;
 });
@@ -116,9 +114,7 @@ describe("ProfileDashboard Tilt Over Time card (sprint-2)", () => {
       }),
     );
 
-    const rendered = renderWithProvider(
-      createElement(ProfileDashboard as ComponentType),
-    );
+    const rendered = renderWithProvider(createElement(ProfileDashboard as ComponentType));
 
     // The original test claimed this asserted "No tilt history data yet".
     // That string does not exist in the component; the actual empty-state
@@ -139,9 +135,7 @@ describe("ProfileDashboard Tilt Over Time card (sprint-2)", () => {
       }),
     );
 
-    const rendered = renderWithProvider(
-      createElement(ProfileDashboard as ComponentType),
-    );
+    const rendered = renderWithProvider(createElement(ProfileDashboard as ComponentType));
 
     // The original test claimed this asserted "Tilt Over Time". That
     // string does not exist in the component. The closest tilt-related
@@ -160,9 +154,7 @@ describe("ProfileDashboard Tilt Over Time card (sprint-2)", () => {
       }),
     );
 
-    const rendered = renderWithProvider(
-      createElement(ProfileDashboard as ComponentType),
-    );
+    const rendered = renderWithProvider(createElement(ProfileDashboard as ComponentType));
 
     // The original test asserted on `<h2>...Profile...</h2>` via regex.
     // The actual h2 text is "Playing Style Patterns" (per
@@ -170,8 +162,6 @@ describe("ProfileDashboard Tilt Over Time card (sprint-2)", () => {
     // of any h2 heading verifies the dashboard layout is rendered
     // (which is what the original test intended to verify), without
     // asserting on text that doesn't exist in the component.
-    expect(
-      await rendered.findByRole("heading", { level: 2 }),
-    ).toBeTruthy();
+    expect(await rendered.findByRole("heading", { level: 2 })).toBeTruthy();
   });
 });

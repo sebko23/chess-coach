@@ -59,7 +59,6 @@ const FALLBACK_FEN = DEFAULT_FEN;
  */
 const ANALYSIS_DEPTH = 10;
 
-
 /**
  * Derive the game phase from the current ply number.
  * Matches the backend's `game_phase` enum in services/chess_coach/gateway/routes/narration.py:
@@ -67,9 +66,7 @@ const ANALYSIS_DEPTH = 10;
  *   "middlegame" -> ply <= 60 (moves 11..30)
  *   "endgame"    -> ply > 60
  */
-function deriveGamePhase(
-  ply: number,
-): "opening" | "middlegame" | "endgame" {
+function deriveGamePhase(ply: number): "opening" | "middlegame" | "endgame" {
   if (ply <= 20) return "opening";
   if (ply <= 60) return "middlegame";
   return "endgame";
@@ -96,7 +93,7 @@ async function fetchNarration(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       fen,
@@ -121,11 +118,7 @@ function ConnectionStatus() {
 
   if (!descriptor) {
     return (
-      <Alert
-        color="yellow"
-        icon={<IconPlugConnectedX size={16} />}
-        title="Backend not found"
-      >
+      <Alert color="yellow" icon={<IconPlugConnectedX size={16} />} title="Backend not found">
         Start the CHESS COACH backend:{" "}
         <Text component="code" size="sm">
           chess-coach-gateway
@@ -135,14 +128,9 @@ function ConnectionStatus() {
   }
 
   return (
-    <Alert
-      color="green"
-      icon={<IconPlugConnected size={16} />}
-      title={`Connected to backend`}
-    >
+    <Alert color="green" icon={<IconPlugConnected size={16} />} title={`Connected to backend`}>
       <Text size="sm">
-        v{descriptor.backend_version} on {baseUrl} — protocol{" "}
-        {descriptor.protocol_version}
+        v{descriptor.backend_version} on {baseUrl} — protocol {descriptor.protocol_version}
       </Text>
     </Alert>
   );
@@ -180,11 +168,11 @@ function PVLine({
 function renderNarration(text: string | undefined): string {
   if (!text) return "";
   return text
-    .replace(/<move>([^<]+)<\/move>/g, '$1')
-    .replace(/<eval>([^<]+)<\/eval>/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1');
+    .replace(/<move>([^<]+)<\/move>/g, "$1")
+    .replace(/<eval>([^<]+)<\/eval>/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1");
 }
 
 function parseScoreDisplay(s: string): { cp: number; isMate: boolean } {
@@ -195,7 +183,17 @@ function parseScoreDisplay(s: string): { cp: number; isMate: boolean } {
   return { cp: isNaN(num) ? 0 : Math.round(num * 100), isMate: false };
 }
 
-function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { result: NarrationResult; evalPoints: EvalPoint[]; currentPly: number; onPlyClick: (ply: number) => void }) {
+function NarrationResultView({
+  result,
+  evalPoints,
+  currentPly,
+  onPlyClick,
+}: {
+  result: NarrationResult;
+  evalPoints: EvalPoint[];
+  currentPly: number;
+  onPlyClick: (ply: number) => void;
+}) {
   const blunderResult = useAtomValue(blunderResultAtom);
   return (
     <Stack gap="md">
@@ -209,7 +207,9 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
           {blunderResult?.position_classification && (
             <Badge
               size="lg"
-              color={BLUNDER_COLORS[blunderResult.position_classification.classification ?? ""] || "gray"}
+              color={
+                BLUNDER_COLORS[blunderResult.position_classification.classification ?? ""] || "gray"
+              }
               variant="filled"
             >
               {blunderResult.position_classification.classification}
@@ -240,7 +240,6 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
         </Card>
       )}
 
-
       {blunderResult && blunderResult?.blunders?.length > 0 && (
         <Card withBorder>
           <Title order={4} mb="sm">
@@ -249,17 +248,15 @@ function NarrationResultView({ result, evalPoints, currentPly, onPlyClick }: { r
           <Box style={{ maxHeight: 300, overflowY: "auto" }}>
             {blunderResult.blunders.map((b) => (
               <Group key={b.ply} gap="xs" mb="xs" wrap="nowrap">
-                <Badge
-                  size="sm"
-                  color={BLUNDER_COLORS[b.classification] || "gray"}
-                >
+                <Badge size="sm" color={BLUNDER_COLORS[b.classification] || "gray"}>
                   {b.classification}
                 </Badge>
                 <Text size="sm" ff="monospace">
                   {b.move_san}
                 </Text>
                 <Text size="xs" c="dimmed">
-                  ({b.cp_delta >= 0 ? "+" : ""}{b.cp_delta}cp)
+                  ({b.cp_delta >= 0 ? "+" : ""}
+                  {b.cp_delta}cp)
                 </Text>
                 <Text size="xs" fw={700}>
                   → {b.best_move}
@@ -316,7 +313,7 @@ export default function CoachPanel() {
   const [blunderResult, setBlunderResult] = useAtom(blunderResultAtom);
   const [blunderLoading, setBlunderLoading] = useAtom(blunderLoadingAtom);
   const setDescriptor = useSetAtom(backendDescriptorAtom);
-  const liveFen = useAtomValue(boardFenAtom);  // null = no board tab yet
+  const liveFen = useAtomValue(boardFenAtom); // null = no board tab yet
   // Game ID from first training card or current board game
   const [evalGraphGameId, setEvalGraphGameId] = useState<string | null>(null);
 
@@ -345,7 +342,6 @@ export default function CoachPanel() {
     lastAnalyzedFen.current = null;
   }, [setDescriptor, setError, setResult]);
 
-
   // Watch for tab switches by polling sessionStorage.
   // When the active tab changes, reset the analyzed-FEN cache so the
   // next FEN variation triggers re-analysis regardless of identical FEN.
@@ -353,7 +349,7 @@ export default function CoachPanel() {
   useEffect(() => {
     const interval = setInterval(() => {
       const id = sessionStorage.getItem("activeTab");
-      setActiveTabId(prev => {
+      setActiveTabId((prev) => {
         if (prev !== id) {
           // Tab switched — reset cache so next FEN triggers re-analysis
           lastAnalyzedFen.current = null;
@@ -363,7 +359,6 @@ export default function CoachPanel() {
     }, 200);
     return () => clearInterval(interval);
   }, []);
-
 
   // Fetch blunder-by-fen result when FEN stabilises.
   useEffect(() => {
@@ -379,7 +374,7 @@ export default function CoachPanel() {
         );
         if (!cancelled) {
           if (resp.ok) {
-            setBlunderResult(await resp.json() as BlunderByFenResult);
+            setBlunderResult((await resp.json()) as BlunderByFenResult);
           } else {
             setBlunderResult(null);
           }
@@ -391,19 +386,20 @@ export default function CoachPanel() {
       }
     };
     fetchBlunders();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [baseUrl, token, debouncedFen]);
-  
+
   // Fetch eval-graph points when we have a game ID
   useEffect(() => {
     if (!baseUrl || !token || !gameId) return;
     let cancelled = false;
     const fetchEval = async () => {
       try {
-        const resp = await fetch(
-          `${baseUrl}/v1/games/${gameId}/eval-graph?limit=100`,
-          { headers: { Authorization: `Bearer ${token}` } as HeadersInit },
-        );
+        const resp = await fetch(`${baseUrl}/v1/games/${gameId}/eval-graph?limit=100`, {
+          headers: { Authorization: `Bearer ${token}` } as HeadersInit,
+        });
         if (!cancelled && resp.ok) {
           const data = await resp.json();
           setEvalPoints(data.points || []);
@@ -417,7 +413,9 @@ export default function CoachPanel() {
       }
     };
     fetchEval();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [baseUrl, token, gameId]);
   // Analyse the current board position when the FEN changes.
   // debouncedFen in deps ensures re-analysis on position change.
@@ -448,21 +446,13 @@ export default function CoachPanel() {
         const moveSan = pointAtPly?.move_san ?? null;
         const evalCp = pointAtPly ? pointAtPly.score_cp_white : null;
         const gamePhase = currentPly > 0 ? deriveGamePhase(currentPly) : null;
-        return fetchNarration(
-          baseUrl,
-          token,
-          debouncedFen!,
-          moveSan,
-          evalCp,
-          gamePhase,
-        );
+        return fetchNarration(baseUrl, token, debouncedFen!, moveSan, evalCp, gamePhase);
       };
       try {
         // First attempt
         const narration = await attemptFetch();
         if (!cancelled) {
           setResult(narration);
-
         }
       } catch (firstErr) {
         // Connection failure — likely stale descriptor.  Re-read once and retry.
@@ -477,7 +467,7 @@ export default function CoachPanel() {
           const narration = await attemptFetch();
           if (!cancelled) {
             setResult(narration);
-  
+
             return;
           }
         } catch (_secondErr) {
@@ -485,18 +475,16 @@ export default function CoachPanel() {
         }
 
         if (!cancelled) {
-          setError(
-            firstErr instanceof Error
-              ? firstErr.message
-              : String(firstErr),
-          );
+          setError(firstErr instanceof Error ? firstErr.message : String(firstErr));
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
     run();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [baseUrl, token, debouncedFen, setDescriptor]);
 
   return (
@@ -508,11 +496,7 @@ export default function CoachPanel() {
             CHESS COACH
           </Title>
           {error && (
-            <Button
-              variant="light"
-              leftSection={<IconRefresh size={16} />}
-              onClick={handleRetry}
-            >
+            <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={handleRetry}>
               Retry
             </Button>
           )}
@@ -530,31 +514,33 @@ export default function CoachPanel() {
         )}
 
         {error && !loading && (
-          <Alert
-            color="red"
-            title="Analysis error"
-            icon={<IconRefresh size={16} />}
-          >
+          <Alert color="red" title="Analysis error" icon={<IconRefresh size={16} />}>
             <Stack gap="sm">
               <Text>{error}</Text>
               <Text size="sm" c="dimmed">
-                The backend may have restarted on a different port. Click Retry
-                to re-discover the backend and try again.
+                The backend may have restarted on a different port. Click Retry to re-discover the
+                backend and try again.
               </Text>
             </Stack>
           </Alert>
         )}
 
-        {result && !loading && <NarrationResultView result={result} evalPoints={evalPoints} currentPly={currentPly} onPlyClick={setCurrentPly} />}
+        {result && !loading && (
+          <NarrationResultView
+            result={result}
+            evalPoints={evalPoints}
+            currentPly={currentPly}
+            onPlyClick={setCurrentPly}
+          />
+        )}
 
         {!baseUrl && !loading && !error && (
           <Card withBorder py="xl">
             <Stack align="center" gap="md">
               <IconBrain size={48} opacity={0.3} />
               <Text c="dimmed" ta="center" maw={400}>
-                Start the CHESS COACH backend to see coaching analysis for
-                any chess position. The grounded narration pipeline uses
-                Stockfish evaluation with fact-checking to prevent
+                Start the CHESS COACH backend to see coaching analysis for any chess position. The
+                grounded narration pipeline uses Stockfish evaluation with fact-checking to prevent
                 hallucinations.
               </Text>
             </Stack>

@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "start-vite": "vite",
     "build-vite": "tsgo --noEmit && vite build",
@@ -110,5 +109,6 @@
     "oxlint": "^1.55.0",
     "oxlint-tsgolint": "^0.16.0",
     "vitest": "^4.1.0"
-  }
+  },
+  "packageManager": "pnpm@11.21.0"
 }
