@@ -1832,10 +1832,22 @@ GitHub Actions API confirms it was never registered; root `smoke.yml`'s frontend
 jobs (`frontend-imports`, `frontend-types-codegen`) run neither lint nor vitest.
 Net effect: ~40k lines of TS/TSX have NO live CI regression floor.
 
-**Status:** **OPEN — moderate priority.** Fix is small: add a `frontend-lint-test`
-job to root `.github/workflows/smoke.yml` running `pnpm install --frozen-lockfile
-&& pnpm lint:ci && pnpm test`. Verify locally first that both commands actually
-pass on current main before wiring them into CI (do not wire a red job).
+**Status:** **OPEN — moderate priority, decomposed after 2026-08-23
+investigation.** The gap is NOT sec01/sec02-shaped: the checks don't currently
+pass, so wiring them into CI today would be instantly red. Decomposition:
+
+- **(A)** vitest config bug: `tests/e2e/*.spec.ts` import `@playwright/test`
+  (not installed) and vitest dies resolving them — exclude e2e from vitest's
+  include pattern. Small; makes `pnpm test` green immediately.
+- **(B)** 3x TS2304 `'global'` in `ProfileDashboard.test.tsx` breaks
+  `tsgo --noEmit`. Small fix (node types or globalThis).
+- **(C)** ~306 files fail `oxfmt --check` — formatting was never enforced.
+  Owner call needed: enforce-and-fix vs drop oxfmt from lint:ci. Big diff.
+- **(D)** wire `lint:ci` + `test` into root smoke.yml — ONLY after A+B land
+  and C is decided; do not wire red jobs.
+
+Investigated 2026-08-23 on `origin/main@904e8635`: 44 unit/component tests
+pass; oxlint passes (0 errors / 81 warnings); failures are A, B, C above.
 
 ## FU-26 — ErrorComponent Discord anchor still points at upstream's server (open editorial question)
 
@@ -1849,9 +1861,11 @@ channel exists ("linked from the repo's social page") but names no URL, so
 whether the current target is wrong cannot be verified from the repo alone.
 The GitHub anchor (L46) was correctly retargeted to `sebko23/chess-coach/issues/new`.
 
-**Status:** **OPEN — low priority, needs project-owner input.** Resolution is one
-of: (a) confirm the chess-coach channel lives on that server → no change needed,
-optionally update CONTRIBUTING.md L13 with the explicit invite URL; (b) provide
-the correct chess-coach invite URL → one-line change to ErrorComponent.tsx:50;
-(c) remove the anchor and its `<discord>` interpolation from the Trans components +
-translation strings. Owner decision required; do not resolve by guessing.
+**Status:** **RESOLVED 2026-08-23 (option c).** Owner confirmed no chess-coach
+community Discord exists. Pre-removal verification: exactly ONE invite code in
+all tracked files (upstream's tdYzfDbSSW); no COMMUNITY/SUPPORT/COC file ever in
+history; owner GitHub profile has zero social accounts (CONTRIBUTING.md's "repo's
+social page" points at nothing real). Anchor removed via plain-JSX replacement of
+the Trans block — translation JSONs untouched per §3.2 never-edit list; unused
+Error.ReportIssue keys remain in locales (harmless dead entries). Landed with the
+FU-26 fix commit.
