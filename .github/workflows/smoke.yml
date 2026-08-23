@@ -83,6 +83,42 @@ jobs:
       - name: Verify api.ts matches the backend OpenAPI schema
         run: node scripts/codegen/gen-api.mjs --check
 
+  # FU-25 (2026-08-23): the upstream-inherited apps/desktop/.github/workflows/
+  # test.yml (deleted in BBF-103) was the only place frontend lint+test ever
+  # ran, and it was never registered with Actions. This job closes that gap
+  # now that both commands actually pass locally (vitest e2e exclusion +
+  # globalThis fetch mock + oxfmt enforcement landed in BBF-104's follow-up).
+  frontend-lint-test:
+    name: frontend lint + test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # FU-17-era pin: pnpm 11 requires Node 22.13+
+          node-version: "22"
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install frontend deps (frozen lockfile)
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (tsgo + oxfmt --check + oxlint + i18n extract check)
+        working-directory: apps/desktop
+        run: pnpm lint:ci
+
+      - name: Unit/component tests (vitest)
+        working-directory: apps/desktop
+        run: pnpm test
+
   # Fast unit-level guard against the BBF-38/40/41/42/44 missing-dep
   # cascade. Runs the gateway boot regression test in a FRESH venv
   # that only has the declared [project.dependencies] installed,
