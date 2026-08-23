@@ -1,6 +1,6 @@
 import { Anchor, Button, Code, CopyButton, Group, Stack, Text, Title } from "@mantine/core";
 import { useNavigate } from "@tanstack/react-router";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 
 export default function ErrorComponent({ error }: { error: unknown }) {
   const { t } = useTranslation();
@@ -38,18 +38,11 @@ export default function ErrorComponent({ error }: { error: unknown }) {
       </Group>
 
       <Text>
-        <Trans
-          i18nKey="Error.ReportIssue"
-          components={{
-            github: (
-              <Anchor
-                href="https://github.com/sebko23/chess-coach/issues/new"
-                target="_blank"
-              />
-            ),
-            discord: <Anchor href="https://discord.com/invite/tdYzfDbSSW" target="_blank" />,
-          }}
-        />
+        Please report this on{" "}
+        <Anchor href="https://github.com/sebko23/chess-coach/issues/new" target="_blank">
+          GitHub
+        </Anchor>
+        .
       </Text>
     </Stack>
   );
