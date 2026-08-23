@@ -1688,3 +1688,170 @@ invocation. A malicious PDF can balloon `pdftoppm` RSS without bound"
 — Last updated 2026-08-11, post-FU-8 fix landed (PR #92); third-round doc-drift fix-up (third doc-drift cycle after PR #90 + PR #91) added Resolved blocks + clarifications for FU-6 (PR #82), FU-7 (PR #84, alpha-shipped + beta-deferred-to-FU-11 framing per Sebastian+Claude), FU-8 (PR #92), FU-15 (FULLY RESOLVED via PR #86 + PR #89), and FU-17 (status-line clarification). Original OPEN status fields preserved as historical context per the doc-drift fix-up convention. Phase-completion audit 2026-08-11 surfaced two real security contract gaps (A-F10 = Windows Credential Manager secrets, A-F11 = PDF parsing subprocess sandbox) that have no tests at all; logged as FU-18 and FU-19 respectively (not implemented, just recorded).
 
 - Session 2026-08-13 (post-PR #97 stable-state check): audit-trail docs in `docs/16_audit/` with stale "Status: DRAFTED 2026-08-04" fields surfaced (6 docs: `apply-route-guard-5-routes.md`, `BBF-87.2.1-error-envelope-propagation.md`, `BBF-87.2-wire-engine-pool-narration.md`, `doc-fix-pv-moves-uci-schema.md`, `doc-reconciliation-2026-08-04.md`, `eval-verifier-bearer-auth.md`) despite their BBFs all having shipped (PRs #75, #76, #77, #79, #80, #82 — all on `origin/main`). Verdict (per directive): defer. The drift is self-correcting via `git log` (the verify-before-trust reflex established this session makes the audit-doc Status field non-load-bearing), and a fix-up PR would be a thinner-finding round of the doc-drift sweep pattern whose value has now shifted to "catches drift as it happens" via the doc-drift fix-up convention + sec-shape CI pattern. Logged here for discoverability; no session action.
+
+
+## FU-23 — Data-dir migration: `org.encroissant.app` → `org.chesscoach.app`
+
+**Identified:** ADR-0007 implementation BBF (this session, 2026-08-21), during
+Phase 1.4 downstream impact scan + Q2 local-state check.
+
+**Context (verbatim from Q2 verification):**
+
+Tauri's `appDataDir()` derives its path from the bundle `identifier` in
+`tauri.conf.json`. The integration contract `docs/15_integration_surfaces/en-croissant.md`
+§4.2 names the GUI's identifier-derived path as the canonical local-data
+location, with `apps/desktop/src/utils/directories.ts` calling `appDataDir()`
+three times (for `db/`, `engines/`, `puzzles/`) and `documentDir()` /
+`homeDir()` once each (with a hardcoded `EnCroissant` subdir name — itself
+out of scope per ADR-0007's "default data dir is a separate BBF with
+migration path" exclusion).
+
+The current local dev environment (`C:\Users\i3\AppData\Roaming\`) contains
+real data under `org.encroissant.app\` — verified during this session:
+
+- `db\ebassti_lichess.db3` + `.ecsi` + `.pgn` (a known Lichess user's data,
+  also the deterministic fixture for BBF-84B's integration tests)
+- `db\Ajedrez Data - Correspondence.db3` + `.ecsi` (another user's data)
+- `engines\stockfish`, `engines\komodo-14_224afb`, `engines\engines.json`
+- `puzzles\`
+- `.window-state.json`
+- A second case variant: `org.encroissant.App\` (Windows is case-insensitive
+  but real dirs preserve case; same directory under both names)
+- `C:\Users\i3\Documents\EnCroissant\` (the hardcoded path from
+  `directories.ts:39`)
+- `C:\Users\i3\AppData\Local\org.encroissant.app\logs\en-croissant.log`
+  (the auto-update check log; goes away with auto-update disabled per
+  Phase 1.3)
+
+After the implementation BBF lands, Tauri's `appDataDir()` will return
+`%APPDATA%\org.chesscoach.app\` and the existing data at the old path
+will not be visible to the app without a one-time migration.
+
+**Why this is deferred (per Sebastian+Claude directive, 2026-08-21):**
+
+- No end-user installs of CHESS COACH GUI exist anywhere — Phase 8
+  packaging has never shipped per `docs/16_audit/PHASE-8-MINIMUM-VIABLE-SCOPING-2026-08-20.md`
+  §1. The at-risk data is dev-environment only.
+- Building a proper migration mechanism now would mean opening a new
+  ADR to amend the integration contract's allowlist (per §9, any §3.1
+  change requires an ADR), for a problem with zero real users.
+- Speculative engineering: when Phase 8 actually ships and real installs
+  exist, that's the right time to design migration with real constraints
+  in view (one-time on first launch with new identifier, vs. a config
+  switch, vs. a CLI tool, vs. something else).
+- The implementation BBF's PR body includes a one-line **action** for
+  current dev users: the literal `cp -r` / `robocopy` command to migrate
+  the data forward, so the at-risk state isn't silently lost. That
+  command is the bridge until a proper migration mechanism lands.
+
+**Status:** **OPEN — DEFERRED UNTIL PHASE 8 SHIPS.** Explicitly gated on
+the first release-candidate build of the CHESS COACH GUI installer (Phase 8
+BBF-2 "tauri.conf.json updated with externalBin + sidecar" or whichever
+sub-task first produces a packaged MSI/NSIS/AppImage). At that point, this
+FU becomes an actionable BBF with real-world constraints to design against.
+
+**Bridge (current dev users):**
+
+```
+# Windows (PowerShell, run BEFORE pulling the implementation BBF):
+robocopy "$env:APPDATA\org.encroissant.app" "$env:APPDATA\org.chesscoach.app" /E
+
+# Windows (cmd, equivalent):
+robocopy "%APPDATA%\org.encroissant.app" "%APPDATA%\org.chesscoach.app" /E
+
+# Linux / macOS (run BEFORE pulling):
+cp -r ~/.local/share/org.encroissant.app ~/.local/share/org.chesscoach.app
+
+# macOS (alternate location some apps use):
+cp -r ~/Library/Application\ Support/org.encroissant.app ~/Library/Application\ Support/org.chesscoach.app
+```
+
+The hardcoded `~/Documents/EnCroissant/` and `~/EnCroissant/` paths from
+`directories.ts:39-41` are NOT covered by the GUI's identifier rename
+— they're separate bugs in `directories.ts` itself (ADR-0007 §Scope
+explicitly excluded "default data dir is a separate BBF"). Migration
+of those paths is its own future BBF.
+
+**Action items (when picked up):**
+
+1. Read this FU + the implementation BBF's PR body for context on what
+   was changed and why.
+2. Decide: one-time migration on first launch with new identifier
+   (auto-detect old path, move contents), OR config-driven data-dir
+   override (let users set their own path), OR CLI tool, OR combination.
+3. ADR to amend the integration contract's allowlist (per §9) to cover
+   whichever files the migration touches (likely `directories.ts` and
+   possibly a new Rust migration module).
+4. Implement + verify against the real data on this dev host (the
+   `ebassti_lichess.db3` file is the BBF-84B integration-test fixture —
+   migration test should round-trip its content correctly).
+5. Coordinate with the Phase 8 packaging BBF (so the migration runs
+   before the first install, not on every install).
+
+
+## FU-24 — Stale doc pointers found during PR #102 leaf review (rebase ritual + apps/cli README status)
+
+**Identified:** BBF-102 leaf review (PR #102, 2026-08-22), reviewer's non-blocking
+observation 2. Fresh-pass finding — not surfaced by the prior session's investigations.
+
+**The two stale pointers:**
+
+1. `docs/11_repo_structure/repository-structure.md:154` claims the fork's "rebase
+   ritual lives in `apps/desktop/README.md`". It actually lives in
+   `apps/desktop/UPSTREAM.md` §Rebase history. Equally wrong before and after
+   PR #102's README refresh (the refresh didn't touch rebase content).
+
+2. `apps/cli/README.md:5` carries a "not yet populated"-style pre-implementation
+   status line of its own — same staleness shape that PR #102 fixed for
+   `apps/desktop/README.md`, but for the CLI app directory. Pre-existing;
+   different app; out of PR #102's scope.
+
+**Status:** **OPEN — low priority doc-drift cleanup.** Both are single-line
+fixes in tracked docs; no governance needed (neither file is upstream-inherited
+in the §3.1 sense). Good candidates for a future doc-drift sweep BBF alongside
+the pattern established by the 2026-08-13 doc-drift fix-up convention.
+
+**Action items (when picked up):**
+
+1. Fix `repository-structure.md:154` to point at `apps/desktop/UPSTREAM.md`
+   §Rebase history.
+2. Refresh `apps/cli/README.md` status line to reflect the CLI's actual current
+   state (verify what that state is first — do not assume).
+
+
+## FU-25 — Frontend CI coverage gap: `pnpm lint:ci` + `pnpm test` run in no live workflow
+
+**Identified:** BBF-103 leaf review (PR #103, 2026-08-23), nit N1 follow-up
+recommendation. Same failure shape as the sec01/sec02 precedent: "test exists
+but nothing runs it."
+
+**Symptom:** The upstream-inherited `apps/desktop/.github/workflows/test.yml`
+(deleted in BBF-103 as never-registered dead config) was the ONLY place that ran
+`pnpm lint:ci` (tsgo + oxfmt + oxlint + i18n extract) and `pnpm test` (vitest).
+GitHub Actions API confirms it was never registered; root `smoke.yml`'s frontend
+jobs (`frontend-imports`, `frontend-types-codegen`) run neither lint nor vitest.
+Net effect: ~40k lines of TS/TSX have NO live CI regression floor.
+
+**Status:** **OPEN — moderate priority.** Fix is small: add a `frontend-lint-test`
+job to root `.github/workflows/smoke.yml` running `pnpm install --frozen-lockfile
+&& pnpm lint:ci && pnpm test`. Verify locally first that both commands actually
+pass on current main before wiring them into CI (do not wire a red job).
+
+## FU-26 — ErrorComponent Discord anchor still points at upstream's server (open editorial question)
+
+**Identified:** BBF-103 implementation (PR #103, 2026-08-23); recorded as an open
+editorial question in the PR/commit bodies and deliberately left unchanged.
+
+**Symptom:** `apps/desktop/src/components/ErrorComponent.tsx:50` — the error
+screen's Discord anchor points at `https://discord.com/invite/tdYzfDbSSW`
+(upstream en-croissant's server). Root `CONTRIBUTING.md` L13 hints a chess-coach
+channel exists ("linked from the repo's social page") but names no URL, so
+whether the current target is wrong cannot be verified from the repo alone.
+The GitHub anchor (L46) was correctly retargeted to `sebko23/chess-coach/issues/new`.
+
+**Status:** **OPEN — low priority, needs project-owner input.** Resolution is one
+of: (a) confirm the chess-coach channel lives on that server → no change needed,
+optionally update CONTRIBUTING.md L13 with the explicit invite URL; (b) provide
+the correct chess-coach invite URL → one-line change to ErrorComponent.tsx:50;
+(c) remove the anchor and its `<discord>` interpolation from the Trans components +
+translation strings. Owner decision required; do not resolve by guessing.
