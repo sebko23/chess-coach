@@ -109,7 +109,7 @@ describe("ProfileDashboard Tilt Over Time card (sprint-2)", () => {
     // Mock fetch to return the empty-analysis stub. Using vi.spyOn(global,
     // 'fetch') so the mock is automatically restored in afterEach via
     // vi.restoreAllMocks().
-    vi.spyOn(global, "fetch").mockResolvedValue(
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(EMPTY_ANALYSIS), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -132,7 +132,7 @@ describe("ProfileDashboard Tilt Over Time card (sprint-2)", () => {
   });
 
   test("renders the metric cards with their friendly names", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(EMPTY_ANALYSIS), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -153,7 +153,7 @@ describe("ProfileDashboard Tilt Over Time card (sprint-2)", () => {
   });
 
   test("renders the page-level heading (sanity check on the test render)", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue(
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(EMPTY_ANALYSIS), {
         status: 200,
         headers: { "Content-Type": "application/json" },
