@@ -18,9 +18,7 @@ function formatScore(cp: number, isMate: boolean): string {
 }
 
 export function EvalBar({ scoreCpWhite, isMate = false, height = 320 }: EvalBarProps) {
-  const whitePct = isMate
-    ? scoreCpWhite > 0 ? 100 : 0
-    : cpToPercent(scoreCpWhite);
+  const whitePct = isMate ? (scoreCpWhite > 0 ? 100 : 0) : cpToPercent(scoreCpWhite);
   const blackPct = 100 - whitePct;
   const label = formatScore(scoreCpWhite, isMate);
   const labelOnTop = scoreCpWhite < 0;

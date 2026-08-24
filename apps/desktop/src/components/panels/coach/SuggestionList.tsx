@@ -61,7 +61,9 @@ export function SuggestionList({
       {hasPv && (
         <Box>
           <Group gap={6} mb={6} align="center">
-            <Text size="xs" fw={500} c="dimmed">Engine line</Text>
+            <Text size="xs" fw={500} c="dimmed">
+              Engine line
+            </Text>
             {depthReached && (
               <Badge size="xs" variant="outline" color="gray">
                 depth {depthReached}
@@ -83,7 +85,10 @@ export function SuggestionList({
             <Text size="sm" ff="monospace" style={{ lineHeight: 1.8, wordBreak: "break-word" }}>
               {pvMoves.slice(0, 8).join(" ")}
               {pvMoves.length > 8 && (
-                <Text span size="xs" c="dimmed"> +{pvMoves.length - 8} more</Text>
+                <Text span size="xs" c="dimmed">
+                  {" "}
+                  +{pvMoves.length - 8} more
+                </Text>
               )}
             </Text>
           </Box>
@@ -118,7 +123,8 @@ export function SuggestionList({
                 <Group justify="space-between" wrap="nowrap" gap={8}>
                   <Group gap={6} wrap="nowrap">
                     <Text size="xs" c="dimmed" w={24} ta="right">
-                      {Math.ceil(point.ply / 2)}{point.ply % 2 === 1 ? "." : "..."}
+                      {Math.ceil(point.ply / 2)}
+                      {point.ply % 2 === 1 ? "." : "..."}
                     </Text>
                     <Text size="sm" fw={isCurrent ? 600 : 400}>
                       {point.move_san}
@@ -126,7 +132,9 @@ export function SuggestionList({
                     {delta && (
                       <Badge
                         size="xs"
-                        color={delta === "Blunder" ? "red" : delta === "Mistake" ? "orange" : "yellow"}
+                        color={
+                          delta === "Blunder" ? "red" : delta === "Mistake" ? "orange" : "yellow"
+                        }
                         variant="light"
                       >
                         {delta}
@@ -134,8 +142,14 @@ export function SuggestionList({
                     )}
                   </Group>
                   <Group gap={6} wrap="nowrap">
-                    <Text size="xs" c="dimmed" ff="monospace">{point.best_move}</Text>
-                    <Badge size="sm" color={cpColor(point.score_cp_white, point.is_mate)} variant="light">
+                    <Text size="xs" c="dimmed" ff="monospace">
+                      {point.best_move}
+                    </Text>
+                    <Badge
+                      size="sm"
+                      color={cpColor(point.score_cp_white, point.is_mate)}
+                      variant="light"
+                    >
                       {cpLabel(point.score_cp_white, point.is_mate)}
                     </Badge>
                   </Group>

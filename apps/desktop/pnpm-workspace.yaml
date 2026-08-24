@@ -17,7 +17,7 @@
 # approved anything under pnpm 11. The values below were populated
 # via `pnpm approve-builds @swc/core core-js` and verified locally.
 allowBuilds:
-  '@swc/core': true
+  "@swc/core": true
   core-js: true
   esbuild: true
   protobufjs: true

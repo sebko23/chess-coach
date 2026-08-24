@@ -18,18 +18,18 @@
 // test harness avoided this because SSR doesn't run effects.
 
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
-  Object.defineProperty(window, "matchMedia", {
-    writable: true,
-    configurable: true,
-    value: (query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    }),
-  });
+    Object.defineProperty(window, "matchMedia", {
+        writable: true,
+        configurable: true,
+        value: (query: string) => ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+            dispatchEvent: () => false,
+        }),
+    });
 }

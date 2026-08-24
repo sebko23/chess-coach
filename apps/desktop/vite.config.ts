@@ -45,6 +45,14 @@ export default defineConfig({
     },
     test: {
         environment: "jsdom",
+        // FU-25 (2026-08-23): restrict vitest to unit/component tests under
+        // src/. tests/e2e/*.spec.ts are Playwright specs — @playwright/test
+        // isn't an installed dependency, so vitest's default include pattern
+        // picked them up and died on import resolution (3 test-file load
+        // failures masking the real suite). Playwright specs belong to
+        // Playwright's own runner, not vitest.
+        include: ["src/**/*.{test,spec}.{ts,tsx}"],
+        exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**"],
         // FU-16 (2026-08-10): setup file polyfills window.matchMedia
         // (jsdom doesn't implement it; Mantine's color-scheme provider
         // calls it during render). Without this polyfill, every test

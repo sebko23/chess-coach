@@ -65,55 +65,58 @@ export default function PdfIngestPage() {
   const [uploadState, setUploadState] = useState<UploadState>({ status: "idle" });
   const [dragOver, setDragOver] = useState(false);
 
-  const uploadPdf = useCallback(async (file: File) => {
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-      setUploadState({ status: "error", message: "Only PDF files are supported." });
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadState({ status: "error", message: "PDF exceeds 50 MB limit." });
-      return;
-    }
-
-    setUploadState({ status: "uploading", progress: 0 });
-
-    try {
-      // Simulate progress for large files
-      const progressInterval = setInterval(() => {
-        setUploadState((prev) => {
-          if (prev.status !== "uploading") return prev;
-          const next = Math.min(prev.progress + 8, 90);
-          return { status: "uploading", progress: next };
-        });
-      }, 200);
-
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch(`${backendBaseUrl}/v1/import/pdf`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${backendToken}`,
-        },
-        body: formData,
-      });
-
-      clearInterval(progressInterval);
-
-      if (!response.ok) {
-        const body = await response.text();
-        throw new Error(body ? body.substring(0, 200) : `HTTP ${response.status}`);
+  const uploadPdf = useCallback(
+    async (file: File) => {
+      if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+        setUploadState({ status: "error", message: "Only PDF files are supported." });
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        setUploadState({ status: "error", message: "PDF exceeds 50 MB limit." });
+        return;
       }
 
-      const result: PdfIngestResponse = await response.json();
-      setUploadState({ status: "success", result });
-    } catch (err: any) {
-      setUploadState({
-        status: "error",
-        message: err.message || "Upload failed",
-      });
-    }
-  }, [backendBaseUrl, backendToken]);
+      setUploadState({ status: "uploading", progress: 0 });
+
+      try {
+        // Simulate progress for large files
+        const progressInterval = setInterval(() => {
+          setUploadState((prev) => {
+            if (prev.status !== "uploading") return prev;
+            const next = Math.min(prev.progress + 8, 90);
+            return { status: "uploading", progress: next };
+          });
+        }, 200);
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await fetch(`${backendBaseUrl}/v1/import/pdf`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${backendToken}`,
+          },
+          body: formData,
+        });
+
+        clearInterval(progressInterval);
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(body ? body.substring(0, 200) : `HTTP ${response.status}`);
+        }
+
+        const result: PdfIngestResponse = await response.json();
+        setUploadState({ status: "success", result });
+      } catch (err: any) {
+        setUploadState({
+          status: "error",
+          message: err.message || "Upload failed",
+        });
+      }
+    },
+    [backendBaseUrl, backendToken],
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -122,7 +125,7 @@ export default function PdfIngestPage() {
       const file = e.dataTransfer.files?.[0];
       if (file) uploadPdf(file);
     },
-    [uploadPdf]
+    [uploadPdf],
   );
 
   const handleFileSelect = useCallback(
@@ -130,7 +133,7 @@ export default function PdfIngestPage() {
       const file = e.target.files?.[0];
       if (file) uploadPdf(file);
     },
-    [uploadPdf]
+    [uploadPdf],
   );
 
   const formatConfidence = (v: number) => `${(v * 100).toFixed(0)}%`;
@@ -139,7 +142,8 @@ export default function PdfIngestPage() {
     <Container size="lg" py="md">
       <Title order={2}>PDF Ingest</Title>
       <Text c="dimmed" size="sm" mb="md">
-        Upload a PDF with chess diagrams to automatically detect, OCR, and import positions into your game database.
+        Upload a PDF with chess diagrams to automatically detect, OCR, and import positions into
+        your game database.
       </Text>
 
       {/* Drag-and-drop zone */}
@@ -186,7 +190,9 @@ export default function PdfIngestPage() {
         <Paper withBorder p="md" mt="md">
           <Group mb="xs">
             <IconUpload size={16} />
-            <Text size="sm" fw={500}>Uploading and processing...</Text>
+            <Text size="sm" fw={500}>
+              Uploading and processing...
+            </Text>
           </Group>
           <Progress value={uploadState.progress} animated striped color="blue" />
           <Text size="xs" c="dimmed" mt={4}>
@@ -232,29 +238,51 @@ export default function PdfIngestPage() {
             </Group>
             <SimpleGrid cols={3} spacing="md" mt="md">
               <Paper p="sm" withBorder>
-                <Text size="xs" c="dimmed">Pages</Text>
-                <Text fw={700} size="xl">{uploadState.result.page_count}</Text>
+                <Text size="xs" c="dimmed">
+                  Pages
+                </Text>
+                <Text fw={700} size="xl">
+                  {uploadState.result.page_count}
+                </Text>
               </Paper>
               <Paper p="sm" withBorder>
-                <Text size="xs" c="dimmed">Diagrams Detected</Text>
-                <Text fw={700} size="xl">{uploadState.result.diagrams_detected}</Text>
+                <Text size="xs" c="dimmed">
+                  Diagrams Detected
+                </Text>
+                <Text fw={700} size="xl">
+                  {uploadState.result.diagrams_detected}
+                </Text>
               </Paper>
               <Paper p="sm" withBorder>
-                <Text size="xs" c="dimmed">Valid Positions</Text>
-                <Text fw={700} size="xl" c={uploadState.result.diagrams_valid > 0 ? "green" : "orange"}>
+                <Text size="xs" c="dimmed">
+                  Valid Positions
+                </Text>
+                <Text
+                  fw={700}
+                  size="xl"
+                  c={uploadState.result.diagrams_valid > 0 ? "green" : "orange"}
+                >
                   {uploadState.result.diagrams_valid} / {uploadState.result.diagrams_detected}
                 </Text>
               </Paper>
             </SimpleGrid>
             {uploadState.result.errors.length > 0 && (
-              <Alert icon={<IconInfoCircle size={16} />} title="Warnings" color="yellow" mt="sm" p="xs">
+              <Alert
+                icon={<IconInfoCircle size={16} />}
+                title="Warnings"
+                color="yellow"
+                mt="sm"
+                p="xs"
+              >
                 <Text size="xs">{uploadState.result.errors.join("; ")}</Text>
               </Alert>
             )}
           </Paper>
 
           {/* Diagram results grid */}
-          <Title order={4} mt="lg" mb="sm">Detected Diagrams</Title>
+          <Title order={4} mt="lg" mb="sm">
+            Detected Diagrams
+          </Title>
           <Stack gap="sm">
             {uploadState.result.diagrams.map((d, i) => (
               <Card key={i} withBorder padding="sm">
@@ -264,22 +292,14 @@ export default function PdfIngestPage() {
                       <Badge size="sm" variant="light" color="gray">
                         Page {d.page_number} · #{d.diagram_index}
                       </Badge>
-                      <Badge
-                        size="sm"
-                        variant="light"
-                        color={d.valid ? "green" : "red"}
-                      >
+                      <Badge size="sm" variant="light" color={d.valid ? "green" : "red"}>
                         {d.valid ? "Valid" : "Invalid"}
                       </Badge>
                       <Badge
                         size="sm"
                         variant="light"
                         color={
-                          d.confidence >= 0.8
-                            ? "green"
-                            : d.confidence >= 0.5
-                            ? "yellow"
-                            : "red"
+                          d.confidence >= 0.8 ? "green" : d.confidence >= 0.5 ? "yellow" : "red"
                         }
                       >
                         {formatConfidence(d.confidence)}

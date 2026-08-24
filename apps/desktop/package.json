@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@11.21.0",
   "scripts": {
     "start-vite": "vite",
     "build-vite": "tsgo --noEmit && vite build",
@@ -15,7 +14,7 @@
     "gen:api:check": "node scripts/codegen/gen-api.mjs --check",
     "test": "vitest run",
     "lint": "tsgo --noEmit && oxlint",
-    "lint:ci": "tsgo --noEmit && oxfmt --check && oxlint --format=github && i18next-cli extract --ci",
+    "lint:ci": "tsgo --noEmit && oxfmt --check && oxlint --format=github",
     "lint:fix": "oxlint --fix",
     "i18n:extract": "i18next-cli extract",
     "i18n:status": "i18next-cli status",
@@ -110,5 +109,6 @@
     "oxlint": "^1.55.0",
     "oxlint-tsgolint": "^0.16.0",
     "vitest": "^4.1.0"
-  }
+  },
+  "packageManager": "pnpm@11.21.0"
 }

@@ -4,9 +4,24 @@ import { activePlayerAtom } from "@/state/atoms/playerAtom";
 import { activeTabAtom, tabsAtom } from "@/state/atoms";
 import { createTab } from "@/utils/tabs";
 import {
-  Container, Title, Text, Card, Badge, Stack, Group, SimpleGrid,
-  ScrollArea, Paper, Loader, Alert, Divider, Progress, Button,
-  Center, Space, Tooltip,
+  Container,
+  Title,
+  Text,
+  Card,
+  Badge,
+  Stack,
+  Group,
+  SimpleGrid,
+  ScrollArea,
+  Paper,
+  Loader,
+  Alert,
+  Divider,
+  Progress,
+  Button,
+  Center,
+  Space,
+  Tooltip,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -63,7 +78,6 @@ interface DayPlan {
   cards: DayPlanCard[];
 }
 
-
 interface ReviewResponse {
   interval_days: number;
   new_due: string;
@@ -83,18 +97,9 @@ const BLUNDER_COLORS: Record<string, string> = {
   best: "blue",
 };
 
-function BlunderBadge({
-  classification,
-}: {
-  classification: string | null;
-}) {
-
+function BlunderBadge({ classification }: { classification: string | null }) {
   return (
-    <Badge
-      size="sm"
-      variant="filled"
-      color={BLUNDER_COLORS[classification ?? ""] ?? "gray"}
-    >
+    <Badge size="sm" variant="filled" color={BLUNDER_COLORS[classification ?? ""] ?? "gray"}>
       {classification ? classification.charAt(0).toUpperCase() + classification.slice(1) : "—"}
     </Badge>
   );
@@ -134,13 +139,7 @@ function CardReview({
       console.warn("Skipping invalid FEN:", fen);
       return;
     }
-    const pgn = [
-      '[Event "Training"]',
-      '[SetUp "1"]',
-      `[FEN "${fen}"]`,
-      '',
-      '*'
-    ].join('\n');
+    const pgn = ['[Event "Training"]', '[SetUp "1"]', `[FEN "${fen}"]`, "", "*"].join("\n");
     await createTab({
       tab: { name: "Training position", type: "analysis" },
       setTabs,
@@ -158,7 +157,13 @@ function CardReview({
             <Badge
               size="lg"
               variant="light"
-              color={card.card_type === "position" ? "blue" : card.card_type === "opening_gap" ? "violet" : "teal"}
+              color={
+                card.card_type === "position"
+                  ? "blue"
+                  : card.card_type === "opening_gap"
+                    ? "violet"
+                    : "teal"
+              }
             >
               {card.card_type.replace(/_/g, " ")}
             </Badge>
@@ -172,33 +177,38 @@ function CardReview({
                 {card.eco}
               </Badge>
             )}
-            
           </Group>
           <Badge size="sm" variant="outline" color="gray">
             Reviews: {card.reviews}
           </Badge>
         </Group>
 
-        {card.fen && (
-          <MiniBoardDisplay
-            fen={card.fen}
-            size={180}
-            orientation="white"
-          />
-        )}
+        {card.fen && <MiniBoardDisplay fen={card.fen} size={180} orientation="white" />}
 
         <SimpleGrid cols={3} spacing="xs">
           <Paper withBorder p="xs" ta="center">
-            <Text size="xs" c="dimmed">Stability</Text>
-            <Text fw={700} size="sm">{card.stability.toFixed(1)}d</Text>
+            <Text size="xs" c="dimmed">
+              Stability
+            </Text>
+            <Text fw={700} size="sm">
+              {card.stability.toFixed(1)}d
+            </Text>
           </Paper>
           <Paper withBorder p="xs" ta="center">
-            <Text size="xs" c="dimmed">Difficulty</Text>
-            <Text fw={700} size="sm">{card.difficulty.toFixed(1)}</Text>
+            <Text size="xs" c="dimmed">
+              Difficulty
+            </Text>
+            <Text fw={700} size="sm">
+              {card.difficulty.toFixed(1)}
+            </Text>
           </Paper>
           <Paper withBorder p="xs" ta="center">
-            <Text size="xs" c="dimmed">Retrievability</Text>
-            <Text fw={700} size="sm">{(card.retrievability * 100).toFixed(0)}%</Text>
+            <Text size="xs" c="dimmed">
+              Retrievability
+            </Text>
+            <Text fw={700} size="sm">
+              {(card.retrievability * 100).toFixed(0)}%
+            </Text>
           </Paper>
         </SimpleGrid>
 
@@ -209,20 +219,14 @@ function CardReview({
         )}
 
         {!showAnswer ? (
-          <Button
-            variant="light"
-            color="blue"
-            fullWidth
-            onClick={() => setShowAnswer(true)}
-          >
+          <Button variant="light" color="blue" fullWidth onClick={() => setShowAnswer(true)}>
             Show Answer
           </Button>
         ) : (
           <>
             <Divider label="Rating" labelPosition="center" />
 
-    
-        <SimpleGrid cols={4} spacing="sm">
+            <SimpleGrid cols={4} spacing="sm">
               {RATING_LABELS.map((r) => (
                 <Button
                   key={r.value}
@@ -234,8 +238,12 @@ function CardReview({
                   style={{ height: 60 }}
                 >
                   <Stack gap={2} align="center">
-                    <Text size="sm" fw={700}>{r.label}</Text>
-                    <Text size="xs" c="dimmed">{r.description}</Text>
+                    <Text size="sm" fw={700}>
+                      {r.label}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {r.description}
+                    </Text>
                   </Stack>
                 </Button>
               ))}
@@ -274,31 +282,33 @@ export default function TrainingQueuePage() {
   const [seeding, setSeeding] = useState(false);
   const [schedule, setSchedule] = useState<DayPlan[] | null>(null);
   const [scheduleExpanded, setScheduleExpanded] = useState(false);
-const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [playerName] = useAtom(activePlayerAtom);
 
-  const headers = useMemo(() => (token ? { Authorization: `Bearer ${token}` } as HeadersInit : {} as HeadersInit), [token]);
-const priorityColor = (score: number): string => {
-  if (score >= 0.7) return "var(--mantine-color-red-1)";
-  if (score >= 0.4) return "var(--mantine-color-yellow-1)";
-  return "var(--mantine-color-teal-1)";
-};
+  const headers = useMemo(
+    () => (token ? ({ Authorization: `Bearer ${token}` } as HeadersInit) : ({} as HeadersInit)),
+    [token],
+  );
+  const priorityColor = (score: number): string => {
+    if (score >= 0.7) return "var(--mantine-color-red-1)";
+    if (score >= 0.4) return "var(--mantine-color-yellow-1)";
+    return "var(--mantine-color-teal-1)";
+  };
 
-const priorityBorder = (score: number): string => {
-  if (score >= 0.7) return "var(--mantine-color-red-4)";
-  if (score >= 0.4) return "var(--mantine-color-yellow-4)";
-  return "var(--mantine-color-teal-4)";
-};
+  const priorityBorder = (score: number): string => {
+    if (score >= 0.7) return "var(--mantine-color-red-4)";
+    if (score >= 0.4) return "var(--mantine-color-yellow-4)";
+    return "var(--mantine-color-teal-4)";
+  };
 
-const cardTypeLabel = (type: "position" | "opening_gap" | "concept"): string => {
-  if (type === "opening_gap") return "Opening";
-  if (type === "concept") return "Concept";
-  return "Position";
-};
+  const cardTypeLabel = (type: "position" | "opening_gap" | "concept"): string => {
+    if (type === "opening_gap") return "Opening";
+    if (type === "concept") return "Concept";
+    return "Position";
+  };
 
-const today = new Date().toISOString().slice(0, 10);
-
+  const today = new Date().toISOString().slice(0, 10);
 
   const fetchQueue = useCallback(async () => {
     if (!baseUrl) return;
@@ -318,8 +328,8 @@ const today = new Date().toISOString().slice(0, 10);
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ fens }),
         })
-          .then(r => r.json())
-          .then(batchData => setClassifications(batchData.results ?? {}))
+          .then((r) => r.json())
+          .then((batchData) => setClassifications(batchData.results ?? {}))
           .catch(() => {});
       }
       setDueCount(data.due_count || 0);
@@ -331,24 +341,28 @@ const today = new Date().toISOString().slice(0, 10);
     }
   }, [baseUrl, headers]);
 
-  useEffect(() => { fetchQueue(); }, [fetchQueue]);
+  useEffect(() => {
+    fetchQueue();
+  }, [fetchQueue]);
 
   const fetchSchedule = useCallback(async () => {
     if (!baseUrl || !token) return;
     try {
-      const res = await fetch(
-        `${baseUrl}/v1/training/schedule/default?days=7&daily_minutes=30`,
-        { headers: { Authorization: `Bearer ${token}` } as HeadersInit }
-      );
+      const res = await fetch(`${baseUrl}/v1/training/schedule/default?days=7&daily_minutes=30`, {
+        headers: { Authorization: `Bearer ${token}` } as HeadersInit,
+      });
       if (res.ok) {
         const data = await res.json();
         setSchedule(data.schedule ?? null);
       }
-    } catch { /* silent */ }
+    } catch {
+      /* silent */
+    }
   }, [baseUrl, token]);
 
-  useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
-
+  useEffect(() => {
+    fetchSchedule();
+  }, [fetchSchedule]);
 
   const handleRate = async (r: number) => {
     if (!baseUrl || rating !== null || currentIndex >= cards.length) return;
@@ -361,14 +375,14 @@ const today = new Date().toISOString().slice(0, 10);
         body: JSON.stringify({ rating: r }),
       });
       if (!res.ok) throw new Error(`Review: ${res.status}`);
-      setReviewedCount(prev => prev + 1);
+      setReviewedCount((prev) => prev + 1);
       // Advance after short delay
       setTimeout(() => {
         if (currentIndex >= cards.length - 1) {
           // Last card — reload queue
           fetchQueue();
         } else {
-          setCurrentIndex(prev => prev + 1);
+          setCurrentIndex((prev) => prev + 1);
           setRating(null);
         }
       }, 400);
@@ -438,68 +452,77 @@ const today = new Date().toISOString().slice(0, 10);
         </Badge>
       </Group>
 
-        {schedule && (
-          <Card withBorder shadow="sm" p="md" mb="md">
-            <Group justify="space-between" mb={scheduleExpanded ? "sm" : 0}>
-              <Group gap="xs">
-                <Text fw={600} size="sm">7-Day Study Plan</Text>
-                <Badge size="sm" variant="light" color="blue">
-                  {schedule.reduce((s, d) => s + d.new_cards + d.review_cards, 0)} cards
-                </Badge>
-              </Group>
-              <Button size="xs" variant="subtle"
-                onClick={() => setScheduleExpanded(e => !e)}>
-                {scheduleExpanded ? "Hide" : "Show"}
-              </Button>
+      {schedule && (
+        <Card withBorder shadow="sm" p="md" mb="md">
+          <Group justify="space-between" mb={scheduleExpanded ? "sm" : 0}>
+            <Group gap="xs">
+              <Text fw={600} size="sm">
+                7-Day Study Plan
+              </Text>
+              <Badge size="sm" variant="light" color="blue">
+                {schedule.reduce((s, d) => s + d.new_cards + d.review_cards, 0)} cards
+              </Badge>
             </Group>
-            {scheduleExpanded && (
-              <>
-                {schedule.length === 0 ? (
-                  <Text size="sm" c="dimmed" ta="center" mt="sm">
-                    No schedule loaded — click Refresh to generate your 7-day plan.
-                  </Text>
-                ) : (
-                  <SimpleGrid cols={7} spacing="xs" mt="xs">
-                    {schedule.map((day) => {
-                      const isToday = day.date === today;
-                      const avgPriority = day.cards.length > 0
+            <Button size="xs" variant="subtle" onClick={() => setScheduleExpanded((e) => !e)}>
+              {scheduleExpanded ? "Hide" : "Show"}
+            </Button>
+          </Group>
+          {scheduleExpanded && (
+            <>
+              {schedule.length === 0 ? (
+                <Text size="sm" c="dimmed" ta="center" mt="sm">
+                  No schedule loaded — click Refresh to generate your 7-day plan.
+                </Text>
+              ) : (
+                <SimpleGrid cols={7} spacing="xs" mt="xs">
+                  {schedule.map((day) => {
+                    const isToday = day.date === today;
+                    const avgPriority =
+                      day.cards.length > 0
                         ? day.cards.reduce((s, c) => s + c.priority_score, 0) / day.cards.length
                         : 0;
-                      const isExpanded = expandedDay === day.day;
-                      return (
-                        <Stack key={day.day} gap={2} align="center"
-                          style={{
-                            background: priorityColor(avgPriority),
-                            border: `${isToday ? "2px" : "1px"} solid ${isToday ? "var(--mantine-color-blue-5)" : priorityBorder(avgPriority)}`,
-                            borderRadius: 6,
-                            padding: "6px 4px",
-                            cursor: "pointer",
-                            transition: "opacity 0.15s",
-                          }}
-                          onClick={() => setExpandedDay(isExpanded ? null : day.day)}
-                        >
-                          <Text size="xs" fw={isToday ? 800 : 600}
-                            c={isToday ? "blue" : undefined}>
-                            {isToday ? "Today" : day.date.slice(5)}
-                          </Text>
-                          <Badge size="xs" color="blue" variant="filled">
-                            {day.new_cards + day.review_cards}
+                    const isExpanded = expandedDay === day.day;
+                    return (
+                      <Stack
+                        key={day.day}
+                        gap={2}
+                        align="center"
+                        style={{
+                          background: priorityColor(avgPriority),
+                          border: `${isToday ? "2px" : "1px"} solid ${isToday ? "var(--mantine-color-blue-5)" : priorityBorder(avgPriority)}`,
+                          borderRadius: 6,
+                          padding: "6px 4px",
+                          cursor: "pointer",
+                          transition: "opacity 0.15s",
+                        }}
+                        onClick={() => setExpandedDay(isExpanded ? null : day.day)}
+                      >
+                        <Text size="xs" fw={isToday ? 800 : 600} c={isToday ? "blue" : undefined}>
+                          {isToday ? "Today" : day.date.slice(5)}
+                        </Text>
+                        <Badge size="xs" color="blue" variant="filled">
+                          {day.new_cards + day.review_cards}
+                        </Badge>
+                        <Text size="xs" c="dimmed">
+                          {day.estimated_minutes}m
+                        </Text>
+                        {day.new_cards > 0 && (
+                          <Badge size="xs" color="teal" variant="light">
+                            {day.new_cards} new
                           </Badge>
-                          <Text size="xs" c="dimmed">{day.estimated_minutes}m</Text>
-                          {day.new_cards > 0 && (
-                            <Badge size="xs" color="teal" variant="light">
-                              {day.new_cards} new
-                            </Badge>
-                          )}
-                          <Text size="xs" c="dimmed">{isExpanded ? "▲" : "▼"}</Text>
-                        </Stack>
-                      );
-                    })}
-                  </SimpleGrid>
-                )}
+                        )}
+                        <Text size="xs" c="dimmed">
+                          {isExpanded ? "▲" : "▼"}
+                        </Text>
+                      </Stack>
+                    );
+                  })}
+                </SimpleGrid>
+              )}
 
-                {expandedDay !== null && (() => {
-                  const day = schedule.find(d => d.day === expandedDay);
+              {expandedDay !== null &&
+                (() => {
+                  const day = schedule.find((d) => d.day === expandedDay);
                   if (!day) return null;
                   return (
                     <Stack gap="xs" mt="sm">
@@ -507,7 +530,9 @@ const today = new Date().toISOString().slice(0, 10);
                         {day.date} — {day.cards.length} cards · {day.estimated_minutes} min
                       </Text>
                       {day.cards.map((card) => (
-                        <Group key={card.id} justify="space-between"
+                        <Group
+                          key={card.id}
+                          justify="space-between"
                           style={{
                             background: priorityColor(card.priority_score),
                             border: `1px solid ${priorityBorder(card.priority_score)}`,
@@ -516,15 +541,26 @@ const today = new Date().toISOString().slice(0, 10);
                           }}
                         >
                           <Group gap="xs">
-                            <Badge size="xs" variant="light"
-                              color={card.card_type === "opening_gap" ? "violet" : card.card_type === "concept" ? "orange" : "blue"}>
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color={
+                                card.card_type === "opening_gap"
+                                  ? "violet"
+                                  : card.card_type === "concept"
+                                    ? "orange"
+                                    : "blue"
+                              }
+                            >
                               {cardTypeLabel(card.card_type)}
                             </Badge>
                             <Text size="xs" c="dimmed" style={{ fontFamily: "monospace" }}>
                               {card.reference_id.split(":").slice(0, 2).join(":")}
                             </Text>
                             {card.is_new && (
-                              <Badge size="xs" color="teal" variant="dot">new</Badge>
+                              <Badge size="xs" color="teal" variant="dot">
+                                new
+                              </Badge>
                             )}
                           </Group>
                           <Group gap="xs">
@@ -537,27 +573,43 @@ const today = new Date().toISOString().slice(0, 10);
                     </Stack>
                   );
                 })()}
-              </>
-            )}
-          </Card>
-        )}
+            </>
+          )}
+        </Card>
+      )}
 
       <SimpleGrid cols={4} spacing="sm" mb="md">
         <Paper withBorder p="sm" ta="center">
-          <Text size="xs" c="dimmed">Due Now</Text>
-          <Text fw={700} size="lg">{dueCount}</Text>
+          <Text size="xs" c="dimmed">
+            Due Now
+          </Text>
+          <Text fw={700} size="lg">
+            {dueCount}
+          </Text>
         </Paper>
         <Paper withBorder p="sm" ta="center">
-          <Text size="xs" c="dimmed">In Queue</Text>
-          <Text fw={700} size="lg">{cards.length}</Text>
+          <Text size="xs" c="dimmed">
+            In Queue
+          </Text>
+          <Text fw={700} size="lg">
+            {cards.length}
+          </Text>
         </Paper>
         <Paper withBorder p="sm" ta="center">
-          <Text size="xs" c="dimmed">Progress</Text>
-          <Text fw={700} size="lg">{currentIndex + 1}/{cards.length}</Text>
+          <Text size="xs" c="dimmed">
+            Progress
+          </Text>
+          <Text fw={700} size="lg">
+            {currentIndex + 1}/{cards.length}
+          </Text>
         </Paper>
         <Paper withBorder p="sm" ta="center">
-          <Text size="xs" c="dimmed">Reviewed</Text>
-          <Text fw={700} size="lg">{reviewedCount}</Text>
+          <Text size="xs" c="dimmed">
+            Reviewed
+          </Text>
+          <Text fw={700} size="lg">
+            {reviewedCount}
+          </Text>
         </Paper>
       </SimpleGrid>
 
@@ -574,13 +626,16 @@ const today = new Date().toISOString().slice(0, 10);
 
       {!currentCard ? (
         <Paper withBorder p="xl" ta="center" radius="md">
-          <Text size="lg" fw={700} c="green">✓</Text>
-          <Text size="lg" fw={600} mt="sm">All caught up!</Text>
+          <Text size="lg" fw={700} c="green">
+            ✓
+          </Text>
+          <Text size="lg" fw={600} mt="sm">
+            All caught up!
+          </Text>
           <Text size="sm" c="dimmed" mt="xs">
             {dueCount > 0
               ? `${dueCount} card(s) are due but not in the current queue.`
-              : "No cards due for review."
-            }
+              : "No cards due for review."}
           </Text>
           <Button variant="light" color="blue" mt="md" onClick={fetchQueue}>
             Check Again

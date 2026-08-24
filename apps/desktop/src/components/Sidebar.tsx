@@ -6,10 +6,12 @@ import {
   IconChess,
   IconCpu,
   IconDatabase,
-  IconFiles, IconList,
+  IconFiles,
+  IconList,
   IconBinaryTree,
   IconBooks,
-  IconCloudDownload, IconSettings,
+  IconCloudDownload,
+  IconSettings,
   IconTarget,
   IconUser,
 } from "@tabler/icons-react";
@@ -48,9 +50,9 @@ const linksdata = [
   { icon: IconUser, label: "Profile", url: "/profile" },
   { icon: IconList, label: "Games", url: "/games" },
   { icon: IconBinaryTree, label: "Repertoire", url: "/repertoire" },
-    { icon: IconBooks, label: "Training", url: "/training" },
-    { icon: IconFiles, label: "PDF", url: "/pdf" },
-    { icon: IconCloudDownload, label: "Lichess", url: "/lichess" },
+  { icon: IconBooks, label: "Training", url: "/training" },
+  { icon: IconFiles, label: "PDF", url: "/pdf" },
+  { icon: IconCloudDownload, label: "Lichess", url: "/lichess" },
   { icon: IconFiles, label: "Files", url: "/files" },
   {
     icon: IconDatabase,
@@ -64,7 +66,11 @@ export function SideBar() {
   const { t } = useTranslation();
 
   const links = linksdata.map((link) => (
-    <NavbarLink {...link} label={link.label === 'Coach' ? 'Coach' : t(`SideBar.${link.label}`)} key={link.label} />
+    <NavbarLink
+      {...link}
+      label={link.label === "Coach" ? "Coach" : t(`SideBar.${link.label}`)}
+      key={link.label}
+    />
   ));
 
   return (

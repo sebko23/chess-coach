@@ -1,9 +1,24 @@
 import { useAtomValue } from "jotai";
 import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
 import {
-  Container, Title, Text, SimpleGrid, Card, Badge, Stack, Group,
-  Paper, Loader, Alert, Divider, Modal, ScrollArea, Code, Progress,
-  Anchor, Box,
+  Container,
+  Title,
+  Text,
+  SimpleGrid,
+  Card,
+  Badge,
+  Stack,
+  Group,
+  Paper,
+  Loader,
+  Alert,
+  Divider,
+  Modal,
+  ScrollArea,
+  Code,
+  Progress,
+  Anchor,
+  Box,
 } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -111,31 +126,58 @@ function insightCopy(
   }
   switch (metricId) {
     case "tactical_vs_positional_bias":
-      if (value > 0.6) return { text: "Strong tactical vision — converts opportunities well.", tone: "good" };
-      if (value > 0.4) return { text: "Average tactical conversion — more puzzle practice recommended.", tone: "neutral" };
+      if (value > 0.6)
+        return { text: "Strong tactical vision — converts opportunities well.", tone: "good" };
+      if (value > 0.4)
+        return {
+          text: "Average tactical conversion — more puzzle practice recommended.",
+          tone: "neutral",
+        };
       return { text: "Tactical blindness — daily puzzle training recommended.", tone: "warn" };
     case "time_pressure_quality":
-      if (value < 0.05) return { text: "Good time management — blunders don't increase in deep play.", tone: "good" };
-      if (value < 0.15) return { text: "Mild time pressure effect — moderate late-game blunders.", tone: "neutral" };
+      if (value < 0.05)
+        return {
+          text: "Good time management — blunders don't increase in deep play.",
+          tone: "good",
+        };
+      if (value < 0.15)
+        return {
+          text: "Mild time pressure effect — moderate late-game blunders.",
+          tone: "neutral",
+        };
       return { text: "Struggles under time pressure — practice fast games.", tone: "warn" };
     case "opening_comfort":
-      if (value >= 2) return { text: "Broad opening repertoire — consider specialising.", tone: "good" };
+      if (value >= 2)
+        return { text: "Broad opening repertoire — consider specialising.", tone: "good" };
       if (value >= 1) return { text: "Balanced opening repertoire.", tone: "neutral" };
       return { text: "Narrow repertoire — try new openings to broaden your range.", tone: "warn" };
     case "conversion_ability":
-      if (value > 0.6) return { text: "Strong conversion — capitalizes on advantages effectively.", tone: "good" };
-      if (value > 0.4) return { text: "Average conversion — winning positions need more precision.", tone: "neutral" };
+      if (value > 0.6)
+        return { text: "Strong conversion — capitalizes on advantages effectively.", tone: "good" };
+      if (value > 0.4)
+        return {
+          text: "Average conversion — winning positions need more precision.",
+          tone: "neutral",
+        };
       return { text: "Weak conversion — closing out games is a priority area.", tone: "warn" };
     case "blunder_rate_vs_rating":
-      if (value < 0.1) return { text: "Low blunder rate — better than the rating-expected level.", tone: "good" };
-      if (value < 0.2) return { text: "Moderate blunder rate — tactical errors are a key weakness.", tone: "neutral" };
+      if (value < 0.1)
+        return { text: "Low blunder rate — better than the rating-expected level.", tone: "good" };
+      if (value < 0.2)
+        return {
+          text: "Moderate blunder rate — tactical errors are a key weakness.",
+          tone: "neutral",
+        };
       return { text: "High blunder rate — tactical errors are a priority area.", tone: "bad" };
     case "decision_fatigue":
-      if (value < 0.05) return { text: "Decision quality is stable across the session.", tone: "good" };
-      if (value < 0.15) return { text: "Mild decision fatigue — consider taking breaks.", tone: "neutral" };
+      if (value < 0.05)
+        return { text: "Decision quality is stable across the session.", tone: "good" };
+      if (value < 0.15)
+        return { text: "Mild decision fatigue — consider taking breaks.", tone: "neutral" };
       return { text: "Decision fatigue is significant — short sessions help.", tone: "warn" };
     case "sequence_based_tilt":
-      if (value < 0.05) return { text: "Resilient — performs well after loss streaks.", tone: "good" };
+      if (value < 0.05)
+        return { text: "Resilient — performs well after loss streaks.", tone: "good" };
       if (value < 0.15) return { text: "Moderate tilt — monitor after losses.", tone: "neutral" };
       return { text: "High tilt risk — take breaks after losses.", tone: "warn" };
     default:
@@ -145,10 +187,14 @@ function insightCopy(
 
 function toneColor(tone: "good" | "neutral" | "warn" | "bad"): string {
   switch (tone) {
-    case "good": return "teal";
-    case "neutral": return "gray";
-    case "warn": return "yellow";
-    case "bad": return "red";
+    case "good":
+      return "teal";
+    case "neutral":
+      return "gray";
+    case "warn":
+      return "yellow";
+    case "bad":
+      return "red";
   }
 }
 
@@ -157,9 +203,7 @@ function formatValue(metricId: string, value: number | null): string {
   switch (metricId) {
     case "opening_comfort":
       // Distinct count -> show as integer or "limited"
-      return Number.isFinite(value) && Number.isInteger(value)
-        ? String(value)
-        : value.toFixed(2);
+      return Number.isFinite(value) && Number.isInteger(value) ? String(value) : value.toFixed(2);
     default:
       return value.toFixed(3);
   }
@@ -181,9 +225,7 @@ export default function ProfileDashboard() {
   } | null>(null);
 
   const headers = useMemo(
-    () => (token
-      ? ({ Authorization: `Bearer ${token}` } as HeadersInit)
-      : ({} as HeadersInit)),
+    () => (token ? ({ Authorization: `Bearer ${token}` } as HeadersInit) : ({} as HeadersInit)),
     [token],
   );
 
@@ -201,10 +243,10 @@ export default function ProfileDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch(
-        `${baseUrl}/v1/profile/default/analysis`,
-        { method: "POST", headers },
-      );
+      const resp = await fetch(`${baseUrl}/v1/profile/default/analysis`, {
+        method: "POST",
+        headers,
+      });
       if (!resp.ok) throw new Error(`Analysis: ${resp.status}`);
       const data = (await resp.json()) as AnalysisResponse;
       setAnalysis(data);
@@ -216,44 +258,53 @@ export default function ProfileDashboard() {
     }
   }, [baseUrl, headers]);
 
-  useEffect(() => { fetchAnalysis(); }, [fetchAnalysis]);
+  useEffect(() => {
+    fetchAnalysis();
+  }, [fetchAnalysis]);
 
   /**
    * Fetch the /explain/{metric} response for the drill-down
    * modal. The response includes methodology text + raw
    * inputs + intermediate values per §B4 rule 4.
    */
-  const openExplain = useCallback(async (metricId: string) => {
-    if (!baseUrl || !token) return;
-    setExplainModal({ metricId, data: null, loading: true });
-    try {
-      const resp = await fetch(
-        `${baseUrl}/v1/profile/default/explain/${metricId}`,
-        { headers },
-      );
-      if (!resp.ok) throw new Error(`Explain: ${resp.status}`);
-      const data = (await resp.json()) as ExplainResponse;
-      setExplainModal({ metricId, data, loading: false });
-    } catch (e: unknown) {
-      // Surface as a minimal modal with the error string;
-      // the user can close it and try again.
-      const msg = e instanceof Error ? e.message : String(e);
-      setExplainModal({
-        metricId,
-        data: {
-          player_name: "",
-          metric_id: metricId,
-          effect: { point_estimate: null, d: null, ci_low: null, ci_high: null, sample_size: 0, null_value: 0 },
-          passes_b4_gate: false,
-          methodology: "Failed to load methodology.",
-          raw_inputs: { error: msg },
-          intermediate_values: {},
-          caveats: [msg],
-        },
-        loading: false,
-      });
-    }
-  }, [baseUrl, token, headers]);
+  const openExplain = useCallback(
+    async (metricId: string) => {
+      if (!baseUrl || !token) return;
+      setExplainModal({ metricId, data: null, loading: true });
+      try {
+        const resp = await fetch(`${baseUrl}/v1/profile/default/explain/${metricId}`, { headers });
+        if (!resp.ok) throw new Error(`Explain: ${resp.status}`);
+        const data = (await resp.json()) as ExplainResponse;
+        setExplainModal({ metricId, data, loading: false });
+      } catch (e: unknown) {
+        // Surface as a minimal modal with the error string;
+        // the user can close it and try again.
+        const msg = e instanceof Error ? e.message : String(e);
+        setExplainModal({
+          metricId,
+          data: {
+            player_name: "",
+            metric_id: metricId,
+            effect: {
+              point_estimate: null,
+              d: null,
+              ci_low: null,
+              ci_high: null,
+              sample_size: 0,
+              null_value: 0,
+            },
+            passes_b4_gate: false,
+            methodology: "Failed to load methodology.",
+            raw_inputs: { error: msg },
+            intermediate_values: {},
+            caveats: [msg],
+          },
+          loading: false,
+        });
+      }
+    },
+    [baseUrl, token, headers],
+  );
 
   // Build a metric_id -> UnifiedMetric lookup so the render
   // can iterate over METRIC_DISPLAY_ORDER (not over the
@@ -313,18 +364,11 @@ export default function ProfileDashboard() {
       </Text>
 
       {/* Non-clinical disclaimer (BBF-62 §B4) */}
-      <Alert
-        color="yellow"
-        title="Non-clinical disclaimer"
-        mb="md"
-        icon={<Box>{"\u26A0"}</Box>}
-      >
+      <Alert color="yellow" title="Non-clinical disclaimer" mb="md" icon={<Box>{"\u26A0"}</Box>}>
         <Text size="xs">
-          These metrics are experimental. They are not a clinical
-          assessment of cognitive function, mental health, or any
-          other condition. They are statistical summaries of chess
-          game data, intended for chess coaching only. Consult a
-          qualified chess coach for interpretation.
+          These metrics are experimental. They are not a clinical assessment of cognitive function,
+          mental health, or any other condition. They are statistical summaries of chess game data,
+          intended for chess coaching only. Consult a qualified chess coach for interpretation.
         </Text>
       </Alert>
 
@@ -342,9 +386,13 @@ export default function ProfileDashboard() {
                     <Text fw={600} size="sm">
                       {METRIC_DISPLAY_LABELS[metricId] ?? metricId}
                     </Text>
-                    <Badge color="orange" variant="light" size="xs">experimental</Badge>
+                    <Badge color="orange" variant="light" size="xs">
+                      experimental
+                    </Badge>
                   </Group>
-                  <Text c="dimmed" size="xs">No data</Text>
+                  <Text c="dimmed" size="xs">
+                    No data
+                  </Text>
                 </Stack>
               </Card>
             );
@@ -352,11 +400,11 @@ export default function ProfileDashboard() {
           const insight = insightCopy(metricId, metric.value, metric.passes_b4_gate);
           const displayValue = formatValue(metricId, metric.value);
           // Confidence interval width as a % of the CI midpoint
-          const ciWidth = (metric.ci_low !== null && metric.ci_high !== null)
-            ? Math.abs(metric.ci_high - metric.ci_low)
-            : 0;
-          const showCi = metric.ci_low !== null && metric.ci_high !== null
-            && ciWidth > 0;
+          const ciWidth =
+            metric.ci_low !== null && metric.ci_high !== null
+              ? Math.abs(metric.ci_high - metric.ci_low)
+              : 0;
+          const showCi = metric.ci_low !== null && metric.ci_high !== null && ciWidth > 0;
           return (
             <Card withBorder shadow="sm" p="md" radius="md" key={metricId}>
               <Stack align="stretch" gap="xs">
@@ -384,11 +432,7 @@ export default function ProfileDashboard() {
                   <Text size="xs" c="dimmed">
                     d = {metric.d !== null ? metric.d.toFixed(2) : "N/A"}
                   </Text>
-                  <Badge
-                    color={metric.passes_b4_gate ? "teal" : "gray"}
-                    variant="light"
-                    size="xs"
-                  >
+                  <Badge color={metric.passes_b4_gate ? "teal" : "gray"} variant="light" size="xs">
                     {metric.passes_b4_gate ? "B4: passes" : "B4: not surfaced"}
                   </Badge>
                 </Group>
@@ -396,8 +440,7 @@ export default function ProfileDashboard() {
                 {showCi && metric.value !== null && (
                   <Box>
                     <Progress
-                      value={((metric.value! - metric.ci_low!) /
-                        ciWidth) * 100}
+                      value={((metric.value! - metric.ci_low!) / ciWidth) * 100}
                       color={toneColor(insight.tone)}
                       size="xs"
                     />
@@ -443,21 +486,20 @@ export default function ProfileDashboard() {
         {explainModal?.data && (
           <Stack gap="md">
             <Group>
-              <Badge
-                color={explainModal.data.passes_b4_gate ? "teal" : "gray"}
-                variant="light"
-              >
-                {explainModal.data.passes_b4_gate
-                  ? "B4 gate: passes"
-                  : "B4 gate: not surfaced"}
+              <Badge color={explainModal.data.passes_b4_gate ? "teal" : "gray"} variant="light">
+                {explainModal.data.passes_b4_gate ? "B4 gate: passes" : "B4 gate: not surfaced"}
               </Badge>
-              <Badge color="orange" variant="light">experimental</Badge>
+              <Badge color="orange" variant="light">
+                experimental
+              </Badge>
               <Text size="xs" c="dimmed">
                 n = {explainModal.data.effect.sample_size}
               </Text>
             </Group>
             <Box>
-              <Text size="sm" fw={600} mb="xs">Methodology</Text>
+              <Text size="sm" fw={600} mb="xs">
+                Methodology
+              </Text>
               <Paper withBorder p="sm" radius="sm">
                 <Code block style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>
                   {explainModal.data.methodology}
@@ -465,20 +507,26 @@ export default function ProfileDashboard() {
               </Paper>
             </Box>
             <Box>
-              <Text size="sm" fw={600} mb="xs">Raw inputs</Text>
+              <Text size="sm" fw={600} mb="xs">
+                Raw inputs
+              </Text>
               <Code block style={{ fontSize: 11 }}>
                 {JSON.stringify(explainModal.data.raw_inputs, null, 2)}
               </Code>
             </Box>
             <Box>
-              <Text size="sm" fw={600} mb="xs">Intermediate values</Text>
+              <Text size="sm" fw={600} mb="xs">
+                Intermediate values
+              </Text>
               <Code block style={{ fontSize: 11 }}>
                 {JSON.stringify(explainModal.data.intermediate_values, null, 2)}
               </Code>
             </Box>
             {explainModal.data.caveats.length > 0 && (
               <Box>
-                <Text size="sm" fw={600} mb="xs">Caveats</Text>
+                <Text size="sm" fw={600} mb="xs">
+                  Caveats
+                </Text>
                 <Stack gap="xs">
                   {explainModal.data.caveats.map((c, i) => (
                     <Alert key={i} color="yellow" variant="light">

@@ -77,10 +77,9 @@ export default function EvalGraph() {
     let cancelled = false;
     const fetchGraph = async () => {
       try {
-        const resp = await fetch(
-          `${baseUrl}/v1/games/${gameId}/eval-graph`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
+        const resp = await fetch(`${baseUrl}/v1/games/${gameId}/eval-graph`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (!cancelled && resp.ok) {
           setData(await resp.json());
         }
@@ -89,7 +88,9 @@ export default function EvalGraph() {
       }
     };
     fetchGraph();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [baseUrl, token, gameId]);
 
   if (!data || !data?.points || data.points.length < 2) return null;
@@ -138,7 +139,10 @@ export default function EvalGraph() {
               tick={{ fontSize: 11 }}
             />
             <YAxis
-              domain={[(dataMin: number) => Math.min(dataMin, -100), (dataMax: number) => Math.max(dataMax, 100)]}
+              domain={[
+                (dataMin: number) => Math.min(dataMin, -100),
+                (dataMax: number) => Math.max(dataMax, 100),
+              ]}
               tick={{ fontSize: 11 }}
               label={{ value: "cp (White)", angle: -90, position: "insideLeft" }}
             />

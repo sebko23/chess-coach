@@ -185,7 +185,7 @@ function PracticePanel() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         fen: practiceState.currentFen,
@@ -201,7 +201,12 @@ function PracticePanel() {
       })
       .catch((e) => setBlunderNarrationError(String(e)))
       .finally(() => setBlunderNarrationLoading(false));
-  }, [practiceState.phase, practiceState.currentFen, practiceState.playedMove, practiceState.answer]);
+  }, [
+    practiceState.phase,
+    practiceState.currentFen,
+    practiceState.playedMove,
+    practiceState.answer,
+  ]);
 
   const newPractice = useCallback(
     (stats?: Partial<PracticeSessionStats>) => {

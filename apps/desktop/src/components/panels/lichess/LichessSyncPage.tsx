@@ -18,10 +18,7 @@ import {
   Progress,
 } from "@mantine/core";
 import { useAtomValue } from "jotai";
-import {
-  backendBaseUrlAtom,
-  backendTokenAtom,
-} from "@/state/atoms/coach";
+import { backendBaseUrlAtom, backendTokenAtom } from "@/state/atoms/coach";
 
 interface ImportResult {
   username: string;
@@ -134,11 +131,7 @@ export default function LichessSyncPage() {
             />
           </Group>
 
-          <Button
-            onClick={handleImport}
-            disabled={!username.trim() || loading}
-            fullWidth
-          >
+          <Button onClick={handleImport} disabled={!username.trim() || loading} fullWidth>
             {loading ? <Loader size="sm" color="white" /> : "Import from Lichess"}
           </Button>
 
