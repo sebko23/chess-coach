@@ -1655,8 +1655,6 @@ invocation. A malicious PDF can balloon `pdftoppm` RSS without bound"
 
 **Resolved section** (audit trail of closed follow-ups):
 
-**Resolved section** (audit trail of closed follow-ups):
-
 - FU-10 (2026-08-08): `h2>=4.4.1` direct pin to close CVE-2026-71554.
   Resolved via direct pin in `pyproject.toml` (httpx bump alone wouldn't
   move `h2` since `httpx` does not constrain `h2`'s version).
@@ -1832,9 +1830,18 @@ GitHub Actions API confirms it was never registered; root `smoke.yml`'s frontend
 jobs (`frontend-imports`, `frontend-types-codegen`) run neither lint nor vitest.
 Net effect: ~40k lines of TS/TSX have NO live CI regression floor.
 
-**Status:** **OPEN — moderate priority, decomposed after 2026-08-23
-investigation.** The gap is NOT sec01/sec02-shaped: the checks don't currently
-pass, so wiring them into CI today would be instantly red. Decomposition:
+**Status:** **RESOLVED 2026-08-24 via FU-25 steps A-D — PR #106, squash
+commit `8a019d46` on `main`.** Landed in owner-mandated order A→B→C→D.
+Mid-flight correction disclosed: `i18next-cli extract --ci` proved
+pre-existing-red on stock `main` (wrapped-shape locale JSONs,
+§3.2-protected) and was removed from `lint:ci` rather than satisfied;
+extract returns via a dedicated i18n-format-migration BBF (16 JSONs,
+9,892 lines, plus mixed legacy flat keys), which is also the named fix
+point for smoke.yml's stale Lint step label. Verification: CI 11/11 jobs
+success incl. `frontend lint + test`; independent leaf review SAFE WITH
+NITS (sole nit = that label). Original framing preserved as historical
+record — the checks didn't pass at decomposition time, so wiring red was
+correctly avoided. Decomposition as landed:
 
 - **(A)** vitest config bug: `tests/e2e/*.spec.ts` import `@playwright/test`
   (not installed) and vitest dies resolving them — exclude e2e from vitest's
