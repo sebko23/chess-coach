@@ -111,7 +111,7 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
-      - name: Lint (tsgo + oxfmt --check + oxlint + i18n extract check)
+      - name: Lint (tsgo + oxfmt --check + oxlint + i18n key coverage)
         working-directory: apps/desktop
         run: pnpm lint:ci
 

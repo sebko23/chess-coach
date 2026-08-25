@@ -1876,3 +1876,25 @@ social page" points at nothing real). Anchor removed via plain-JSX replacement o
 the Trans block — translation JSONs untouched per §3.2 never-edit list; unused
 Error.ReportIssue keys remain in locales (harmless dead entries). Landed with the
 FU-26 fix commit.
+
+## FU-27 — Nested duplicate locale tree: `apps/desktop/src/translation/translation/*.json`
+
+**Identified:** 2026-08-24, i18n-key-gate scoping session (post-FU-25/PR #106), when an
+explicit find-pipeline demand exposed paths beyond the known top-level `src/translation/*.json`.
+
+**Finding:** 16 tracked JSON files under `src/translation/translation/` (9,732 lines total),
+present since the fork's root commit (`cd43906c` ls-tree lists the directory), referenced by
+zero code (repo grep clean). Byte-different from their top-level counterparts, yet semantically
+identical: en-US verified — same 610 keys, zero value differences (key order/serialization
+only); de-DE spot-checked — same keys, same 306 non-empty values. Like all localization files
+outside `locales/coach/`, the tree is §3.2-never-edit protected.
+
+**Possible contributor (for future Phase-0 migration root-cause work):** two same-named
+resource trees may influence how `i18next-cli extract` resolves "existing state" — one of the
+hypotheses behind the value-destruction behavior characterized this session (extractor cannot
+read the wrapped shape; en-US probe: 610 → 14 surviving values).
+
+**Status:** OPEN — explicitly NO ACTION this session (directive, 2026-08-24): the content is
+dead weight, but removing it is an edit to §3.2-protected localization files and requires the
+same governance treatment (owner authorization with disclosure evidence, or contract amendment)
+as any other change in that class.
