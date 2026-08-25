@@ -1898,3 +1898,63 @@ read the wrapped shape; en-US probe: 610 → 14 surviving values).
 dead weight, but removing it is an edit to §3.2-protected localization files and requires the
 same governance treatment (owner authorization with disclosure evidence, or contract amendment)
 as any other change in that class.
+
+## FU-28 — Backend test-enforcement gap: CI runs 16 of 58 test files
+
+**Identified:** 2026-08-25, session-opening state check (post PR #108), as the direct FU-25
+analogue on the backend side. Evidence gathered up front; **no implementation scope committed
+by this entry.**
+
+**Finding:** `.github/workflows/smoke.yml` enforces exactly 16 of 58 test files: the gateway-boot
+job's explicit list (`smoke.yml:178–192` — 11 unit files), `tests/integration/test_kb_qdrant_live.py`
+(qdrant-smoke job), and standalone `tests/integration/smoke_test.py`. Unenforced: **26 unit files**,
+**15 integration files**, and **1 perf file** (`tests/perf/test_kb_reembed_roundtrip.py`, tracked
+since root commit `cd43906c`, referenced by no workflow or script). Denominator composition:
+37 unit + 19 integration `test_*.py` + 1 perf test + the standalone smoke_test.py = 58. Note a
+bare `find tests -name 'test_*.py' | wc -l` returns 57 — it excludes smoke_test.py (not
+name-matched) while including the perf file; the two counts are different sets, not synonyms.
+The unenforced **unit** tier is green today and unguarded tomorrow: full run = **467 passed /
+2 skipped / 18.9s**.
+
+**Measurement-integrity statement (required reading for whoever picks this up):** the 467/2/18.9s
+baseline was produced via the project environment `.venv\Scripts\python.exe -m pytest tests/unit`
+on the Windows host, AFTER an invalid first probe (bare `python` resolved to the Hermes agent
+venv, which lacks `qdrant_client` and produced 12 collection errors — that run is void). The
+number is therefore a trustworthy *host* baseline; **CI-Linux parity is unproven until the same
+suite runs once on a runner.** Residual uncertainty is exactly that one caveat, stated plainly.
+
+**Structural aggravator:** the boot job enumerates test files by name, so every newly added test
+file defaults to unenforced — the same silent-drift class as FU-25's stale step label, and the
+likely fix pattern is analogous (directory-level invocation or a generated manifest with a
+completeness check).
+
+**Scope boundary (binding):** this is an **investigation-and-triage task before it is a wiring
+task**. Do NOT frame it as "wire 26 unit files into CI": the integration tier demonstrably carries
+legitimate environment gates (`pytest.skip` on Stockfish presence, PDTM/PDFTOMD fixture paths,
+OCR backends, live-gateway reachability), and some unenforced unit files may have similar
+gates not yet surveyed. Each candidate needs a case-by-case enforced-vs-environment-gated
+decision first.
+
+## FU-29 — Declared-but-unused quality tooling: ruff, mypy, pytest-cov
+
+**Identified:** 2026-08-25, same state check as FU-28. Evidence-only entry; no scope committed.
+
+**Finding:** `pyproject.toml` `[dev]` extras declare `ruff>=0.4`, `mypy>=1.10`, `pytest-cov>=4.1`
+(:59–63); grep across `.github/workflows/` finds **zero invocations of any of them**. Measured
+backlog (project `.venv`, 2026-08-25):
+
+- `mypy services/` → **154 errors in 31 files** (57 source files checked); exit 1.
+- `ruff check .` → **2,694 findings**, style-dominated (top classes: E501 ×185, S607 ×77,
+  quote-style Q1/Q2/Q3 ×~194, S310 ×70; 146 auto-fixable); exit 1.
+- Coverage: **no floor exists anywhere** — pytest-cov never invoked in CI or scripts.
+
+**Framing (honest weighting):** these are NOT "wire in the gate" tasks — naive wiring produces
+permanently red gates given the backlog sizes above. They are **burn-down-the-backlog-first,
+then-wire** tasks, meaningfully heavier than FU-28 and must not be conflated with it. Any future
+scoping brief needs a config-tuning/ratchet strategy (e.g. baseline-and-no-regressions) before
+enforcement talk.
+
+**Operational footnote:** repo-root `tmp_*` scratch files from the standing audit layer collide
+with repo-root tooling scans (mypy aborted on untracked `tmp_find_actual_target.py` before any
+project file was checked). Run these tools against `services/` (and consider a scoped ignore)
+until the audit layer gets its own exclusion convention.
