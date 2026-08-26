@@ -175,20 +175,12 @@ jobs:
         # embedded mode (no live Qdrant needed).
         run: |
           source /tmp/boot-venv/bin/activate
-          pytest tests/unit/test_gateway_boots.py \
-                 tests/unit/test_kb_persistent_path.py \
-                 tests/unit/test_profile_skeleton.py \
-                 tests/unit/test_profile_stats.py \
-                 tests/unit/test_profile_tilt_archetypes.py \
-                 tests/unit/test_explain_endpoint.py \
-                 tests/unit/test_phase4_golden.py \
-                 tests/unit/test_gateway_system.py \
-                 tests/unit/test_pdf_ingest_security.py \
-                 tests/unit/test_sec02_user_content_sanitization.py \
-                 tests/unit/test_sec01_https_chessvision.py \
-                 tests/integration/test_eval_verifier_integration.py \
-                 tests/integration/test_narrative_pipeline_grounded.py \
-                 tests/integration/test_narration_engine_pool.py \
+          pytest tests/unit tests/integration \
+                 --ignore=tests/integration/test_engine_orch.py \
+                 --ignore=tests/integration/test_ocr_backend.py \
+                 --ignore=tests/integration/test_pdf_import.py \
+                 --ignore=tests/integration/test_probe_with_gold_set.py \
+                 --ignore=tests/perf/test_kb_reembed_roundtrip.py \
                  -v --no-header --tb=short
 
   # BBF-52: end-to-end exercise of the persistent Qdrant path.
