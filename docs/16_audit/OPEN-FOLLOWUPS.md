@@ -1913,6 +1913,11 @@ since root commit `cd43906c`, referenced by no workflow or script). Denominator 
 37 unit + 19 integration `test_*.py` + 1 perf test + the standalone smoke_test.py = 58. Note a
 bare `find tests -name 'test_*.py' | wc -l` returns 57 — it excludes smoke_test.py (not
 name-matched) while including the perf file; the two counts are different sets, not synonyms.
+*(Amended 2026-08-26 during FU-28 wiring: the prior "hardcoded-path issue" sub-claim was
+partially correct. The path defect is in the **conftest** (`tests/perf/conftest.py:57`,
+hardcoded `/a0/usr/projects/chess_coach/data/qdrant/snapshots/` inside `qdrant_snapshot_guard`),
+not the test file (which is path-agnostic via fixture injection). Logged separately as **FU-30**.
+The 6-file gated count and gating reasons are unchanged.)*
 The unenforced **unit** tier is green today and unguarded tomorrow: full run = **467 passed /
 2 skipped / 18.9s**.
 
@@ -1958,3 +1963,25 @@ enforcement talk.
 with repo-root tooling scans (mypy aborted on untracked `tmp_find_actual_target.py` before any
 project file was checked). Run these tools against `services/` (and consider a scoped ignore)
 until the audit layer gets its own exclusion convention.
+
+## FU-30 — Non-portable hardcoded path in `tests/perf/conftest.py:57`
+
+**Identified:** 2026-08-26, FU-28 wiring session triage re-read. Surfaced as a follow-up to the
+FU-28 hardcoded-path concern (which was partially retracted in the same commit — see FU-28 entry
+amendment).
+
+**Finding:** `tests/perf/conftest.py:57` (inside `qdrant_snapshot_guard` fixture) hardcodes
+`f"/a0/usr/projects/chess_coach/data/qdrant/snapshots/"` — a path referencing a specific
+developer's container layout. Non-portable by definition: the path will not exist on any CI
+runner, in any other dev's environment, or in any container rebuild. The test file itself
+(`tests/perf/test_kb_reembed_roundtrip.py`) is path-agnostic (takes `qdrant_url`/`sqlite_db_path`/
+`qdrant_snapshot_guard` as fixture-injected parameters per the conftest's documented design);
+the defect is in the conftest, not the test.
+
+**Why not in scope for FU-28 wiring:** the perf test stays unenforced (in `smoke.yml`'s
+`--ignore=` list per the FU-28 commit), so the broken fixture has no CI blast radius today.
+Replacing the hardcoded path needs its own design choice (env var + pytest fixture factory, or
+plain string-template parameterized test, or skipif guard) — a scoping decision of its own.
+
+**Status:** OPEN — log only. Path fix deferred to a follow-up BBF that addresses the fixture
+factory design.
