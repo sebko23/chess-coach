@@ -1985,3 +1985,93 @@ plain string-template parameterized test, or skipif guard) — a scoping decisio
 
 **Status:** OPEN — log only. Path fix deferred to a follow-up BBF that addresses the fixture
 factory design.
+
+## FU-31 — `test_pdf_ingest_security.py::test_route_is_wired_to_smoke_yml` breaks under glob-based CI
+
+**Identified:** 2026-08-27, FU-28 wiring merge session. Surfaced when PR #110's `gateway boot (clean
+install)` job turned red on CI Linux (565 passed / 2 failed / 4 skipped in 84.96s, run 33012914337
+job 98323555321).
+
+**Finding:** The meta-test at `tests/unit/test_pdf_ingest_security.py:227` asserts the file name
+appears literally in `.github/workflows/smoke.yml`:
+
+```python
+assert "test_pdf_ingest_security.py" in smoke_text, (...)
+```
+
+Under the previous explicit-list CI (smoke.yml:178-192, 14 enumerated paths including this file
+by name), the assertion was a meaningful gate. The FU-28 structural fix replaced the explicit list
+with `pytest tests/unit tests/integration --ignore=...` — the file is now run by glob, but its
+name no longer appears in `smoke.yml`, so the assertion fails. **The meta-test's intent (file is
+CI-enforced) is preserved by the new convention**, but the literal assertion has not been
+updated to match.
+
+**Local vs CI parity:** the meta-test passes locally on Windows (the test runs from the project
+venv; the assertion fires against the smoke.yml on disk regardless of the host). The CI failure
+is purely an artifact of `pytest tests/unit tests/integration` actually running the file in CI.
+The bug is in the test, not in `smoke.yml`.
+
+**Resolution shape:** rewrite the meta-test to assert the new structural convention. Two
+asserts are sufficient:
+
+1. `tests/unit` appears in the boot-job's pytest invocation (file's directory is in scope).
+2. `test_pdf_ingest_security.py` does NOT appear in any `--ignore=` line in `smoke.yml` (file is
+   not excluded).
+
+This preserves the sec02-lesson protection (regression test unenforced by CI provides no real
+protection) under the new convention.
+
+**Why deferred (not amended into PR #110):** per the 2026-08-27 merge decision, "merge forward,
+fix forward" — log here, address in a follow-up PR. The same forward-fix rationale that applied
+to FU-4 (pnpm lockfile / embedder lazy-import / wrapper PATH-fallback, all deferred) and FU-17
+(stale file-line reference in commit body, deferred to PR #87) applies here. A meta-test update
+is a one-file change with no blast radius, well-suited to its own PR.
+
+**Status:** OPEN — log only. Meta-test fix deferred to a follow-up PR (test-only change).
+
+## FU-32 — `test_repertoire_recommendations_polyglot.py::test_book_path_is_directory` is CI-Linux-only failure (route bug, not test bug)
+
+**Identified:** 2026-08-27, FU-28 wiring merge session. Surfaced in the same PR #110 CI run as
+FU-31 (job 98323555321).
+
+**Finding:** When `polyglot_book_path` is a directory, the route at
+`services/chess_coach/gateway/routes/repertoire_recommendations.py:154` calls
+`chess.polyglot.open_reader(book_path)` and catches `IsADirectoryError`, `PermissionError`, and
+`OSError` -> HTTP 400. **On Linux CI, this fails: the route returns 200 with engine-only items.**
+Measured CI body:
+
+```json
+{"player_name":"ebassti","color":"white","total_gaps":1,"recommendations":[
+  {"fen":"rnbqkbnr/pppppppp/...","ply":1,"priority":"normal",
+   "best_move_uci":"e2e4","best_move_san":"e4","score_cp":50,"depth_reached":10,
+   "alternatives_uci":[],"alternatives_san":[],"source":"engine","book_weight":null}
+]}
+```
+
+Local venv on Windows: test passes (the project .venv's `chess` library raises `PermissionError`
+on `open_reader(directory)` -> 400). **The behavior diverges by platform.**
+
+**Root cause hypothesis (verified by the failure shape):** on Linux, `chess.polyglot.open_reader`
+succeeds on a directory (likely uses `mmap` or similar that doesn't trigger `IsADirectoryError`),
+then `find_all` returns an empty list (the "book" has no entries), and the route's
+`if not book_moves: return engine_items` (line 315) triggers a 200 with engine-only items. The
+route assumes a directory path will raise an OSError inside `open_reader`; on Linux the assumption
+fails. The test was unenforced in CI under the prior explicit list, so the platform divergence
+went unnoticed.
+
+**Resolution shape:** add an explicit `os.path.isdir(polyglot_book_path)` pre-check in
+`_book_moves_for_fen` at line 154, returning HTTP 400 *before* calling `chess.polyglot.open_reader`.
+This makes the 400 platform-deterministic and independent of `chess.polyglot.open_reader`'s
+OS-specific behavior. **Not a test change** — the test correctly encodes the desired API
+behavior; the route should match.
+
+**Cross-reference:** this is the same FU-4 / FU-30 shape — local measurement passes, CI-Linux
+measurement fails, environment-specific divergence. The structural fix in FU-28 (glob-based
+enforcement) is what surfaced it; the prior explicit list was the reason it stayed hidden. Co-sibling to FU-31 (meta-test literal assertion broke under the same glob).
+
+**Why deferred (not amended into PR #110):** the route change requires a small but non-trivial
+code change (added import or inline check + new exception branch) with a corresponding test
+update if the existing test's assertion shape changes. Merge-forward / fix-forward per the same
+rationale as FU-31. The route fix is a code + test PR, well-suited to its own scope.
+
+**Status:** OPEN — log only. Route fix deferred to a follow-up PR (code + test change).
