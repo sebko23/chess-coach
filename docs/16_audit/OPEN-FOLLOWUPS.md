@@ -2075,3 +2075,43 @@ update if the existing test's assertion shape changes. Merge-forward / fix-forwa
 rationale as FU-31. The route fix is a code + test PR, well-suited to its own scope.
 
 **Status:** OPEN — log only. Route fix deferred to a follow-up PR (code + test change).
+
+## FU-33 — Stale `smoke.yml:178-192` reference in PR #110 commit body (FU-17-shape, file:line needs full path)
+
+**Identified:** 2026-08-27, immediately post-merge of PR #110. Surfaced by `commit ref verify`
+on the security-audit workflow run `33049938611` (job 98442698577):
+
+```
+Found 1 stale reference(s):
+  - referenced file does not exist: smoke.yml
+```
+
+**Finding:** PR #110's squash-merge commit body (`f0b07dac3032ec9717b3a7a1b4a47a6ac46ea194`)
+contains the line `Replaces the boot-job's 14-path file enumeration (smoke.yml:178-192)`. The
+`verify_commit_refs.py` script (run in `security-audit.yml`'s `commit ref verify` job) requires
+the full repo path; the actual file is `.github/workflows/smoke.yml`. The reference is *correct
+as a content description* (line 178-192 of the boot-job's pytest block) but *fails the script's
+path-resolution check* because `smoke.yml` doesn't exist at the repo root.
+
+**Same shape as FU-17:** stale file-line reference in a commit body that resolves under the
+squash-merge but breaks the `verify_commit_refs.py` script's path check. FU-17's resolution
+(PR #87) was to amend all `path:line` references in the commit body to use full paths. The same
+resolution applies here.
+
+**Why deferred (not amended into PR #110 pre-merge):** the merge was authorized with RED CI
+explicitly (per the merge-forward / fix-forward decision). Adding a commit-body edit pre-merge
+would have required an amend cycle (force-push + re-CI), which the directive explicitly skipped
+to land the FU-28 structural fix. The failure was known and accepted as part of the merge.
+
+**Resolution shape:** amend the merge commit's body (force-push main) to replace
+`smoke.yml:178-192` with `.github/workflows/smoke.yml:178-192`. **This is a destructive
+operation on `main`** per rule 7.1 (commit-amend on a pushed branch). Requires explicit
+confirmation + backup branch + tarball per rule 7.2.
+
+**Cross-reference:** FU-17 (stale file-line reference, resolved in PR #87). Same script
+(`verify_commit_refs.py`), same shape (file:line needs full path), same resolution (amend the
+commit body with full paths).
+
+**Status:** OPEN — log only. Commit-body amend deferred to a follow-up PR (or post-merge
+amend-with-rollback). Documentation entry here ensures the failure is tracked alongside
+FU-31 / FU-32 (the two boot-job failures from the same PR #110 CI run).
