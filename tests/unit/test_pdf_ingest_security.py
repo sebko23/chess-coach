@@ -225,9 +225,18 @@ def test_route_uses_asyncio_wait_for_wrapper() -> None:
 
 
 def test_route_is_wired_to_smoke_yml() -> None:
-    """Positive assertion: this test file IS in smoke.yml's pytest
-    list. Prevents the lesson from last session's sec02: a regression
+    """Positive assertion: this test file IS CI-enforced by smoke.yml's
+    boot job. Prevents the lesson from last session's sec02: a regression
     test unenforced by CI provides no real protection.
+
+    Pre-FU-28 (explicit-by-name): the file's basename appeared literally
+    in the pytest invocation list. Post-FU-28 (glob-based): the file is
+    enforced by its parent directory being in the pytest invocation AND
+    not being excluded by any --ignore= clause. This test now asserts
+    the post-FU-28 structural condition.
+
+    See FU-31 in docs/16_audit/OPEN-FOLLOWUPS.md for the FU-28->FU-31
+    transition rationale.
     """
     # pdf_ingest is at services/chess_coach/gateway/routes/pdf_ingest.py
     # 4 levels up gives the repo root where .github/workflows/ lives.
@@ -235,8 +244,47 @@ def test_route_is_wired_to_smoke_yml() -> None:
     smoke_path = repo_root / ".github" / "workflows" / "smoke.yml"
     assert smoke_path.exists(), f"smoke.yml not found at: {smoke_path}"
     smoke_text = smoke_path.read_text(encoding="utf-8")
-    assert "test_pdf_ingest_security.py" in smoke_text, (
-        "test_pdf_ingest_security.py is NOT in smoke.yml; per the sec02 "
-        "lesson (a regression test unenforced by CI provides no real "
-        "protection), this file must be in the pytest invocation list."
+    smoke_lines = smoke_text.splitlines()
+
+    this_basename = Path(__file__).resolve().name  # "test_pdf_ingest_security.py"
+    this_parent_dir = f"tests/{Path(__file__).resolve().parent.name}"  # "tests/unit"
+
+    # Condition 1: the boot-job's pytest invocation must include
+    # `tests/unit` as a positional arg. The split-then-membership check
+    # avoids the comment-noise problem that a bare substring check has
+    # (smoke.yml contains "tests/unit" in comments like L171; we only
+    # want to match invocations).
+    has_unit_invocation = any(
+        line.lstrip().startswith("pytest ")
+        and this_parent_dir in line.lstrip().split()
+        for line in smoke_lines
     )
+    assert has_unit_invocation, (
+        f"No `pytest` invocation in smoke.yml includes `{this_parent_dir}` as a "
+        f"positional arg; under the FU-28 glob-based convention, the boot-job "
+        f"pytest invocation must include this directory for {this_basename} "
+        f"to be CI-enforced. Without it, the file is silently unenforced "
+        f"(the sec02 lesson). Check the gateway-boot job's `pytest` step "
+        f"in .github/workflows/smoke.yml."
+    )
+
+    # Condition 2: this file's basename must NOT appear in any --ignore=
+    # clause. --ignore= is the only mechanism that excludes a file from
+    # the glob, so a positive match here would mean the file is excluded
+    # even though its directory is in scope.
+    ignored_paths = [
+        line.split("=", 1)[1].strip()
+        for line in smoke_lines
+        if line.strip().startswith("--ignore=")
+    ]
+    # Each --ignore= value may end with a backslash-continuation; strip
+    # trailing backslashes + whitespace before checking.
+    ignored_paths = [p.rstrip("\\").strip() for p in ignored_paths]
+    for ignored in ignored_paths:
+        assert this_basename not in ignored, (
+            f"{this_basename} IS in an --ignore= clause in smoke.yml "
+            f"({ignored!r}); per the sec02 lesson, this would silently "
+            f"exclude the file from CI enforcement even though {this_parent_dir} "
+            f"is in the pytest invocation. Remove this file from the --ignore= "
+            f"list (or remove the --ignore= clause entirely) to restore CI coverage."
+        )
