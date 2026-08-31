@@ -34,6 +34,13 @@ Blending policy (iv) — no server-side arbitration:
   exact same UCI.
 
 Error handling for bad book paths:
+  - Directory path (e.g. caller passes a directory where a ``.bin`` file is
+    expected) -> HTTP 400 with code ``client.bad_request``. Pre-checked via
+    ``os.path.isdir()`` BEFORE ``chess.polyglot.open_reader()`` because on
+    Linux that call silently returns an empty reader (the library's
+    ``_EmptyMmap`` workaround at ``chess/polyglot.py:330`` swallows the
+    OSError from ``mmap`` on a directory fd), which would otherwise fall
+    through to the engine-only 200 path. Platform-deterministic 400.
   - ``FileNotFoundError``, ``PermissionError``, ``IsADirectoryError``,
     ``OSError`` from ``open_reader`` -> HTTP 400 with code
     ``client.bad_request``. The caller supplied the path; failure to
@@ -51,6 +58,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Literal
 
 import aiosqlite
@@ -150,6 +158,21 @@ def _book_moves_for_fen(book_path: str, fen: str) -> list[tuple[str, int]]:
     import chess.polyglot
 
     board = chess.Board(fen)
+    # Pre-check for directory paths: chess.polyglot.open_reader() on Linux
+    # silently returns an empty reader for a directory fd (the library's
+    # _EmptyMmap workaround at chess/polyglot.py:330 swallows the OSError
+    # from mmap on a directory), which would otherwise fall through to the
+    # engine-only 200 path. This pre-check makes the 400 platform-deterministic.
+    if os.path.isdir(book_path):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": ErrorCode.BAD_REQUEST.value,
+                "message": (
+                    f"polyglot_book_path is a directory: {book_path}"
+                ),
+            },
+        )
     try:
         with chess.polyglot.open_reader(book_path) as reader:
             entries = list(reader.find_all(board))
