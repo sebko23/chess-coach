@@ -2115,3 +2115,47 @@ commit body with full paths).
 **Status:** OPEN — log only. Commit-body amend deferred to a follow-up PR (or post-merge
 amend-with-rollback). Documentation entry here ensures the failure is tracked alongside
 FU-31 / FU-32 (the two boot-job failures from the same PR #110 CI run).
+
+
+---
+
+## Resolved
+
+Entries that were tracked as open but have since been addressed (by a merged PR) or
+deliberately accepted without amendment. Each entry here preserves a pointer to the
+original line range in the file (above) so the full historical context is reachable.
+
+The convention for closed entries: keep the original `## FU-NN` heading and finding text
+unchanged in the upper section, but change the `**Status:**` line and add a brief
+`**Resolution:**` line. Entries here document the disposition for future readers.
+
+### FU-28 — RESOLVED, fixed by PR #110
+
+**Original entry:** lines 1902-1942 (above).
+**Resolution:** Addressed by PR #110 (`feat(ci): enforce-by-default for backend tests; log FU-30 conftest path defect`), squash-merged as `f0b07dac` (2026-08-27). The 14-path explicit enumeration in `smoke.yml:178-192` was replaced by the directory-level invocation `pytest tests/unit tests/integration --ignore=...`. Post-merge state: 53 of 58 test files enforced by the glob (vs. 16 under the explicit list).
+
+### FU-31 — RESOLVED, fixed by PR #111
+
+**Original entry:** lines 1989-2031 (above).
+**Resolution:** Addressed by PR #111 (`fix(tests): rewrite test_route_is_wired_to_smoke_yml for FU-28 glob convention`), squash-merged as `042f56c1` (2026-08-29). The meta-test's literal `"test_pdf_ingest_security.py" in smoke_text` assertion was rewritten to assert the post-FU-28 structural convention: `tests/unit` appears as a positional pytest arg AND the file basename does NOT appear in any `--ignore=` clause. Post-merge gateway-boot pytest: 567 passed, 4 skipped, 0 failed on Linux CI.
+
+### FU-32 — RESOLVED, fixed by PR #112
+
+**Original entry:** lines 2032-2078 (above).
+**Resolution:** Addressed by PR #112 (`fix(route): add os.path.isdir() pre-check for polyglot_book_path (FU-32)`), squash-merged as `b4a8e5f0` (2026-08-31). The route's `_book_moves_for_fen` gained an explicit `os.path.isdir(book_path)` pre-check that raises `HTTPException(400)` before the library call. This bypasses the `chess.polyglot.MemoryMappedReader._EmptyMmap` workaround (which silently returns an empty reader on Linux for directory paths, defeating the route's existing `OSError` catch on Windows). Post-merge gateway-boot pytest: 567 passed, 4 skipped, 0 failed on Linux CI.
+
+### FU-33 — RESOLVED, accepted as-is, not amended
+
+**Original entry:** lines 2079-2117 (above).
+**Resolution:** ACCEPTED as-is, NOT amended. Rationale:
+
+- (a) The stale references are in commit-body prose (specifically `smoke.yml:178-192` in the bodies of merges `f0b07dac` / `042f56c1` / `b4a8e5f0`), not in code or test assertions. They do not affect runtime behavior or test pass/fail.
+- (b) Fixing requires a destructive force-push to `main` per rule 7.1 (committed-history modification on a pushed branch), which has disproportionate cost vs. benefit for a `file:line` reference in prose. The same FU-17 pattern would require amending the merge commits of three PRs.
+- (c) The underlying fix -- using `.github/workflows/smoke.yml` (full path) in commit bodies going forward -- is now part of the author discipline. Future PRs that avoid bare paths will not trip `verify_commit_refs.py`.
+- (d) The `commit ref verify` failure on `main` is a known accepted state. It will continue to appear on every commit that re-introduces a bare `smoke.yml:NNN` reference; that is a per-PR concern, not a `main`-state problem.
+
+The `verify_commit_refs.py` failure on `f0b07dac` / `042f56c1` / `b4a8e5f0` is now a known accepted CI state on `main`, not an open action item. Future `commit ref verify` failures of this shape should be addressed at the PR-author level (use full paths in commit bodies), not by amending merged commits.
+
+---
+
+*Session-closed: 2026-08-31. Closed per Sebastian's session directive for the FU-33 disposition + co-close of FU-28/31/32.*
