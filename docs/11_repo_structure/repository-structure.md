@@ -151,7 +151,7 @@ We accept the cost of slower CI on touch-all-services changes; we mitigate with 
 - Conventional Commits enforced by commitlint.
 - PRs squash-merged.
 - `main` is always green; tags `vX.Y.Z` trigger release pipelines.
-- The fork point from en-croissant is tagged `upstream/en-croissant/vA.B.C` and a documented rebase ritual lives in `apps/desktop/README.md`.
+- The fork point from en-croissant is tagged `upstream/en-croissant/vA.B.C` and a documented rebase ritual lives in `apps/desktop/UPSTREAM.md` §Rebase history.
 
 ## Branch protection
 
