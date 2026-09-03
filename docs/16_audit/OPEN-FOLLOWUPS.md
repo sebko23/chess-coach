@@ -1804,10 +1804,13 @@ observation 2. Fresh-pass finding — not surfaced by the prior session's invest
    `apps/desktop/README.md`, but for the CLI app directory. Pre-existing;
    different app; out of PR #102's scope.
 
-**Status:** **OPEN — low priority doc-drift cleanup.** Both are single-line
-fixes in tracked docs; no governance needed (neither file is upstream-inherited
-in the §3.1 sense). Good candidates for a future doc-drift sweep BBF alongside
-the pattern established by the 2026-08-13 doc-drift fix-up convention.
+**Status:** **RESOLVED 2026-09-03 via squash-merge of PR #114** (commit `e74528a6` on `main`). Both stale pointers fixed:
+
+1. `docs/11_repo_structure/repository-structure.md:154` — was `apps/desktop/README.md`, now `apps/desktop/UPSTREAM.md` §Rebase history. The rebase ritual does not live in the 17-line `apps/desktop/README.md`; it lives in `apps/desktop/UPSTREAM.md` at the `## Rebase history` section.
+2. `apps/cli/README.md:5` — was future-tense "not yet populated. Phase 1 implementation will land `__main__.py`, the asyncio entrypoint, and the `backend.json` writer here." Now present-tense: "Phase 1 has landed: `__main__.py` dispatches two commands (`gateway`, `migrate`). `backend.json` writer is not yet implemented; Phase 8 PyInstaller packaging is still future-tense."
+
+Both fixes are single-line edits, no governance questions, no upstream-inheritance concerns, no side-effects. See the `## Resolved` section below for the formal closure entry.
+
 
 **Action items (when picked up):**
 
@@ -2117,6 +2120,51 @@ amend-with-rollback). Documentation entry here ensures the failure is tracked al
 FU-31 / FU-32 (the two boot-job failures from the same PR #110 CI run).
 
 
+## FU-34 — `pnpm audit` failure on `main`: `GHSA-cp6q-959q-f8rh` (`@tiptap/core` moderate)
+
+**Identified:** 2026-09-02, surfaced on the security-audit workflow run for PR #113's
+merge commit (`fd984efd`); has failed every subsequent `pnpm audit` run on `main` through
+the present (`e74528a6` post-PR-#114 merge, run 33375314891 job 100389723337). Three
+sessions flagged this finding as unlogged; this entry closes that gap.
+
+**Finding:** `pnpm audit --audit-level moderate --prod` reports 1 moderate vulnerability:
+
+```
+│ moderate            │ Tiptap: mergeAttributes() turns an own __proto__ key   │
+│ Package             │ @tiptap/core                                           │
+│ Vulnerable versions │ >=2.0.0-alpha.0 <3.30.4                                │
+│ Patched versions    │ >=3.30.4                                               │
+│ More info           │ https://github.com/advisories/GHSA-cp6q-959q-f8rh      │
+```
+
+**Reachability via dep tree (34 paths):**
+
+- `.>@mantine/tiptap>@tiptap/extension-link>@tiptap/core`
+- `.>@mantine/tiptap>@tiptap/react>@tiptap/core`
+- `.>@mantine/tiptap>@tiptap/extension-bubble-menu>@tiptap/core`
+- (plus 31 more transitive paths through `@mantine/tiptap`)
+
+The package `@tiptap/core` is not pinned directly in `apps/desktop/package.json` (which
+lists `@tiptap/extension-link`, `@tiptap/extension-placeholder`, `@tiptap/extension-underline`,
+`@tiptap/markdown`, `@tiptap/pm`, `@tiptap/react`, `@tiptap/starter-kit`, all at `3.20.0`).
+`@tiptap/core` is pulled in transitively through `@mantine/tiptap@^8.3.14`. The pinned
+`3.20.0` of the directly-listed `@tiptap/*` packages is itself in the vulnerable range
+`>=2.0.0-alpha.0 <3.30.4` — but those don't import `@tiptap/core` directly.
+
+**Why this is `main`-state, not a per-PR concern:** the `commit ref verify` and
+`pnpm audit` jobs both run on the merge commit, so every commit that lands on `main`
+(including docs-only commits like PR #114) trips this failure. Same shape as
+`FU-10` (`h2` CVE), `FU-12` (pre-existing JS dep vulps), `FU-14` (`js-yaml` CVE):
+pre-existing dep vulnerability, moderate, blocks CI on every PR until fixed.
+
+**Status:** OPEN. Resolution shape: (a) try a parent bump of `@mantine/tiptap` to a
+version that pulls in `@tiptap/core >=3.30.4` transitively; (b) if no such parent
+version exists, add a `pnpm.overrides` entry in `apps/desktop/package.json` forcing
+`@tiptap/core` to `^3.30.4`. Either approach is a one-line code PR. This entry
+exists to (1) close the ledger gap surfaced across the last three sessions and (2)
+flag the CI-blocking nature of the failure.
+
+**Cross-reference:** FU-10, FU-12, FU-14 — same shape, all pre-existing JS dep vulns.
 ---
 
 ## Resolved
@@ -2156,6 +2204,15 @@ unchanged in the upper section, but change the `**Status:**` line and add a brie
 
 The `verify_commit_refs.py` failure on `f0b07dac` / `042f56c1` / `b4a8e5f0` is now a known accepted CI state on `main`, not an open action item. Future `commit ref verify` failures of this shape should be addressed at the PR-author level (use full paths in commit bodies), not by amending merged commits.
 
+### FU-24 — RESOLVED, fixed by PR #114
+
+**Original entry:** lines 1790-1819 (above).
+**Resolution:** Addressed by PR #114 (`docs: fix two doc-drift pointers surfaced by FU-24`), squash-merged as `e74528a6` (2026-09-03). Two single-line doc-drift fixes in tracked docs:
+
+- `docs/11_repo_structure/repository-structure.md:154` — was `apps/desktop/README.md`, now `apps/desktop/UPSTREAM.md` §Rebase history. The rebase ritual does not live in the 17-line `apps/desktop/README.md`; it lives in `apps/desktop/UPSTREAM.md` at the `## Rebase history` section (verified: 3 rebase mentions including a v0.15.0 initial-fork row at L107; `README.md` has zero rebase mentions).
+- `apps/cli/README.md:5` — was future-tense "not yet populated. Phase 1 implementation will land `__main__.py`, the asyncio entrypoint, and the `backend.json` writer here." Now present-tense: "Phase 1 has landed: `__main__.py` dispatches two commands (`gateway`, `migrate`). `backend.json` writer is not yet implemented; Phase 8 PyInstaller packaging is still future-tense." (verified: `__main__.py` implements exactly `gateway` and `migrate`; no `backend.json` writer in `apps/cli/`.)
+
+No governance questions, no upstream-inheritance concerns, no side-effects. Leaf reviewer verdict: APPROVE.
 ---
 
 *Session-closed: 2026-08-31. Closed per Sebastian's session directive for the FU-33 disposition + co-close of FU-28/31/32.*
