@@ -2,6 +2,6 @@
 
 **License**: Apache-2.0.
 
-**Status**: not yet populated. Phase 1 implementation will land `__main__.py`, the asyncio entrypoint, and the backend.json writer here.
+**Status**: Phase 1 has landed: `__main__.py` dispatches two commands (`gateway`, `migrate`). `backend.json` writer is not yet implemented; Phase 8 PyInstaller packaging is still future-tense.
 
 The binary distributed at Phase 8 packaging (`chess-coach-backend.exe` and equivalents) is produced by PyInstaller from this entrypoint plus all of `services/` and `libs/`.
