@@ -2157,12 +2157,19 @@ lists `@tiptap/extension-link`, `@tiptap/extension-placeholder`, `@tiptap/extens
 `FU-10` (`h2` CVE), `FU-12` (pre-existing JS dep vulps), `FU-14` (`js-yaml` CVE):
 pre-existing dep vulnerability, moderate, blocks CI on every PR until fixed.
 
-**Status:** OPEN. Resolution shape: (a) try a parent bump of `@mantine/tiptap` to a
-version that pulls in `@tiptap/core >=3.30.4` transitively; (b) if no such parent
-version exists, add a `pnpm.overrides` entry in `apps/desktop/package.json` forcing
-`@tiptap/core` to `^3.30.4`. Either approach is a one-line code PR. This entry
-exists to (1) close the ledger gap surfaced across the last three sessions and (2)
-flag the CI-blocking nature of the failure.
+**Status:** RESOLVED 2026-09-04 via squash-merge of PR #117 (commit `2c92fda4` on `main`).
+Resolution shape (b) was used: a `pnpm.overrides` entry in `apps/desktop/pnpm-workspace.yaml`
+forcing `@tiptap/core` to `^3.30.4`. Parent-bump path was investigated and ruled out:
+`@mantine/tiptap@8.x` has no peer or dep on `@tiptap/core` (verified against npm registry
+for 8.3.18, 9.0.0, 9.6.0; there is no 8.4.x), so bumping the parent cannot constrain the
+vulnerable transitive chain. The override was placed in `pnpm-workspace.yaml`, NOT
+`apps/desktop/package.json`, because the latter's `pnpm.overrides` block is dead code
+under pnpm v11+ per FU-17. Pattern matches FU-12 (nanoid) and FU-14 (js-yaml) in the same
+file. Verification under pnpm 11.21.0: `pnpm install --frozen-lockfile=false` succeeded
+in 23.7s; `pnpm audit --audit-level moderate --prod` returned "No known vulnerabilities
+found"; CI runner independently confirmed the same (all 11 check-runs green on PR #117,
+including `pnpm audit`). `@tiptap/core` resolved from 3.29.2 to 3.31.0. See the FU-34
+entry under `## Resolved` below for the full disposition.
 
 **Cross-reference:** FU-10, FU-12, FU-14 — same shape, all pre-existing JS dep vulns.
 ---
@@ -2213,6 +2220,51 @@ The `verify_commit_refs.py` failure on `f0b07dac` / `042f56c1` / `b4a8e5f0` is n
 - `apps/cli/README.md:5` — was future-tense "not yet populated. Phase 1 implementation will land `__main__.py`, the asyncio entrypoint, and the `backend.json` writer here." Now present-tense: "Phase 1 has landed: `__main__.py` dispatches two commands (`gateway`, `migrate`). `backend.json` writer is not yet implemented; Phase 8 PyInstaller packaging is still future-tense." (verified: `__main__.py` implements exactly `gateway` and `migrate`; no `backend.json` writer in `apps/cli/`.)
 
 No governance questions, no upstream-inheritance concerns, no side-effects. Leaf reviewer verdict: APPROVE.
+
+### FU-34 — RESOLVED, fixed by PR #117
+
+**Original entry:** lines 2123-2167 (above).
+**Resolution:** Addressed by PR #117 (`fix(pnpm): FU-34 GHSA-cp6q-959q-f8rh @tiptap/core override`), squash-merged as `2c92fda4` (2026-09-04). One-line `pnpm.overrides` entry in `apps/desktop/pnpm-workspace.yaml` (the canonical pnpm v11 override location per FU-17, NOT `apps/desktop/package.json` whose `pnpm.overrides` block is dead code under pnpm v11+):
+
+```yaml
+"@tiptap/core": "^3.30.4"
+```
+
+Pattern matches FU-12 (nanoid) and FU-14 (js-yaml) in the same file. Same shape: pre-existing dep vulnerability, one-line override, lockfile regen under pnpm 11.
+
+**Why the parent-bump hypothesis (resolution shape (a)) was ruled out:** `@mantine/tiptap@8.x` — the parent that introduces the transitive tiptap deps into the dep tree — has no peer or dep on `@tiptap/core` (only `@tiptap/react: >=2.1.12` and `@tiptap/extension-link: >=2.1.12`). Verified against npm registry for `8.3.18` (latest 8.x), `9.0.0`, and `9.6.0` (latest stable); there is no 8.4.x release. Bumping `@mantine/tiptap` therefore cannot constrain the vulnerable transitive chain.
+
+**Why the user-pinned tiptap deps (e.g., `@tiptap/starter-kit@3.20.0` exact) didn't help:** the user-pinned `@tiptap/starter-kit@3.20.0` internally has a hard `dependencies` block pulling `@tiptap/core: ^3.20.0` (`apps/desktop/pnpm-lock.yaml:4624-4634`). pnpm resolves this caret range to the highest matching version on the registry (`3.29.2`, in the vulnerable range). `@tiptap/markdown: ^3.20.0` resolved the same way. Bumping starter-kit to a newer version would force `@tiptap/pm` to also need a bump (the user-pinned exact `3.20.0` conflicts with the newer starter-kit's required `@tiptap/pm: 3.30.4` exact) — a much larger blast radius than the one-line override.
+
+**Verification under pnpm 11.21.0 (matches `packageManager: pnpm@11.21.0` in `apps/desktop/package.json`):**
+
+```
+$ pnpm install --frozen-lockfile=false
+Done in 23.7s using pnpm v11.21.0
+
+$ pnpm audit --audit-level moderate --prod
+No known vulnerabilities found
+```
+
+CI runner independently confirmed (PR #117, head `24b9b771`):
+
+```
+pnpm audit (JS dep vulnerability scan): success
+... (10 other check-runs all green)
+mergeable_state: clean
+```
+
+`@tiptap/core` resolved from `3.29.2` (vulnerable) to `3.31.0` (patched, in `>=3.30.4`). 22 other `@tiptap/*@3.29.2` packages remain in the lockfile — these are NOT the vulnerable package; only `@tiptap/core` is reported by GHSA-cp6q-959q-f8rh. pnpm's peer-dep dedup maintains compatibility against the patched core.
+
+No governance questions, no upstream-inheritance concerns. Leaf reviewer verdict (implied by merge authorization): APPROVE.
+
+**Post-merge `main` state:**
+- `origin/main` HEAD: `2c92fda4`
+- Branch `bbf-fu34-tiptap-core-pnpm-audit` deleted on origin (HTTP 204) + local (HTTP 404 verified)
+- All 4 prior FUs of this shape (FU-10 h2, FU-12 nanoid/dompurify, FU-14 js-yaml, FU-34 tiptap/core) are now closed via override; the `pnpm audit` CI job should be green on every subsequent PR until/unless a new pre-existing dep vulnerability is discovered.
+
 ---
 
 *Session-closed: 2026-08-31. Closed per Sebastian's session directive for the FU-33 disposition + co-close of FU-28/31/32.*
+
+*Reopened 2026-09-04: FU-34 resolved per PR #117 squash-merge. Entry added under `## Resolved` and FU-34 upper-section status flipped from OPEN to RESOLVED.*
