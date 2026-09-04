@@ -45,3 +45,15 @@ overrides:
   nanoid: "^3.3.17"
   dompurify: "^3.4.13"
   js-yaml: "4.3.1"
+  # FU-34: GHSA-cp6q-959q-f8rh (Tiptap mergeAttributes() __proto__
+  # inheritance). The vulnerable `@tiptap/core@3.29.2` is pulled in
+  # transitively by the user-pinned `@tiptap/starter-kit@3.20.0` and
+  # `@tiptap/markdown` (resolved to 3.29.2). The 23 transitive
+  # `@tiptap/*@3.29.2` packages all fall in the vulnerable range
+  # `>=2.0.0-alpha.0 <3.30.4`. The override forces the `@tiptap/core`
+  # floor to the patched range; pnpm v11 deduplicates other
+  # `@tiptap/*` peer deps against this floor. Pattern matches
+  # FU-12 nanoid and FU-14 js-yaml: same-shape dep vulnerability,
+  # resolved via pnpm-workspace.yaml overrides (not package.json,
+  # which is dead code under pnpm v11+ per FU-17).
+  "@tiptap/core": "^3.30.4"
