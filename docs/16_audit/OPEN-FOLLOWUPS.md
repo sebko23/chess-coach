@@ -2174,6 +2174,106 @@ entry under `## Resolved` below for the full disposition.
 **Cross-reference:** FU-10, FU-12, FU-14 — same shape, all pre-existing JS dep vulns.
 ---
 
+## FU-35 — `chess_coach` implicit namespace package blocks clean PyInstaller packaging
+
+**Identified:** 2026-09-05, surfaced during BBF-Phase8-1 (PR #119) iteration 3
+on the PyInstaller spec. See the BBF audit doc at
+`docs/16_audit/BBF-PHASE-8-1.md` for the full failure-mode walkthrough.
+
+**Finding:** `chess_coach` is a PEP 420 implicit namespace package
+declared via `[tool.setuptools.package-dir]` in `pyproject.toml:99-117`.
+There is no physical `chess_coach/__init__.py` at the repo root.
+PyInstaller's `collect_all()` primitive does not enumerate implicit
+namespace packages, so it cannot enumerate `chess_coach.*` submodules
+for the binary. The temporary workaround (BBF-Phase8-1) is to
+bundle the source-tree directories verbatim via `datas=` and add
+their parents to `sys.path` via a runtime hook:
+
+  datas= entries (in `services/chess_coach/gateway/chess-coach-gateway.spec`):
+    (str(REPO_ROOT / 'services/chess_coach/'), 'services/chess_coach'),
+    (str(REPO_ROOT / 'libs/chess_coach/'),     'libs/chess_coach'),
+
+  runtime hook (`services/chess_coach/gateway/pyinstaller_rthook.py`):
+    sys.path.insert(0, os.path.join(sys._MEIPASS, 'services'))
+    sys.path.insert(0, os.path.join(sys._MEIPASS, 'libs'))
+
+This works but is fragile:
+  - The `datas=` entries bundle the full source tree including
+    __pycache__/, .pyc files, .swp files, and any other artifacts in
+    those directories, bloating the binary.
+  - Any future file (test fixture, .env, etc.) added to those
+    directories gets bundled automatically, which is the opposite
+    of the "explicit `datas`" pattern PyInstaller recommends.
+  - The runtime hook's "services before libs" ordering is implicit
+    and undocumented; if a future BBF adds a subpackage that lives
+    only in `libs/`, the ordering becomes load-bearing and the
+    failure mode is non-obvious.
+
+**The right fix:** make `chess_coach` an explicit namespace package
+by adding a single zero-byte `chess_coach/__init__.py` at the repo
+root, and updating `pyproject.toml:99-117`'s `[tool.setuptools
+.package-dir]` mapping so the empty `__init__.py` doesn't break
+the editable install (the current mapping says
+`"chess_coach.errors" = "libs/chess_coach/errors"` which redirects
+the implicit namespace; adding a root `chess_coach/__init__.py`
+would require either removing the explicit per-package mappings or
+restructuring them so they coexist with a real `chess_coach/`
+directory at the repo root).
+
+After that:
+  - PyInstaller's `collect_all('chess_coach')` works as documented
+    (regular packages are enumerable).
+  - The runtime hook can be removed (no longer needed).
+  - The two `datas=` tree entries in the spec can be removed
+    (collect_all handles the bundling).
+  - The binary size drops (no source-tree inclusion, just the
+    modules actually imported).
+
+**Status:** OPEN. Resolution shape:
+
+  1. Add `chess_coach/__init__.py` at the repo root (zero-byte file
+     or `# Explicit namespace package marker` comment).
+  2. Update `[tool.setuptools.package-dir]` in `pyproject.toml:99-117`
+     to coexist with the root `chess_coach/` directory. Options:
+     a. Drop the per-package mappings entirely and rely on the
+        root `chess_coach/` directory's standard layout (services/
+        becomes services/chess_coach/, libs/ becomes libs/chess_coach/).
+        This is the most invasive but the most consistent.
+     b. Keep the per-package mappings and add `chess_coach/` as an
+        additional root. Python's namespace package resolution
+        should work as long as both the root `chess_coach/` and
+        the per-package directories are on `sys.path`. (Same
+        multi-root shape as the PyInstaller runtime hook's
+        `services` + `libs` sys.path manipulation, just done by
+        the editable install at dev-time.)
+  3. Update the PyInstaller spec to use `collect_all('chess_coach')`
+     instead of the tree-level `datas=` entries; remove the runtime
+     hook.
+  4. Update the `chess_coach-gateway` entry-point setup script
+     (whatever the `chess-coach` console script maps to in
+     `pyproject.toml:67`) if its `chess_coach` import changes
+     shape.
+  5. Verify the existing CI passes (gateway-boot, qdrant-smoke,
+     pnpm-audit, etc.) -- all the tests that exercise the package
+     as source.
+  6. Re-run BBF-Phase8-1's PyInstaller binary smoke test; it
+     should pass without the runtime hook.
+
+**Out of scope for BBF-Phase8-1** (the work this FU was logged
+from): this is a structural change to the package layout, not a
+build-config change. It touches `pyproject.toml`, the package
+directory structure, potentially every import in the codebase, and
+needs its own ADR-level consideration. Per Sebastian's 2026-09-05
+directive: "Don't do that in the same PR as the PyInstaller spec."
+
+**Cross-reference:** BBF-Phase8-1 (PR #119) iterations 3-5; FU-34
+(same pattern of "pre-existing dep / structure issue blocks
+shipping code"); docs/16_audit/PHASE-8-MINIMUM-VIABLE-SCOPING-2026-08-20.md
+§3.1 (PyInstaller + namespace-package layout interaction is a known
+complication); docs/16_audit/BBF-PHASE-8-1.md.
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
