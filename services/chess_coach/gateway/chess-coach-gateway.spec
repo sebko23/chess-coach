@@ -154,6 +154,31 @@ a = Analysis(
         # defensively costs nothing and preempts the next iteration's
         # likely 'ModuleNotFoundError: aiosqlite' failure.
         'aiosqlite',
+        # FU-34 iteration 5: with the source-tree bundling approach
+        # (services/ and libs/ in datas=), the bundled .py files load
+        # via the standard filesystem-path-based finder, which does
+        # NOT have visibility into PyInstaller's frozen-module
+        # finder (the PYZ archive). The third-party packages that
+        # chess_coach.gateway imports at the top of app.py (fastapi,
+        # uvicorn) need to be added to hiddenimports so PyInstaller's
+        # static analysis includes them in the PYZ, and the runtime
+        # can resolve them from PYZ via the same frozen-module
+        # finder that the bundled .py files use. Without these
+        # entries, app.py:38's `from fastapi import FastAPI, ...`
+        # fails at runtime with `ModuleNotFoundError: No module
+        # named 'fastapi'`.
+        #
+        # Per Sebastian's 2026-09-05 directive: "Don't add everything
+        # speculatively -- add what the error names, let CI run, add
+        # the next thing if it fails again." So this iteration
+        # adds only the five packages the prior CI log + the
+        # app.py:38 import line + uvicorn's known module
+        # decomposition imply:
+        'fastapi',
+        'uvicorn',
+        'uvicorn.logging',
+        'uvicorn.loops',
+        'uvicorn.loops.auto',
     ],
     hookspath=[],
     hooksconfig={},
