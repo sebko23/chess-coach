@@ -22,6 +22,10 @@ Public API:
 
   load_archetype_gold_with_metadata(version, base_path=None)
     Same, but returns the full dict (including _metadata).
+    Note: the returned `_metadata` dict is load-bearing — its `version`
+    field is honored at runtime by the advisory version check (BBF-86.7).
+    Refactors that drop or rename this field must update the advisory
+    check too.
 
   validate_archetype_gold(corpus)
     Validate the corpus shape. Returns a list of error strings.

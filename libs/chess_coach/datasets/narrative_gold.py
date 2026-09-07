@@ -29,6 +29,10 @@ Public API:
     Same, but returns the full dict (including _metadata and
     schema_version). Useful for tooling that wants to surface
     corpus provenance.
+    Note: the returned `_metadata` dict is load-bearing — its `version`
+    field is honored at runtime by the advisory version check (BBF-86.7).
+    Refactors that drop or rename this field must update the advisory
+    check too.
 
   validate_narrative_gold(corpus)
     Validate the corpus shape. Returns a list of error strings
