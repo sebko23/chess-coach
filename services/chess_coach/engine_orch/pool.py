@@ -308,12 +308,32 @@ class EnginePool:
         Called from app.py lifespan so the first PGN import doesn't pay
         N times the cold-start cost (one per slot). Acquires every
         slot's lock in order, then releases.
+
+        Phase 8 BBF-2 Fix 3 Part A: per-slot _acquire failures are
+        caught and logged instead of propagating. The gateway must
+        boot successfully even when no engine binary is on PATH (CI's
+        ubuntu-latest has no Stockfish installed); individual slots
+        are then unavailable, which is_available() surfaces to route
+        handlers via require_engine_available().
         """
         for engine_id, slots in self._slots.items():
             spec = self._specs[engine_id]
             for slot in slots:
                 async with slot.lock:
-                    await self._acquire(spec, slot, {})
+                    try:
+                        await self._acquire(spec, slot, {})
+                    except Exception as exc:  # noqa: BLE001
+                        # Don't propagate — keep warmup non-fatal so the
+                        # gateway boots in a Stockfish-less environment.
+                        # The slot remains None, which is_available()
+                        # reports, which require_engine_available()
+                        # turns into a clean 503 at the route level.
+                        logger.warning(
+                            "engine_pool: warmup could not acquire %s slot %d: %s",
+                            spec.engine_id,
+                            slot.slot_index,
+                            exc,
+                        )
 
     async def shutdown(self) -> None:
         """Kill all engine subprocesses across all slots."""
@@ -325,6 +345,49 @@ class EnginePool:
         for slots in self._slots.values():
             for slot in slots:
                 slot.engine = None
+
+    def is_available(self, engine_id: str) -> bool:
+        """Return True if at least one slot for engine_id has a live engine.
+
+        Phase 8 BBF-2 Fix 3 Part B: route handlers call this before
+        dispatching to the pool, so a Stockfish-less deployment returns
+        a clean 503 instead of crashing with FileNotFoundError inside
+        _acquire (which would be caught by route_guard and returned
+        as a generic 500, hiding the real cause).
+
+        Semantics: partial availability counts as available. If the
+        pool has max_workers=4 slots for an engine and only 1 was
+        acquired successfully, is_available() still returns True
+        (the working slot can serve requests; the rest stay None).
+        This matches _acquire's round-robin behavior, which falls
+        through None slots to whichever slot has a live engine.
+
+        A False return collapses two distinct conditions:
+          (a) engine_id is not registered at all (unknown id), or
+          (b) engine_id is registered but no slot has a live engine.
+        Routes that need to distinguish these (e.g., engine_info,
+        which should return 404 for unknown ids) must check
+        is_registered() first. is_available() alone is the right
+        gate for "is it OK to dispatch a request to this engine"
+        but NOT for "does this engine exist."
+        """
+        slots = self._slots.get(engine_id)
+        if not slots:
+            return False
+        return any(slot.engine is not None for slot in slots)
+
+    def is_registered(self, engine_id: str) -> bool:
+        """Return True if engine_id is in this pool's spec set.
+
+        Phase 8 BBF-2 Finding B: distinguish "unknown engine" (404)
+        from "known but unavailable engine" (503) in route handlers.
+        A pure read of self._specs — no state change, no I/O.
+
+        Routes that previously conflated these via is_available()
+        alone should call is_registered() first to preserve the
+        404-vs-503 contract.
+        """
+        return engine_id in self._specs
 
     # ── internal ────────────────────────────────────────────────────────
 
@@ -421,3 +484,4 @@ def _hash_options(options: dict) -> str:
     """Deterministic hash of UCI option key-value pairs."""
     raw = "|".join(f"{k}={v}" for k, v in sorted(options.items()))
     return hashlib.sha256(raw.encode()).hexdigest()[:12]
+

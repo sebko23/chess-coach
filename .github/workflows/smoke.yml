@@ -180,9 +180,67 @@ jobs:
                  --ignore=tests/integration/test_ocr_backend.py \
                  --ignore=tests/integration/test_pdf_import.py \
                  --ignore=tests/integration/test_probe_with_gold_set.py \
+                 --ignore=tests/integration/test_pyinstaller_binary.py \
                  --ignore=tests/perf/test_kb_reembed_roundtrip.py \
-                 -v --no-header --tb=short
 
+
+  # BBF-Phase8-1: build the chess-coach-gateway binary via PyInstaller
+  # and verify it serves /v1/system/health on a fresh ubuntu-latest
+  # runner. The gateway-boot job above exercises the gateway as source;
+  # this job exercises the gateway as a frozen --onefile artifact --
+  # which catches a different failure mode (PyInstaller static analysis
+  # missing a dynamic import, hidden import, or non-Python data file).
+  # See docs/16_audit/PHASE-8-MINIMUM-VIABLE-SCOPING-2026-08-20.md for
+  # the full Phase 8 scoping brief, and
+  # services/chess_coach/gateway/chess-coach-gateway.spec for the spec.
+  pyinstaller-binary-smoke:
+    name: PyInstaller binary smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create fresh venv
+        # Fresh venv every run, same discipline as gateway-boot above.
+        run: python -m venv /tmp/pyinstaller-venv
+
+      - name: Install package + PyInstaller + httpx (test-only)
+        # The smoke test imports httpx. PyInstaller is NOT in
+        # [project.dependencies] / [project.optional-dependencies.dev]
+        # because it's a build-time-only tool, not a runtime dep.
+        # Installed fresh here so the build does not inherit any
+        # runner-side PyInstaller (different version, different hooks).
+        run: |
+          source /tmp/pyinstaller-venv/bin/activate
+          pip install --upgrade pip --quiet
+          pip install -e '.[dev]'
+          pip install pyinstaller httpx
+
+      - name: Build binary
+        # Run from repo root so the spec's relative `datas` glob
+        # (libs/chess_coach/storage/migrations/*.sql) resolves
+        # correctly. dist/ and build/ go under /tmp/pyinstaller_dist.
+        run: |
+          source /tmp/pyinstaller-venv/bin/activate
+          pyinstaller --clean --noconfirm \
+            --distpath /tmp/pyinstaller_dist/dist \
+            --workpath /tmp/pyinstaller_dist/build \
+            services/chess_coach/gateway/chess-coach-gateway.spec
+
+      - name: Run binary smoke test
+        # tests/integration/test_pyinstaller_binary.py spawns the built
+        # binary, polls /v1/system/health until 200, asserts the
+        # response shape, and tears down the subprocess.
+        run: |
+          source /tmp/pyinstaller-venv/bin/activate
+          pytest tests/integration/test_pyinstaller_binary.py \
+            -v --no-header --tb=short
   # BBF-52: end-to-end exercise of the persistent Qdrant path.
   # Starts a real Qdrant sidecar via `docker run`, runs the gateway
   # pointed at it, and runs the live integration test against
