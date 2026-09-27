@@ -21,10 +21,10 @@ try:
 except ImportError:
     pass
 
-from .app import BACKEND_VERSION, PROTOCOL_MAX, create_app
-from .auth import get_active_token
-from .config import GatewaySettings
-from .descriptor import Descriptor, write_descriptor
+from chess_coach.gateway.app import BACKEND_VERSION, PROTOCOL_MAX, create_app
+from chess_coach.gateway.auth import get_active_token
+from chess_coach.gateway.config import GatewaySettings
+from chess_coach.gateway.descriptor import Descriptor, write_descriptor
 
 logger = logging.getLogger(__name__)
 
