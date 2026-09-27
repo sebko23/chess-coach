@@ -51,6 +51,17 @@ def app_with_mock():
     app.state.engine_pool._acquire = mock_acquire
     app.state.engine_pool._release = mock_release
     app.state.engine_pool.engine_info = _engine_info_async
+    # Phase 8 BBF-2 Bug B fixture fix: Fix 3 Part B added
+    # require_engine_available() as a 503 gate before _acquire() is
+    # reached, so the existing _acquire/_release/engine_info mocks
+    # are no longer enough to mock the pool from these tests' point
+    # of view. is_available() now also needs a mock that mirrors
+    # what it stands in for: "these two are registered and running."
+    # Without this, the real (un-mocked) is_available() reads empty
+    # slot state and returns False for every engine_id, including
+    # the two the fixture explicitly registers, causing every route
+    # in TestEngineRoutes to return 503.
+    app.state.engine_pool.is_available = lambda engine_id: engine_id in ("stockfish", "sf")
     return app
 
 
