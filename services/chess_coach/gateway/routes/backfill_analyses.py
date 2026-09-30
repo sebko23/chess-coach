@@ -37,6 +37,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from ..auth import require_bearer
+from chess_coach.gateway.engine_availability import require_engine_available
 from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)
@@ -248,6 +249,10 @@ async def backfill_analyses(
 
     db_path = _db_path(request)
     pool = _engine_pool(request)
+    # Phase 8 BBF-2 Fix 3 Part B: return 503 if the stockfish engine was
+    # never acquired (e.g., Stockfish binary missing at warmup). This
+    # route hardcodes "stockfish" (line 118, 151, 200).
+    require_engine_available(pool, "stockfish")
     games_processed = 0
     games_skipped_no_pgn = 0
     plies_analyzed = 0
