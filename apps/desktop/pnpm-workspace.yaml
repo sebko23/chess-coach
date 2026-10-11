@@ -43,8 +43,22 @@ allowBuilds:
 # load-bearing for the v ulp fix.
 overrides:
   nanoid: "^3.3.17"
-  dompurify: "^3.4.13"
+  dompurify: "^3.4.16" # PR #123 follow-up: bumped from ^3.4.13 to clear GHSA 1240621 + 1241204 (DOMPurify IN_PLACE XSS, low severity, prod-path via posthog-js>dompurify)
   js-yaml: "4.3.1"
+  # Phase 8 BBF-2 Round 4 amend: 4 pnpm-workspace.yaml overrides to clear
+  # the 4 GHSAs surfaced by the security-audit pnpm-audit job on PR #121
+  # head c8826acc (the Round 3 amend of bbf-phase-8-bbf-2-multipart).
+  # All 4 targets are transitive deps; all 4 hard-pinning intermediates
+  # (via @tanstack/router-core for seroval, postcss for source-map-js,
+  # the 4 prosemirror-* packages for prosemirror-view, and the
+  # lockfile's frozen 14.3.0 for markdown-it) are bypassed by these
+  # overrides, matching the project's existing FU-12 / FU-14 / FU-17 /
+  # FU-34 pattern. See PR #123 (the bbf-phase-8-bbf-2-pnpm-dep-bump
+  # follow-up) for the full scope and the "2 low" mystery disclosure.
+  seroval: "^1.6.3"
+  source-map-js: "^1.2.2"
+  prosemirror-view: "^1.42.3"
+  markdown-it: "^14.3.1"
   # FU-34: GHSA-cp6q-959q-f8rh (Tiptap mergeAttributes() __proto__
   # inheritance). The vulnerable `@tiptap/core@3.29.2` is pulled in
   # transitively by the user-pinned `@tiptap/starter-kit@3.20.0` and
