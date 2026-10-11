@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
+from chess_coach.gateway.engine_availability import require_engine_available
 
 from ..route_guard import route_guard
 
@@ -296,6 +297,10 @@ async def get_eval_graph(
                 "message": "engine pool not initialized; cannot compute lazy analyses",
             },
         )
+    # Phase 8 BBF-2 Fix 3 Part B: return 503 if the stockfish engine was
+    # never acquired (e.g., Stockfish binary missing at warmup). This
+    # route hardcodes "stockfish" (line 311, 363).
+    require_engine_available(pool, "stockfish")
 
     from chess_coach.protocol_types.analysis import AnalysisRequest
     analyses_cols = await _analyses_table_columns(db_path)

@@ -66,6 +66,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from chess_coach.engine_orch.pool import EnginePool
+from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.protocol_types.analysis import AnalysisRequest
 
@@ -231,6 +232,10 @@ async def get_recommendations(
     (or ``"both"`` when the engine already surfaced that UCI). Caller
     decides ordering — this route never arbitrates between engine and book.
     """
+    # Phase 8 BBF-2 Fix 3 Part B: return 503 if the engine was never
+    # acquired (e.g., Stockfish binary missing at warmup). engine_id
+    # is a query parameter with default "stockfish".
+    require_engine_available(pool, engine_id)
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row

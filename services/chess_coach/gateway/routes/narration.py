@@ -17,6 +17,7 @@ import pydantic
 from fastapi import APIRouter, Depends, Request
 
 from chess_coach.llm_router.router import LLMUnavailableError
+from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.narration.pipeline import (
     NarrationOutput,
     _format_pv_fields,
@@ -159,6 +160,12 @@ async def explain_position(
     engine_id = body.engine_id if body.engine_id is not None else default_engine_id
     multipv = body.multipv if body.multipv is not None else default_multipv
     if wants_engine:
+        # Phase 8 BBF-2 Fix 3 Part B: return 503 if the engine was never
+        # acquired (e.g., Stockfish binary missing at warmup). This route
+        # resolves engine_id from the body (NarrationRequest model) with
+        # default "stockfish". Only check inside the engine path; the
+        # else branch (pipeline.explain_simple) doesn't touch the pool.
+        require_engine_available(engine_pool, engine_id)
         try:
             from chess_coach.protocol_types.analysis import AnalysisRequest
 
