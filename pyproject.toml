@@ -92,6 +92,7 @@ packages = [
     "chess_coach.profile",
     "chess_coach.debug",
     "chess_coach.jobs",
+    "chess_coach.repertoire",  # BBF-FU-11b: Polyglot book IO primitives
     "chess_coach.cli",
 ]
 
@@ -114,6 +115,7 @@ packages = [
 "chess_coach.profile"            = "services/chess_coach/profile"
 "chess_coach.debug"              = "services/chess_coach/debug"
 "chess_coach.jobs"               = "services/chess_coach/jobs"
+"chess_coach.repertoire"         = "services/chess_coach/repertoire"  # BBF-FU-11b
 "chess_coach.cli"                = "apps/cli/chess_coach/cli"
 
 [tool.setuptools.package-data]

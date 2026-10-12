@@ -67,6 +67,7 @@ from .routes import (  # noqa: E402
     players_router,
     profile_analysis_router,
     profile_router,
+    repertoire_book_router,  # BBF-FU-11b
     repertoire_recommendations_router,
     repertoire_router,
     training_planner_router,
@@ -357,6 +358,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
     app.include_router(pdf_ingest_router)
     app.include_router(lichess_import_router)
     app.include_router(repertoire_recommendations_router)
+    app.include_router(repertoire_book_router)  # BBF-FU-11b
     app.include_router(profile_router)
     app.include_router(profile_analysis_router)
     app.include_router(training_planner_router)

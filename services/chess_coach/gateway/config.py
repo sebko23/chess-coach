@@ -83,6 +83,15 @@ class GatewaySettings(BaseSettings):
     def backups_dir(self) -> Path:
         return self.data_dir / "backups"
 
+    @property
+    def books_dir(self) -> Path:
+        # BBF-FU-11b: per-player Polyglot .bin books live at
+        # ``<data_dir>/books/<player>.bin``. Sibling to ``backups/``,
+        # ``sqlite/``, ``runtime/``. Created on first write by the
+        # route (not at startup — startup should not create
+        # directories unless they're known to be needed).
+        return self.data_dir / "books"
+
     # --- auth ---
     backend_token: str = Field(
         default="",
