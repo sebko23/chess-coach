@@ -303,15 +303,32 @@ class TestBackwardCompat:
         # No raise.
 
     @pytest.mark.asyncio
-    async def test_existing_dep_rejects_scope_suffixed_token(self) -> None:
-        # Per the docstring above: the existing dep does NOT split on
-        # the LAST colon. If the active token is "devtoken123" (no
-        # scope) and the request sends "Bearer devtoken123:BOOKS_WRITE",
-        # the equality check fails because the full strings differ.
-        #
-        # This is the "boring" behavior the existing dep has always
-        # had; the new dep is the one that understands scopes.
+    async def test_existing_dep_accepts_scope_suffixed_token(self) -> None:
+        # Per the BBF-FU-11a design (and the BBF-FU-11b bug-fix in
+        # 2026-10-12): ``require_bearer`` accepts a token that has
+        # the same secret as the active token, even if the request
+        # token includes a ``:SCOPE`` suffix. The dep splits the
+        # request on the LAST colon and compares the prefix to
+        # the active token's prefix; the suffix is ignored. This
+        # is what makes the books-write flow work: the caller
+        # sends the full token (with scope) and the dep accepts it
+        # regardless of which dep is doing the check.
         from chess_coach.gateway.auth import require_bearer
 
+        set_active_token("devtoken123:BOOKS_WRITE")
+        # No raise: the request value is "devtoken123:BOOKS_WRITE",
+        # the active token is "devtoken123:BOOKS_WRITE", both
+        # split to prefix "devtoken123" which matches.
+        await require_bearer(authorization="Bearer devtoken123:BOOKS_WRITE")
+
+        set_active_token("devtoken123")
+        # No raise: the request value is "devtoken123:BOOKS_WRITE"
+        # but the active token is "devtoken123" (no scope). The
+        # prefix of the request ("devtoken123") matches the active
+        # token ("devtoken123"). The request's scope suffix is
+        # ignored because require_bearer is no-scope-required.
+        await require_bearer(authorization="Bearer devtoken123:BOOKS_WRITE")
+
+        # Negative: wrong secret still fails.
         with pytest.raises(UnauthorizedError, match="Invalid bearer token"):
-            await require_bearer(authorization="Bearer devtoken123:BOOKS_WRITE")
+            await require_bearer(authorization="Bearer wrong-token")

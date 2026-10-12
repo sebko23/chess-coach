@@ -66,8 +66,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from chess_coach.engine_orch.pool import EnginePool
-from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.errors.codes import ErrorCode
+from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.protocol_types.analysis import AnalysisRequest
 
 from ..auth import require_bearer
@@ -81,6 +81,15 @@ router = APIRouter(prefix="/v1/repertoire", tags=["repertoire"])
 # the book, or both (when both surfaced the same UCI for the same FEN).
 # No server-side arbitration: caller decides precedence.
 SourceT = Literal["engine", "book", "both"]
+
+
+# Canonical default-player name. When a caller uses the path param
+# ``"default"`` (the convenience alias), the route resolves it to
+# this name before using it as a SQLite identifier (here) or a
+# filesystem path component (the β routes in ``repertoire_book.py``).
+# Exported so the β routes can use the same name without duplicating
+# the literal.
+DEFAULT_PLAYER: str = "ebassti"
 
 
 def _pool(request: Request) -> EnginePool:
@@ -239,7 +248,7 @@ async def get_recommendations(
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        resolved = "ebassti" if player == "default" else player
+        resolved = DEFAULT_PLAYER if player == "default" else player
         side = "w" if color == "white" else "b"
         rows = await db.execute_fetchall(
                 """SELECT p.fen, p.ply, COUNT(*) as cnt

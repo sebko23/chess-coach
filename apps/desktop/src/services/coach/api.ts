@@ -412,6 +412,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/repertoire/{player}/book": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Book
+         * @description Return metadata for the named player's stored book.
+         *
+         *     Returns 404 if no book is stored. The body of the .bin file is
+         *     NOT returned (use PUT + read locally, or open the file via a
+         *     separate admin tool). This is the design from the BBF-FU-11
+         *     decision brief §3.2: "returns the metadata (size, mtime, entry
+         *     count) WITHOUT returning the binary content."
+         *
+         *     Requires ``require_bearer`` (any authed caller, including
+         *     read-only tokens). No scope check.
+         */
+        get: operations["get_book_v1_repertoire__player__book_get"];
+        /**
+         * Put Book
+         * @description Write a per-player Polyglot ``.bin`` book.
+         *
+         *     Body is a JSON list of ``BookEntryIn`` objects. The route converts
+         *     each to the writer's ``BookEntry`` dataclass and delegates the
+         *     actual byte writing to
+         *     :func:`chess_coach.repertoire.polyglot_writer.write_polyglot_book`.
+         *
+         *     The writer validates:
+         *       - each move is legal from the FEN (writer raises ``ValueError``)
+         *       - each weight is in 0..65535 (writer raises ``ValueError``)
+         *
+         *     Both writer exceptions become 400 responses with the protocol
+         *     error envelope (``client.bad_request``). Path-traversal attempts
+         *     (player name with ``.`` or ``/``) are rejected at the boundary
+         *     with a 400 before the writer is called.
+         *
+         *     Requires ``BOOKS_WRITE`` scope. Per the BBF-FU-11a auth design,
+         *     a token with no scope (plain ``devtoken123``) is read-only and
+         *     fails this dep with 401.
+         *
+         *     Empty body (zero entries) is a valid write — produces a 0-byte
+         *     file at the path. Per the writer, an empty book round-trips as
+         *     ``find_all() -> []`` for every FEN (handled by the library's
+         *     ``_EmptyMmap`` fallback).
+         */
+        put: operations["put_book_v1_repertoire__player__book_put"];
+        post?: never;
+        /**
+         * Delete Book
+         * @description Remove the named player's stored book.
+         *
+         *     Idempotent: returns ``{"deleted": false, "reason": "no book stored"}``
+         *     if the file does not exist. The caller does not need to check
+         *     before calling.
+         *
+         *     Requires ``BOOKS_WRITE`` scope.
+         */
+        delete: operations["delete_book_v1_repertoire__player__book_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/profile/{player}": {
         parameters: {
             query?: never;
@@ -797,6 +863,38 @@ export interface components {
             /** File */
             file: string;
         };
+        /**
+         * BookEntryIn
+         * @description One Polyglot book entry as it arrives in the PUT body.
+         *
+         *     Mirrors :class:`chess_coach.repertoire.polyglot_writer.BookEntry`
+         *     (the dataclass the writer consumes). Validated at the boundary
+         *     so the writer's ``ValueError`` checks become 400s, not 500s.
+         */
+        BookEntryIn: {
+            /**
+             * Fen
+             * @description FEN string for the position. Must parse as a legal chess position by python-chess's Board constructor.
+             */
+            fen: string;
+            /**
+             * Uci Move
+             * @description UCI move string (e.g., 'e2e4'). Must be a legal move from the FEN. Validated against the writer's encoding rules.
+             */
+            uci_move: string;
+            /**
+             * Weight
+             * @description Polyglot weight 0..65535. Defaults to 100 (hand-curated).
+             * @default 100
+             */
+            weight: number;
+            /**
+             * Learn
+             * @description Polyglot learn field (4 bytes, engine learning data). Default 0 for hand-curated books.
+             * @default 0
+             */
+            learn: number;
+        };
         /** CardOut */
         CardOut: {
             /** Id */
@@ -858,6 +956,15 @@ export interface components {
             card_type_breakdown: {
                 [key: string]: number;
             };
+        };
+        /** DeleteBookResponse */
+        DeleteBookResponse: {
+            /** Player */
+            player: string;
+            /** Deleted */
+            deleted: boolean;
+            /** Reason */
+            reason?: string | null;
         };
         /** DiagramResult */
         DiagramResult: {
@@ -940,6 +1047,17 @@ export interface components {
              * @default []
              */
             suggested_alternatives: string[];
+        };
+        /** GetBookResponse */
+        GetBookResponse: {
+            /** Player */
+            player: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Entry Count */
+            entry_count: number;
+            /** Last Modified */
+            last_modified: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1404,6 +1522,15 @@ export interface components {
             blunder_count: number;
             /** Training Cards Due */
             training_cards_due: number;
+        };
+        /** PutBookResponse */
+        PutBookResponse: {
+            /** Player */
+            player: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /** Entry Count */
+            entry_count: number;
         };
         /** QueueResponse */
         QueueResponse: {
@@ -2358,6 +2485,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecommendationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_book_v1_repertoire__player__book_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                player: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GetBookResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_book_v1_repertoire__player__book_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                player: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BookEntryIn"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PutBookResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_book_v1_repertoire__player__book_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path: {
+                player: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteBookResponse"];
                 };
             };
             /** @description Validation Error */

@@ -122,12 +122,14 @@ def _check_bearer_with_scope(
     if scheme.lower() != "bearer" or not value:
         raise UnauthorizedError("Authorization scheme must be Bearer.")
 
-    # Split the active token first. The active token carries the scope;
-    # the request only carries the secret-bearing value. We split the
-    # active token, then compare the prefix (the secret) to the request
-    # value via constant-time compare.
+    # The request value may also be scope-suffixed (``"secret:SCOPE"``).
+    # The active token's secret-side is the canonical source; the
+    # request's secret-side must match. We split BOTH sides on the
+    # LAST colon (the writer of the active token, and the caller
+    # who knows the full token, may both include the scope).
+    request_secret, _request_scope = _parse_token(value)
     active_secret, active_scope = _parse_token(_active_token)
-    if not hmac.compare_digest(value, active_secret):
+    if not hmac.compare_digest(request_secret, active_secret):
         raise UnauthorizedError("Invalid bearer token.")
 
     # Secret matches. Now check scope.
@@ -144,10 +146,18 @@ async def require_bearer(
 ) -> None:
     """FastAPI dependency that enforces bearer-token auth.
 
+    Accepts any token whose secret matches the active token's
+    secret, regardless of scope. A write-scope token
+    (``"secret:BOOKS_WRITE"``) sent as the full string in the
+    ``Authorization`` header is split on the LAST colon and the
+    prefix is compared; the suffix is ignored. This is consistent
+    with the BBF-FU-11a design where the full token (with scope)
+    is the canonical form.
+
     Raises :class:`UnauthorizedError` on failure; the central exception handler
     converts that into a protocol-shaped error envelope.
     """
-    _check_bearer(authorization)
+    _check_bearer_with_scope(authorization, None)
 
 
 async def require_bearer_with_scope(

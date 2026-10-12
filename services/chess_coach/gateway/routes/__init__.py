@@ -19,6 +19,7 @@ from .players import router as players_router
 from .profile import router as profile_router
 from .profile_analysis import router as profile_analysis_router
 from .repertoire import router as repertoire_router
+from .repertoire_book import router as repertoire_book_router  # BBF-FU-11b
 from .repertoire_recommendations import router as repertoire_recommendations_router
 from .training import router as training_router
 from .training_planner import router as training_planner_router
@@ -34,6 +35,7 @@ __all__ = [
     "narration_router",
     "players_router",
     "profile_router",
+    "repertoire_book_router",  # BBF-FU-11b
     "repertoire_router",
     "training_router",
     "pdf_ingest_router",
