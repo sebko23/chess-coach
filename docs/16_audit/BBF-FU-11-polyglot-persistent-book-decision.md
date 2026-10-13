@@ -8,7 +8,8 @@
 This is a **decision-only BBF** (per the v0.7.103 strategic-decision-bbf-pattern). The diff is `*.md` only. No code is shipped by this BBF. The implementation BBFs that follow reference this brief on `main`.
 
 **Doc-drift patch history:**
-- BBF-FU-11.0 (this PR, 2026-10-13): refreshed 5 stale line-number SHAs in §1.1, §1.2, §1.3, §3.3, and §5.1 that drifted after BBF-FU-11b (commit `0d45eedc`) added new lines and shifted ranges in `repertoire_recommendations.py`. The writer's SHA `91009f08…` did NOT change (the file was byte-identical; only its tracked/untracked status changed).
+- BBF-FU-11.0 (PR #127, squash-merge `14d38f72`, 2026-10-13): refreshed 5 stale line-number SHAs in §1.1, §1.2, §1.3, §3.3, and §5.1 that drifted after BBF-FU-11b (commit `0d45eedc`) added new lines and shifted ranges in `repertoire_recommendations.py`. The writer's SHA `91009f08…` did NOT change (the file was byte-identical; only its tracked/untracked status changed).
+- BBF-FU-11.0.1 (this PR, 2026-10-13): the §1.2 Settings row's `books_dir` reference was qualified to `services/chess_coach/gateway/config.py:87` to fix the post-merge `commit ref verify` red on `14d38f72` (a bare `config.py:87` reference in the squash-commit body tripped the regex Format 1 path-extension check). Per the v0.7.125 path-qualification footgun discipline. The pre-existing bare refs at §2.3 line 106 (as it appeared on `14d38f72`; line 107 on this PR head, off-by-one because this bullet's insertion shifted subsequent lines by +1) are pre-PR-#127 work and are NOT touched by this patch — they are latent footguns but never tripped CI because `verify_commit_refs.py` only checks commit bodies, not file contents.
 
 ---
 
@@ -52,7 +53,7 @@ The simplest shape that satisfies "per-call stateless" → "anything that persis
 | α route | `services/chess_coach/gateway/routes/repertoire_recommendations.py:1-407` | Already reads `polyglot_book_path` from the query string. No state, no write endpoint, no storage touch. |
 | α helper | `services/chess_coach/gateway/routes/repertoire_recommendations.py:159-216` | `_book_moves_for_fen()` is the natural extraction point for a `BookIndex` abstraction per the ledger line 825-828. |
 | Auth | `services/chess_coach/gateway/auth.py:46-49` | Single-bearer-token via `require_bearer` dep. `_active_token` is global, set from `backend_token` env var or auto-generated. No read vs write distinction. |
-| Settings | `services/chess_coach/gateway/config.py:62-93` | `data_dir` is the natural root for `data_dir/books/`. `backups_dir` already exists at `data_dir/backups/` (line 83-84) — same lifecycle pattern. `books_dir` was added at `config.py:87` by BBF-FU-11b. |
+| Settings | `services/chess_coach/gateway/config.py:62-93` | `data_dir` is the natural root for `data_dir/books/`. `backups_dir` already exists at `data_dir/backups/` (line 83-84) — same lifecycle pattern. `books_dir` was added at `services/chess_coach/gateway/config.py:87` by BBF-FU-11b. |
 | Routes | `services/chess_coach/gateway/routes/__init__.py:21-22` | `repertoire_router` and `repertoire_recommendations_router` both registered. New β router plugs into the same `repertoire` tag. |
 | App | `services/chess_coach/gateway/app.py:356, 359` | Both `repertoire_router` and `repertoire_recommendations_router` are already wired. |
 | Tests | `tests/integration/test_repertoire_recommendations_polyglot.py` | 8 α integration tests (hand-roll Polyglot `.bin` via `struct.pack` in `tmp_path`). The β route's tests can extend the same `_make_app_with_engine()` / `_make_aiosqlite_patch()` / `_active_token_lifecycle()` fixture pattern. |
