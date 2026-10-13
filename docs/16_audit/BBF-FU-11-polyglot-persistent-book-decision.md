@@ -1,11 +1,14 @@
 # BBF-FU-11 — Polyglot persistent-book support (β) design decision
 
-**Status:** OPEN. Brief awaiting leaf review and squash-merge to `main` before any code is written.
+**Status:** SQUASHED on main (commit `c7219669`, PR #124, 2026-10-12). Live on `main` as a tracked brief. Subsequent BBFs reference this brief via §5.1 cross-references.
 **Author:** Hermes session 2026-10-12 (post-P2d, option-α from the FYI on FU-7).
-**Parent:** FU-11 in `OPEN-FOLLOWUPS.md` line 776; writer artifact at `services/chess_coach/repertoire/polyglot_writer.py` (SHA `91009f08…`, FU-11 alpha-precursor per the FYI on FU-7 line 420).
+**Parent:** FU-11 in `OPEN-FOLLOWUPS.md` line 776; writer artifact at `services/chess_coach/repertoire/polyglot_writer.py` (SHA `91009f08…`, FU-11 alpha-precursor per the FYI on FU-7 line 420). **Status update post-#126:** the writer is now **tracked on `main`** since BBF-FU-11b (commit `0d45eedc`, 2026-10-13).
 **Brief scope:** "FU-11 design decision — answer the three undecided questions the ledger flags, propose a concrete product surface, sequence the implementation BBFs, defer the rest."
 
 This is a **decision-only BBF** (per the v0.7.103 strategic-decision-bbf-pattern). The diff is `*.md` only. No code is shipped by this BBF. The implementation BBFs that follow reference this brief on `main`.
+
+**Doc-drift patch history:**
+- BBF-FU-11.0 (this PR, 2026-10-13): refreshed 5 stale line-number SHAs in §1.1, §1.2, §1.3, §3.3, and §5.1 that drifted after BBF-FU-11b (commit `0d45eedc`) added new lines and shifted ranges in `repertoire_recommendations.py`. The writer's SHA `91009f08…` did NOT change (the file was byte-identical; only its tracked/untracked status changed).
 
 ---
 
@@ -37,26 +40,26 @@ The simplest shape that satisfies "per-call stateless" → "anything that persis
 
 ### 1.1 What the ledger says
 
-- **FU-7 (α)** resolved 2026-08-08 via PR #84 (commit `7180433`). On `main` for several sessions. The α surface is the in-memory per-call `polyglot_book_path` query field on `POST /v1/repertoire/{player}/recommendations` (route file `services/chess_coach/gateway/routes/repertoire_recommendations.py:216-224`).
+- **FU-7 (α)** resolved 2026-08-08 via PR #84 (commit `7180433`). On `main` for several sessions. The α surface is the in-memory per-call `polyglot_book_path` query field on `POST /v1/repertoire/{player}/recommendations` (route file `services/chess_coach/gateway/routes/repertoire_recommendations.py:225` — the live line number; the brief's original `:216-224` citation drifted after BBF-FU-11b added the `Depends(_db_path)` line in front of the Query param).
 - **FU-11 (β)** OPEN, deferred to Phase 2 trigger. The ledger's own boundary statement: "α is per-call, stateless, no side-effects; β is anything that persists, indexes, or remembers." (line 813)
-- **FYI on FU-7** (line 420, this session): writer artifact at `services/chess_coach/repertoire/polyglot_writer.py` (SHA `91009f08…`, untracked) is preserved as FU-11 alpha-precursor, per Sebastian's option-(α) decision. The FYI instructs the next session: "stage the writer as the first sub-piece of the FU-11 BBF (not duplicate, not re-implement, not discard)."
+- **FYI on FU-7** (line 420, this session): writer artifact at `services/chess_coach/repertoire/polyglot_writer.py` (SHA `91009f08…`, byte-verified live) is preserved as FU-11 alpha-precursor, per Sebastian's option-(α) decision. The FYI instructs the next session: "stage the writer as the first sub-piece of the FU-11 BBF (not duplicate, not re-implement, not discard)." **Status update post-#126:** the writer is now **TRACKED on `main`** as of PR #126 (BBF-FU-11b, commit `0d45eedc`, 2026-10-13) — the FU-11b commit staged the FU-11 alpha-precursor as its first sub-piece, per the FYI.
 - **The five properties that make β out of α scope** (per ledger line 802-808): persistence, new protocol surface, auth-model change, possible indexing, long-running state with backup/cleanup.
 
 ### 1.2 What the code says (live, this session)
 
 | Surface | Location | Relevant property |
 |---|---|---|
-| α route | `services/chess_coach/gateway/routes/repertoire_recommendations.py:203-398` | Already reads `polyglot_book_path` from the query string. No state, no write endpoint, no storage touch. |
-| α helper | `services/chess_coach/gateway/routes/repertoire_recommendations.py:150-200` | `_book_moves_for_fen()` is the natural extraction point for a `BookIndex` abstraction per the ledger line 825-828. |
+| α route | `services/chess_coach/gateway/routes/repertoire_recommendations.py:1-407` | Already reads `polyglot_book_path` from the query string. No state, no write endpoint, no storage touch. |
+| α helper | `services/chess_coach/gateway/routes/repertoire_recommendations.py:159-216` | `_book_moves_for_fen()` is the natural extraction point for a `BookIndex` abstraction per the ledger line 825-828. |
 | Auth | `services/chess_coach/gateway/auth.py:46-49` | Single-bearer-token via `require_bearer` dep. `_active_token` is global, set from `backend_token` env var or auto-generated. No read vs write distinction. |
-| Settings | `services/chess_coach/gateway/config.py:62-93` | `data_dir` is the natural root for `data_dir/books/`. `backups_dir` already exists at `data_dir/backups/` (line 83-84) — same lifecycle pattern. |
+| Settings | `services/chess_coach/gateway/config.py:62-93` | `data_dir` is the natural root for `data_dir/books/`. `backups_dir` already exists at `data_dir/backups/` (line 83-84) — same lifecycle pattern. `books_dir` was added at `config.py:87` by BBF-FU-11b. |
 | Routes | `services/chess_coach/gateway/routes/__init__.py:21-22` | `repertoire_router` and `repertoire_recommendations_router` both registered. New β router plugs into the same `repertoire` tag. |
 | App | `services/chess_coach/gateway/app.py:356, 359` | Both `repertoire_router` and `repertoire_recommendations_router` are already wired. |
 | Tests | `tests/integration/test_repertoire_recommendations_polyglot.py` | 8 α integration tests (hand-roll Polyglot `.bin` via `struct.pack` in `tmp_path`). The β route's tests can extend the same `_make_app_with_engine()` / `_make_aiosqlite_patch()` / `_active_token_lifecycle()` fixture pattern. |
 
 ### 1.3 What the writer says (live, this session)
 
-`services/chess_coach/repertoire/polyglot_writer.py` (SHA `91009f08…`):
+`services/chess_coach/repertoire/polyglot_writer.py` (SHA `91009f08…`, tracked on main post-#126):
 
 - `BookEntry` dataclass: `fen: str`, `uci_move: str`, `weight: int = 100`, `learn: int = 0`.
 - `write_polyglot_book(entries, path) -> int`: writes a flat array of 16-byte entries sorted by zobrist hash. No magic header. Empty book = 0 bytes. **6/6 unit tests passing, byte-round-trip verified (the load-bearing assertion is `find_all()` returns the entries we wrote).**
@@ -177,7 +180,7 @@ The recommended path is three BBFs in sequence, each one a squash-merge-per-BBF 
 **Scope:** Add a single line to `_analyze_row()` in `repertoire_recommendations.py:260`: if `polyglot_book_path` is None and the player has a stored book, use the stored book's path. The stored-book lookup is a one-line helper that returns `data_dir/books/<player>.bin` if it exists, else None.
 
 **Files:**
-- `services/chess_coach/gateway/routes/repertoire_recommendations.py` — add a `_resolve_book_path(player, supplied_path)` helper, called at line 333 (the `if not polyglot_book_path:` branch).
+- `services/chess_coach/gateway/routes/repertoire_recommendations.py` — add a `_resolve_book_path(player, supplied_path)` helper, called at line 342 (the `if not polyglot_book_path:` branch — the live line number; the brief's original `:333` citation drifted after BBF-FU-11b added the `_settings` dep + `_stored_book_path` helper ahead of the branch).
 - `tests/integration/test_repertoire_recommendations_polyglot.py` — add 2 tests: (a) `polyglot_book_path` not supplied + stored book exists → engine+book blending runs, source="book" appears; (b) `polyglot_book_path` not supplied + no stored book → engine-only path (existing behavior).
 
 **Acceptance:**
@@ -252,7 +255,7 @@ Future audit-closure claims on FU-11 must verify the writer's SHA against the li
 - **FU-11 (β)**: `docs/16_audit/OPEN-FOLLOWUPS.md` line 776 (entry). OPEN, deferred to Phase 2 trigger. This brief is the decision.
 - **Writer**: `services/chess_coach/repertoire/polyglot_writer.py` (SHA `91009f08…`, untracked). FU-11 alpha-precursor. 6/6 unit tests passing, byte-round-trip verified.
 - **Writer tests**: `tests/unit/test_polyglot_writer.py` (SHA `e0ad619e…`, untracked). 6/6 tests, ruff clean.
-- **α route**: `services/chess_coach/gateway/routes/repertoire_recommendations.py:203-398` (the PUT-equivalent query field is at line 216-224; the `_book_moves_for_fen` helper is at line 150-200).
+- **α route**: `services/chess_coach/gateway/routes/repertoire_recommendations.py:1-407` (the PUT-equivalent query field is at line 225 — live; the `_book_moves_for_fen` helper is at line 159-216 — live). Line citations were refreshed post-BBF-FU-11b (commit `0d45eedc`, 2026-10-13) in BBF-FU-11.0.
 - **α integration tests**: `tests/integration/test_repertoire_recommendations_polyglot.py` (8 tests, hand-rolled Polyglot `.bin` via `struct.pack` in `tmp_path`).
 - **Auth**: `services/chess_coach/gateway/auth.py:46-49` (the `require_bearer` dep that BBF-FU-11a extends).
 - **Settings**: `services/chess_coach/gateway/config.py:62-93` (the `data_dir` field that BBF-FU-11b extends with `books_dir`).
@@ -283,12 +286,18 @@ Future audit-closure claims on FU-11 must verify the writer's SHA against the li
 
 The reviewer must verify, per the v0.7.102 decision-only rubric:
 
-1. **Numstat:** `git diff --numstat main..HEAD --shortstat` returns `1 file changed, ~250 insertions(+), 0 deletions(-)`. Match against this brief's stated scope.
+1. **Numstat:** `git diff --numstat main..HEAD --shortstat` for the original brief PR returns `1 file changed, ~250 insertions(+), 0 deletions(-)`. For the **BBF-FU-11.0 drift patch** (this PR, applied on top of the already-squashed brief): **actual numstat is `1 file changed, 21 insertions(+), 12 deletions(-)`** (slightly above the conservative ~16/~8 figure that the BBF-FU-11.0 commit body estimated, because each drift item carries a one-line "what drifted and why" clarification alongside the new citation; the discrepancy is documentation-quality only, not a scope defect). The drift patch's diffs are confined to §1.1, §1.2, §1.3, §3.3, §5.1, and the new doc-drift-history block at the top. Match against this brief's stated scope.
 2. **Sequencing consistency:** the Tier 1/2/3 table in §3.4 matches the §13.3 sequencing principles (smallest-first, lowest-risk-first, dependency-order). The auth extension is Tier 1 because BBF-FU-11b's `Depends(require_bearer_with_scope(...))` call would fail at import time if the auth dep doesn't exist. The α route opt-in is Tier 3 because it depends on the route being in place.
-3. **Cross-references resolve:** every file:line cited in §5.1 must be `VERIFIED` by `read_file` against the live tree. Every SHA cited (`91009f08…`, `e0ad619e…`, `7180433`, `4c91d495…`) must be `VERIFIED` by `sha256sum` against the live file (or, for git SHAs, by `git log` against the cited branch).
+3. **Cross-references resolve:** every file:line cited in §5.1 must be `VERIFIED` by `read_file` against the live tree. Every SHA cited (`91009f08…`, `e0ad619e…`, `7180433`, `4c91d495…`) must be `VERIFIED` by `sha256sum` against the live file (or, for git SHAs, by `git log` against the cited branch). **For the BBF-FU-11.0 drift patch specifically:** verify each updated line citation (`:225`, `:1-407`, `:159-216`, `:342`) against the live tree via `grep -n`. The writer SHA `91009f08…` must still be byte-identical to the live `services/chess_coach/repertoire/polyglot_writer.py`.
 4. **Option tradeoffs:** the three named options in §2.2 have non-empty cells in all columns. The α-ext recommendation is anchored in the §0.1 reasoning and the §2.3-2.5 alternatives.
 5. **Out-of-scope explicit:** §2.6 names the features that α-ext does NOT include. None of them appears in the §3 BBF scopes.
 6. **Convention self-application:** the brief self-applies the `docs/16_audit/BBF-*.md` tracked-brief convention (verified by `git ls-files docs/16_audit/BBF-*.md | grep FU-11`, expected: this file). The FYI on FU-7 line 420 is referenced as the parent handoff; verified by `grep -n "FYI 2026-10-12" docs/16_audit/OPEN-FOLLOWUPS.md`.
 7. **No state-mutating claims:** the brief's diff is `*.md` only. No code file is staged. Verified by `git status --short` returning only `M docs/16_audit/OPEN-FOLLOWUPS.md` (prior turn) and `M docs/16_audit/BBF-FU-11-polyglot-persistent-book-decision.md` (this brief, if committed) plus the pre-existing `M` / `??` from the writer artifact and prior turns.
+8. **Drift patch fidelity (BBF-FU-11.0 only):** the drift patch's 5 changes (4 line-number citations + 1 status update for writer) must all be present in the diff. Specifically:
+   - §1.1 FU-7 line citation → `:225` (live)
+   - §1.1 FYI line: writer SHA unchanged + status update "TRACKED on `main` since #126"
+   - §1.2 α route range → `:1-407`; α helper range → `:159-216`; Settings row → `books_dir` added at `:87`
+   - §3.3 line → `:342`
+   - §5.1 α route row → `:1-407` / `:225` / `:159-216` + drift-fix log note
 
 If any row returns `CONTRADICTED` or `INSUFFICIENT-EVIDENCE`, the brief is BLOCKERS. Per the v0.7.99 claim-verification discipline, the reviewer's verdict must cite file:line for each finding.
