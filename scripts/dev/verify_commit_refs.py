@@ -97,6 +97,49 @@ _SECTION_HEADING_RE = re.compile(
 )
 
 
+def _strip_fenced_code_blocks(text: str) -> str:
+    r"""Replace triple-backtick fenced code blocks with whitespace of
+    equivalent length.
+
+    Markdown code fences (`` ``` `` ... `` ``` ``) can confuse the
+    single-backtick strip regex at line 119 because the fence's opening
+    `\`` becomes the opening of a single-backtick span that greedily
+    extends to the fence's matching close — leaving any inline
+    backticks WITHIN the code block un-stripped, and stripping the
+    characters OUTSIDE the code block instead.
+
+    Per the v0.7.13 (ρ) thread-discipline item: future PR bodies should
+    avoid combining triple-backtick fences with inline single-backtick
+    refs. This preprocessor makes the regex robust to that pattern.
+
+    Returns text with fenced code blocks replaced by spaces, newlines
+    preserved so line numbers don't shift.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    in_fence = False
+    for line in lines:
+        stripped_line = line.lstrip()
+        if stripped_line.startswith("```"):
+            # Entering or exiting a fence — replace the WHOLE line with
+            # spaces of equivalent length. The fence's opening/closing
+            # backticks AND any fence-info string (e.g. ```python) AND
+            # any content on this line are all replaced. The fence-
+            # delimiter-only line has no other content, but if a fence
+            # opens and has a language identifier on the same line (e.g.
+            # ```python), that's fine — we replace the whole thing.
+            out.append(" " * len(line))
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            # Inside a fence: replace with spaces (preserve line length).
+            out.append(" " * len(line))
+            continue
+        # Outside a fence: preserve the line.
+        out.append(line)
+    return "\n".join(out)
+
+
 def _parse_references(text: str) -> list[tuple[str, str | None, int | None]]:
     """Parse all references from a text.
 
@@ -110,13 +153,16 @@ def _parse_references(text: str) -> list[tuple[str, str | None, int | None]]:
     Inline code spans (backticks) are stripped before parsing, so
     prose examples of `path:NNN` syntax inside backticks (which is
     how the documentation explains the pattern) are not treated as
-    actual references.
+    actual references. Triple-backtick fenced code blocks are stripped
+    FIRST (see _strip_fenced_code_blocks) so the inline-backtick strip
+    regex doesn't mis-pair spans across fence edges.
     """
     # Strip inline code spans (single and double backticks). This is
     # a regex-based on the markdown inline code syntax. We replace
     # the contents of the backticks with whitespace so that line
     # numbers elsewhere in the document are not shifted.
-    stripped = re.sub(r"`[^`]+`", lambda m: " " * len(m.group()), text)
+    text_fenced = _strip_fenced_code_blocks(text)
+    stripped = re.sub(r"`[^`]+`", lambda m: " " * len(m.group()), text_fenced)
     matches: list[tuple[str, str | None, int | None]] = []
     for m in _REF_PATTERN.finditer(stripped):
         if m.group("path"):
@@ -203,6 +249,22 @@ def _verify_reference(
     # path:NNN format.
     if not path:
         return None
+    # v0.7.125 footgun defense: a bare `path:N` reference (no directory
+    # prefix) trips the regex's "OR ends in known extension" branch,
+    # which produces a confusing "referenced file does not exist" error
+    # for files that DO exist (just not at the repo root). Detect this
+    # pattern and emit a clearer error that points at the v0.7.125
+    # footgun + the v0.7.117 amend discipline.
+    if "/" not in path and line is not None:
+        return (
+            f"bare file reference '{path}:{line}' (no directory prefix); "
+            f"per the v0.7.125 path-qualification discipline, qualify the "
+            f"path with its directory prefix (e.g., "
+            f"'services/chess_coach/gateway/{path}:{line}'). The bare form "
+            f"is interpreted by the regex as if it were at the repo root, "
+            f"which produces false positives for files that exist at "
+            f"non-root paths."
+        )
     full_path = repo_root / path
     if not full_path.exists():
         return f"referenced file does not exist: {path}"
