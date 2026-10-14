@@ -59,6 +59,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Literal
 
 import aiosqlite
@@ -98,6 +99,19 @@ def _pool(request: Request) -> EnginePool:
 
 def _db_path(request: Request) -> str:
     return str(request.app.state.gateway.settings.sqlite_path)
+
+
+def _books_dir_path(request: Request) -> Path:
+    """Return the configured books directory (no mkdir side effect).
+
+    BBF-FU-11c: mirrors the ``_db_path`` pattern at line 99 for
+    ``books_dir``. ``_books_dir`` in ``repertoire_book.py:214`` has
+    a lazy-mkdir side effect; the α-route resolves the stored-book
+    path conditionally (only when the file exists), so the directory
+    is created on the PUT path but never on the GET/α path. We
+    therefore expose a no-side-effect variant here.
+    """
+    return request.app.state.gateway.settings.books_dir
 
 
 class RecommendationItem(BaseModel):
@@ -233,6 +247,11 @@ async def get_recommendations(
     ),
     pool: EnginePool = Depends(_pool),
     db_path: str = Depends(_db_path),
+    # BBF-FU-11c: injected for the stored-book lookup. Mirrors
+    # `_db_path` above. The lookup itself is conditional (only when
+    # the caller didn't supply ``polyglot_book_path``); the value
+    # here is not used by the engine-only path.
+    books_dir_path: Path = Depends(_books_dir_path),
 ) -> RecommendationsResponse:
     """Return engine-backed move suggestions for repertoire gaps.
 
@@ -249,6 +268,26 @@ async def get_recommendations(
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
         resolved = DEFAULT_PLAYER if player == "default" else player
+
+        # BBF-FU-11c: when the caller didn't supply polyglot_book_path,
+        # look up the stored book for the resolved player. If a stored
+        # book exists at <books_dir>/<player>.bin, use that path. The
+        # caller's explicit polyglot_book_path (above) still takes
+        # precedence; we only substitute when it's None.
+        if polyglot_book_path is None:
+            stored_path = books_dir_path / f"{resolved}.bin"
+            if stored_path.is_file():
+                polyglot_book_path = str(stored_path)
+                logger.info(
+                    "recommendations: using stored book for player=%s path=%s",
+                    resolved, stored_path,
+                )
+            else:
+                logger.debug(
+                    "recommendations: no stored book for player=%s; engine-only",
+                    resolved,
+                )
+
         side = "w" if color == "white" else "b"
         rows = await db.execute_fetchall(
                 """SELECT p.fen, p.ply, COUNT(*) as cnt
