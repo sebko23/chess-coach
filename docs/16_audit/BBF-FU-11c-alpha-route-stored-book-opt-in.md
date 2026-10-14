@@ -203,7 +203,7 @@ The leaf review will mechanically verify, via `grep -n` +
 
 - [ ] `repertoire_recommendations.py:239` — the Query param
       exists as written.
-- [ ] `repertoire_recommendations.py:290` — DEFAULT_PLAYER
+- [ ] `repertoire_recommendations.py:270` — DEFAULT_PLAYER
       resolution exists.
 - [ ] `repertoire_recommendations.py:381` — `if not
       polyglot_book_path:` exists at the cited line.
@@ -220,12 +220,11 @@ The leaf review will mechanically verify, via `grep -n` +
       `request.app.state.gateway.settings` (NOT
       `request.app.state.gateway_settings`). The §3.2 example must
       use the same attribute path.
-- [ ] Note: `repertoire_book.py:_resolve_player` docstring cites
-      `repertoire_recommendations.py:242` for the α-side
-      `DEFAULT_PLAYER` resolution, but the current line is 251.
-      This is a stale docstring on main (pre-existed BBF-FU-11c)
-      and is NOT a fix scope for this BBF — flagged for
-      a separate doc-drift BBF.
+- [ ] Note: `services/chess_coach/gateway/routes/repertoire_book.py:_resolve_player`
+      docstring cites `services/chess_coach/gateway/routes/repertoire_recommendations.py:270`
+      for the α-side `DEFAULT_PLAYER` resolution — matches the live
+      tree after BBF-FU-11.0's doc-drift patch + this patch's
+      docstring fix at `services/chess_coach/gateway/routes/repertoire_book.py:194`.
 - [ ] BBF-FU-11b's 64/64 test count (11+6+9+30+8) still passes.
 
 ## 9. Cross-refs

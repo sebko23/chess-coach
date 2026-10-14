@@ -191,7 +191,7 @@ def _resolve_player(player: str) -> str:
     """Resolve the player path param to a filesystem-safe name.
 
     Mirrors the α route's ``"ebassti" if player == "default" else player``
-    (per ``repertoire_recommendations.py:242``). Validates the result
+    (per ``repertoire_recommendations.py:270``). Validates the result
     against ``_PLAYER_NAME_RE`` to prevent path traversal.
 
     Raises ``HTTPException(400)`` on invalid input.
