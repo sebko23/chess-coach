@@ -29,6 +29,33 @@ If you're new to the project, the first thing to do is `BUILDING.md`
 end-to-end. Run the smoke test in `tests/integration/smoke_test.py` to
 confirm the full lazy path works on your machine.
 
+## Contributor License Agreement (CLA)
+
+Before your pull request can be merged, you must sign the
+CHESS COACH CLA. We use the [cla-assistant](https://cla-assistant.io)
+bot to track signatures:
+
+- The bot comments on every opened PR with a one-click link to
+  sign the CLA (individual or corporate variant).
+- Once you sign, the bot updates the PR's CLA status check to
+  "success" and your PR is eligible to merge.
+- The CLA check fires only for PRs that touch the Backend
+  codebase (`services/chess_coach/**`). Frontend-only and
+  docs-only PRs are not gated.
+
+The CLA text is at [`CLA-ICLA.md`](./CLA-ICLA.md) (individual)
+and [`CLA-CCLA.md`](./CLA-CCLA.md) (corporate). Both are derived
+from the Apache Software Foundation CLA template, adapted for the
+chess-coach project's binding architectural requirements (see
+`docs/13_review_response/legal-opinion-integration.md` §C.1).
+
+**Status (BBF-cla-bot-wire):** the `cla-assistant` GitHub App must
+be installed on `sebko23/chess-coach` by the repo owner before the
+gate takes effect. Until the App is installed, this section is
+informational; PRs do not actually fail the CLA check. See
+`docs/16_audit/BBF-cla-bot-wire.md` for the install instructions
+the owner must run.
+
 ## Submitting a Pull Request
 
 1. Fork the repo
