@@ -2335,6 +2335,101 @@ complication); docs/16_audit/BBF-PHASE-8-1.md.
 
 ---
 
+## FU-39 — gitleaks-action v2 → v3 (Node 20 deprecation, Sep 2026)
+
+**Identified:** 2026-10-15, surfaced as a session-close
+follow-up audit after the BBF-FU-18-keyring-test-impl
+squash-merge. Per the upstream
+`gitleaks/gitleaks-action` README:
+
+- Jun 2, 2026: GitHub switches the runner default to
+  Node 24. Workflows using Node 20 actions (including
+  `gitleaks-action@v2`) will require
+  `ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true` to
+  keep running. Without this opt-out, Node 20 actions
+  fail.
+- Sep 16, 2026: Node 20 is removed from GitHub-hosted
+  runners entirely. `gitleaks-action@v2` will stop
+  working regardless of any opt-out flag.
+- Runner requirements: v3 requires GitHub Actions
+  runner v2.327.1 or later (all current GitHub-hosted
+  runners meet this requirement).
+
+**The gap this BBF closes:** the
+`.github/workflows/security-audit.yml` workflow's
+`gitleaks` job is the only remaining `@v2` action in
+the file; the other jobs already use Node-24-era
+pins (`actions/setup-python@v6`,
+`actions/setup-node@v6`, `pnpm/action-setup@v6`).
+Bumping to `@v3` is a 2-line YAML change that
+adopts Node 24 natively and matches the rest of
+the workflow file's already-Node-24-era pins. Doing
+it now (well before the Jun 2 / Sep 16 dates)
+avoids the trap of having the `gitleaks (secret
+scan)` CI job silently fail mid-cycle and leave
+secrets unscanned.
+
+**The fix:** in
+`.github/workflows/security-audit.yml`'s `gitleaks`
+job (lines 82-101):
+
+1. `actions/checkout@v5` → `actions/checkout@v6`
+   (the gitleaks job's checkout step at line 88)
+2. `gitleaks/gitleaks-action@v2` →
+   `gitleaks/gitleaks-action@v3` (the "Run gitleaks"
+   step at line 96)
+
+Per the v2→v3 migration section of the upstream
+README: "v3 migrates the GitHub Actions runtime
+from Node 20 to Node 24. There are no changes to
+inputs, outputs, or behavior. The upgrade is a
+one-line change in your workflow file: v2 → v3.
+You should also update `actions/checkout` to v6."
+
+**Status:** OPEN. Resolution BBF:
+`docs/16_audit/BBF-FU-39-gitleaks-action-v3.md`.
+
+**Out of scope:**
+
+- The 29 pre-existing historical gitleaks findings
+  (visible in a local full-history scan, not in
+  the diff-scoped SARIF) — separate BBF, FU-38.
+- Workflow-action Node-20 audit across other
+  workflows (`smoke.yml` and any others). This BBF
+  does not perform that audit; per the leaf review's
+  empirical scan on the live `main` HEAD,
+  `smoke.yml` still uses Node-20-era pins
+  (`actions/checkout@v4`, `actions/setup-python@v5`,
+  `actions/setup-node@v4`, `pnpm/action-setup@v4`).
+  The audit + bump of those pins is a separate BBF
+  (or set of BBFs) — the same Node-24 deprecation
+  applies (Jun 2, 2026 / Sep 16, 2026), but the
+  scope of this BBF is the gitleaks-action only.
+  If a stale pin is found in another workflow later,
+  it gets its own BBF.
+- The `.gitleaks.toml` allowlist config (already
+  fixed in PR #136 amend #2: `[[allowlists]]` →
+  `[allowlist]` per the v8 form-silently-ignored
+  defect class).
+
+**Cross-references:**
+
+- `docs/16_audit/BBF-FU-39-gitleaks-action-v3.md`
+  (the brief for the resolution BBF).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-18 entry
+  (the implementation PR that exposed this follow-up
+  via its session-close audit).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-18 entry's
+  "Open follow-ups from this BBF" subsection
+  (cites "gitleaks-action@v2 → @v3 Node-24 bump"
+  as a future BBF; this is that BBF).
+- `chess-coach-bbf-shipping-cycle/references/post-squash-pitfalls.md`
+  §B (the Node-20 deprecation cascade pattern;
+  this BBF is the canonical "bump action version
+  in advance" answer for `gitleaks-action`).
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
