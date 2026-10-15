@@ -2430,6 +2430,88 @@ You should also update `actions/checkout` to v6."
 
 ---
 
+## FU-40 — smoke.yml Node-20 action pins (parallel to FU-39)
+
+**Identified:** 2026-10-15, surfaced as the explicit
+out-of-scope follow-up to BBF-FU-39-gitleaks-action-v3
+(PR #138, squash-merge commit `47062dfa`). The FU-39
+entry's "Out of scope" subsection flagged that
+`smoke.yml` was NOT yet on the Node-24 line. An
+empirical scan (`git show main:.github/workflows/smoke.yml
+| grep "@v"`) confirmed 17 Node-20-era action pins
+across 7 jobs:
+
+| Action | Count | `@v` target |
+|---|---|---|
+| `actions/checkout@v4` | 7 | `@v6` |
+| `actions/setup-python@v5` | 6 | `@v6` |
+| `actions/setup-node@v4` | 2 | `@v6` |
+| `pnpm/action-setup@v4` | 2 | `@v6` |
+| **Total** | **17** | — |
+
+The same Jun 2, 2026 / Sep 16, 2026 GitHub-runner
+deprecation timeline applies. The 7 jobs affected:
+`gateway boot (clean install)`, `lazy eval-graph
+smoke test`, `frontend types codegen`, `frontend
+static imports`, `frontend lint + test`,
+`qdrant sidecar smoke`, `PyInstaller binary smoke`.
+All 7 jobs have at least one Node-20-era action pin.
+
+**The fix:** a 4-pattern regex replace on
+`.github/workflows/smoke.yml` bumping 17 action pins
+in place. All bumps go to `@v6` (the Node-24-era
+pin), matching the pattern established in
+`security-audit.yml` by PR #138 (gitleaks-action)
+and the prior v6 pins in `security-audit.yml`'s
+other jobs.
+
+The 2 false-positive matches (`@v11` for pnpm
+version, `@v4` for a pnpm Node version spec) are
+preserved by the pattern — only `uses:`-style
+action pins are matched.
+
+**Status:** OPEN. Resolution BBF:
+`docs/16_audit/BBF-FU-40-smoke-yml-node24.md`.
+
+**Out of scope:**
+
+- **FU-37** — pnpm v1.x migration (already in
+  flight, separate BBF).
+- **FU-38** — 29 pre-existing historical gitleaks
+  findings (visible in a local full-history scan,
+  not in the diff-scoped SARIF). Separate BBF.
+- **Any other workflow files** (besides
+  `security-audit.yml` and `smoke.yml`) that may
+  have Node-20-era action pins. The initial scan
+  shows no other `.github/workflows/*.yml` files
+  with `@v[3-5]` action pins. If a stale pin is
+  found in another workflow later, it gets its
+  own BBF.
+
+**Cross-references:**
+
+- `docs/16_audit/BBF-FU-40-smoke-yml-node24.md`
+  (the brief for the resolution BBF).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-39 entry
+  (the implementation PR that exposed this follow-up
+  via its leaf review; the leaf reviewer empirically
+  verified that `smoke.yml` is still on Node-20
+  pins and the audit was out of scope for the
+  gitleaks-action BBF).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-18 entry
+  (the original "Open follow-ups from this BBF"
+  subsection that mentioned "Workflow-action
+  Node-20 audit across other workflows (`smoke.yml`
+  and any others)" as a future BBF; this is that
+  BBF).
+- `chess-coach-bbf-shipping-cycle/references/post-squash-pitfalls.md`
+  §B (the Node-20 deprecation cascade pattern;
+  this BBF is the canonical "bump all workflow
+  action versions in advance" answer for the
+  smoke.yml pattern).
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
