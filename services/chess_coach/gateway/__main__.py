@@ -6,6 +6,7 @@ shutdown hook removes the descriptor.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import signal
@@ -29,7 +30,33 @@ from chess_coach.gateway.descriptor import Descriptor, write_descriptor
 logger = logging.getLogger(__name__)
 
 
-async def _run_async(settings: GatewaySettings) -> int:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the gateway's CLI flags.
+
+    Currently exposes only ``--dev-secrets`` (per A-F10 contract:
+    the plaintext env-var fallback for secret reads is ONLY
+    enabled when this flag is set explicitly). Future flags
+    (e.g., ``--data-dir``) will be added here.
+    """
+    parser = argparse.ArgumentParser(
+        prog="chess-coach-gateway",
+        description="CHESS COACH gateway (FastAPI).",
+    )
+    parser.add_argument(
+        "--dev-secrets",
+        action="store_true",
+        help=(
+            "Enable plaintext env-var fallback for secret reads. "
+            "DEV-ONLY. Production deployments must NOT pass this flag; "
+            "the A-F10 contract requires secrets to come from the "
+            "OS-native keychain. See "
+            "docs/08_security/security-strategy.md A-F10."
+        ),
+    )
+    return parser.parse_args(argv)
+
+
+async def _run_async(settings: GatewaySettings, *, dev_secrets: bool = False) -> int:
     app = create_app(settings)
     config = uvicorn.Config(
         app=app,
@@ -118,10 +145,22 @@ def _resolve_bound_port(server: uvicorn.Server, *, fallback: int) -> int:
     return fallback
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
     settings = GatewaySettings()
+    if args.dev_secrets:
+        # A-F10 contract: dev fallback is explicit, not implicit.
+        # The secrets module reads this via the dev_fallback=True
+        # default in get_api_key(); the gateway just logs a
+        # WARNING at startup to make the dev-mode intent visible.
+        logger.warning(
+            "--dev-secrets is set: plaintext env-var fallback for "
+            "secret reads is ENABLED. This is a dev-only behavior. "
+            "Production deployments must NOT pass --dev-secrets. "
+            "See docs/08_security/security-strategy.md A-F10."
+        )
     try:
-        return asyncio.run(_run_async(settings))
+        return asyncio.run(_run_async(settings, dev_secrets=args.dev_secrets))
     except KeyboardInterrupt:
         return 130
 

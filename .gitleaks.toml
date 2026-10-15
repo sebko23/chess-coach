@@ -1,0 +1,45 @@
+# Gitleaks configuration for CHESS COACH.
+#
+# Auto-detected by `gitleaks/gitleaks-action@v2` when this file
+# lives at the repo root (the action's documented behavior). The
+# action delegates to the gitleaks CLI, which recognizes `.gitleaks.toml`
+# at the target path.
+#
+# See https://github.com/gitleaks/gitleaks-action#can-i-use-a-custom-gitleaks-configuration
+# and https://github.com/gitleaks/gitleaks#configuration for the
+# upstream precedence and allowlist format.
+#
+# Empirically verified against gitleaks 8.24.2 (the version pinned
+# by the gitleaks-action@v2 runtime): the upstream and action runtime
+# only recognize the v1 single-table `[allowlist]` block, NOT the
+# v8 array-of-tables `[[allowlists]]` form. Using `[[allowlists]]`
+# silently ignores the rule — gitleaks reports findings as if no
+# allowlist existed. This file uses the supported v1 form.
+title = "chess-coach gitleaks config"
+
+# Inherit the upstream default rules + apply the allowlist below.
+# (Without [extend].useDefault, only the rules defined here apply.)
+[extend]
+useDefault = true
+
+# Allowlist: tests/unit/test_log_redaction.py contains synthetic
+# secret-shaped strings (e.g. `sk-...`, `lip_...`) that exercise the
+# SecretRedactionFilter at services/chess_coach/log_redaction/__init__.py.
+# These strings are NOT real secrets — they are fixtures with the same
+# shape as real keys so the redactor's regex actually matches them.
+# Per A-F10 (docs/08_security/security-strategy.md) the log_redaction
+# filter is the production safeguard; this test file is the regression
+# test that verifies the safeguard works. Both are required by the
+# BBF-FU-18-keyring-test-impl contract.
+#
+# The `lichess-pat` and `github-pat` rules are listed defensively in
+# case upstream ever extends its `lip_...` / `ghp_...` regex to overlap
+# these fixtures (the upstream `lichess-pat` regex currently does NOT
+# match `lip_abc...`, which is why the SARIF `ruleId` is
+# `generic-api-key` for both lines).
+[allowlist]
+description = "log_redaction test fixtures (synthetic keys, not real secrets)"
+targetRules = ["generic-api-key", "github-pat", "lichess-pat"]
+paths = [
+  '''tests/unit/test_log_redaction\.py''',
+]
