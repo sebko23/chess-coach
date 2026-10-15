@@ -1420,17 +1420,78 @@ files are NOT acceptable for production secrets.
   vars (OPENROUTER_API_KEY, etc.); the audit did not confirm this
   is the production path vs. an OS-native store.
 
-**Status:** OPEN. Real contract gap, no external blocker. Logged
-for record-keeping per the directive "real, correctly out of scope,
-agreed." Investigation-first BBF would: (1) read security-strategy.md
- §A-F10 in full, (2) audit the secret-access path in
-  `llm_router/config.py` and any other modules that read secrets,
-  (3) confirm whether the OS-native store is actually used in
-  production (vs. plaintext env vars as a development-only path),
-  (4) if the contract is unenforced, design + implement a test
-  that verifies secrets come from the OS-native store and are NOT
-  visible in plaintext on disk or in env-var listings, (5) add the
-  test to smoke.yml so it is CI-enforced going forward.
+**Status:** **RESOLVED 2026-10-15 via squash-merge of PR #136** (commit `234808d8` on `main`).
+Closed by `BBF-FU-18-keyring-test-impl` (per the decision brief
+`docs/16_audit/BBF-FU-18-keyring-test.md`). The implementation
+shipped 10 files, `+1026` / `-23` lines, including 16 new unit
+tests. Post-merge CI on `main` is 12/12 green.
+
+**What was shipped:**
+
+- `chess_coach.keychain` module (NEW, 117 lines) — `keyring`-backed
+  `get_secret` / `set_secret` / `delete_secret` wrapper with
+  `dev_fallback=True` env-var fallback. `set_secret` and
+  `delete_secret` catch `KeyringError` and return `False` so the
+  wrapper is fail-closed on hosts without a Secret Service backend
+  (the Linux CI runner case).
+- `chess_coach.log_redaction` module (NEW, 88 lines) —
+  `SecretRedactionFilter` `logging.Filter` that replaces known
+  secret prefixes with `***REDACTED***` in formatted log records.
+- `chess_coach.llm_router.config.get_api_key()` refactored to
+  delegate to `chess_coach.keychain.get_secret`.
+- `chess_coach.gateway.__main__` — `--dev-secrets` `argparse` flag
+  for dev-mode visibility at startup.
+- `pyproject.toml` — adds `keyring>=24.0` runtime dep plus the
+  two new subpackages to the explicit `packages` and
+  `package-dir` lists.
+- 16 new unit tests (5 keychain happy-path, 3 keychain
+  fail-backend, 3 llm_router_config, 5 log_redaction). The 3
+  keychain fail-backend tests exercise the no-keyring-backend
+  path (`set_secret` / `delete_secret` / `get_secret` returning
+  `False` / `None` rather than raising).
+- `.gitleaks.toml` (NEW, 17 lines) — v1 `[allowlist]` form for
+  the `log_redaction` test fixtures (the v8 `[[allowlists]]`
+  form is silently ignored by `gitleaks 8.24.x`, the version
+  pinned by `gitleaks/gitleaks-action@v2`).
+
+**The four-amend chain (audit trail, for reproducibility):**
+
+| Amend | SHA | What was fixed |
+|---|---|---|
+| #1 | `41fdeb98` | Initial implementation (keyring wrapper + redaction + 13 tests) |
+| #2 | `4e25694a` | `gitleaks (secret scan)` red → green: rewrote `[[allowlists]]` as v1 `[allowlist]` (the v8 array form is silently ignored by the gitleaks-action's runtime) |
+| #3 | `6743d628` | `gateway boot (clean install)` red → green: caught `KeyringError` in `set_secret` and `delete_secret` (previously raised `NoKeyringError` on Linux CI), added 3 fail-backend tests |
+| #4 | `d15bb306` | `PyInstaller binary smoke` red → green: renamed `chess_coach.secrets` → `chess_coach.keychain` (the prior name shadowed the stdlib `secrets` module inside the frozen binary, breaking `from secrets import token_hex` in `starlette.responses`) |
+
+**Pre-merge CI on the final amend (`d15bb306`):** 12/12 green.
+
+**Post-merge CI on `main` (`234808d8`):** 12/12 green.
+
+**Cross-references:**
+
+- `docs/16_audit/BBF-FU-18-keyring-test.md` — the decision brief
+  (merged at `2650a8e` per the brief's "Identified" header).
+- `docs/08_security/security-strategy.md` §A-F10 — the canonical
+  contract this BBF implements.
+- `services/chess_coach/keychain/__init__.py` — the new wrapper
+  module.
+- `services/chess_coach/log_redaction/__init__.py` — the new
+  redaction filter.
+- PR #136 — the implementation PR (now closed + merged).
+- Merge commit `234808d863caa2cc4fa59ff323ab7917fd8eafe1` on
+  `main` — the squash-merge commit.
+
+**Open follow-ups from this BBF (NOT in scope here):**
+
+- **FU-41** — the PR #136 body on github.com is stale (still
+  describes the pre-amend-#4 `chess_coach.secrets` module).
+  Doc-drift follow-up; separate BBF.
+- **FU-38** — 29 pre-existing historical `gitleaks` findings
+  (visible in a local full-history scan, not in the diff-scoped
+  SARIF). Separate BBF.
+- **FU-39** — `gitleaks-action@v2` is on a Node-20 lifetime
+  (deprecation Sep 2026 per upstream README); bump to `@v3` for
+  Node-24. Separate BBF.
 
 **Why this is FU-18, not part of another FU:**
 

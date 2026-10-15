@@ -308,11 +308,17 @@ bare refs per the (σ) discipline.
 - `git show main:docs/16_audit/BBF-FU-18-keyring-test.md | grep -c "keyring"`
   > 0 (the brief mentions the library by name).
 - `git show main:docs/16_audit/OPEN-FOLLOWUPS.md | grep -A 2 "## FU-18"`
-  is updated to point at this BBF as the decision brief (the
-  ledger entry can be amended in a follow-up to flip its
-  status from "OPEN" to "DECIDED: see BBF-FU-18-keyring-test";
-  that's a separate doc-drift BBF, out of scope for this
-  one).
+  is updated to point at this BBF as the decision brief.
+  The ledger entry's status flip (OPEN → RESOLVED) is the
+  follow-up that shipped via PR #137 (see the 4-amend chain
+  in the FU-18 entry itself for the SHA trail; the new
+  brief at `docs/16_audit/BBF-FU-18-doc-drift.md` records
+  the doc-only BBF). The pre-flip line range was
+  `OPEN-FOLLOWUPS.md:1404-1452`; the post-PR-#137 range is
+  ~62 lines longer (the entry grew to document the 4-amend
+  chain + the open follow-ups).
 - The 5-7th lines from the bottom of the brief's
   "Investigation-first pass" section cite the
-  `OPEN-FOLLOWUPS.md:1404-1452` line range.
+  `OPEN-FOLLOWUPS.md:1404-1452` line range (pre-PR-#137; the
+  pre-flip range is the historically-accurate one for this
+  brief, which was written before the doc-drift follow-up).
