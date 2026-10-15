@@ -85,7 +85,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           # Pull the full history so gitleaks can scan every commit,
           # not just the latest one. fetch-depth=0 is the documented
@@ -93,7 +93,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           # Default: scan the full history and fail on any detected
           # secret. GITHUB_TOKEN is required by the action for
