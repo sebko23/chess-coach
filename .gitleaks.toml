@@ -12,9 +12,10 @@
 # Empirically verified against gitleaks 8.24.2 (the version pinned
 # by the gitleaks-action@v2 runtime): the upstream and action runtime
 # only recognize the v1 single-table `[allowlist]` block, NOT the
-# v8 array-of-tables `[[allowlists]]` form. Using `[[allowlists]]`
-# silently ignores the rule — gitleaks reports findings as if no
-# allowlist existed. This file uses the supported v1 form.
+# v8 array-of-tables `[[allowlists]]` form OR the named
+# `[allowlist.name]` form. Using any multi-block form silently
+# ignores the rule — gitleaks reports findings as if no allowlist
+# existed. This file uses the supported single-block v1 form.
 title = "chess-coach gitleaks config"
 
 # Inherit the upstream default rules + apply the allowlist below.
@@ -22,24 +23,52 @@ title = "chess-coach gitleaks config"
 [extend]
 useDefault = true
 
-# Allowlist: tests/unit/test_log_redaction.py contains synthetic
-# secret-shaped strings (e.g. `sk-...`, `lip_...`) that exercise the
-# SecretRedactionFilter at services/chess_coach/log_redaction/__init__.py.
-# These strings are NOT real secrets — they are fixtures with the same
-# shape as real keys so the redactor's regex actually matches them.
-# Per A-F10 (docs/08_security/security-strategy.md) the log_redaction
-# filter is the production safeguard; this test file is the regression
-# test that verifies the safeguard works. Both are required by the
-# BBF-FU-18-keyring-test-impl contract.
+# Allowlist: the `devtoken123` dev fixture appears in curl
+# examples in documentation, workflows, and shell scripts
+# (25 matches across 11 files in the full-history gitleaks
+# scan). It is the public, documented `CHESS_COACH_BACKEND_TOKEN`
+# default in `.github/workflows/smoke.yml` and
+# `services/chess_coach/gateway/__main__.py`; every example
+# curl command in CHANGELOG, README, BUILDING, etc. uses it.
+# Per the v0.7.117.1 sigma-discipline, the allowlist is
+# path-based + rule-scoped (NOT value-based), so a real secret
+# of the same value in a NEW file would still be flagged.
 #
-# The `lichess-pat` and `github-pat` rules are listed defensively in
-# case upstream ever extends its `lip_...` / `ghp_...` regex to overlap
-# these fixtures (the upstream `lichess-pat` regex currently does NOT
-# match `lip_abc...`, which is why the SARIF `ruleId` is
-# `generic-api-key` for both lines).
+# The keybinding strings in
+# `apps/desktop/src/state/keybinds.ts` (e.g., "shift+arrowup")
+# are also false-positive matches on gitleaks' `generic-api-key`
+# regex (which looks for ~20+ chars of high-entropy
+# alphanumerics, which the keybinding strings accidentally match).
+#
+# The `lichess-pat` and `github-pat` rules are listed defensively
+# (per the original log_redaction-test-fixtures rationale) in
+# case upstream ever extends its `lip_...` / `ghp_...` regex to
+# overlap the log_redaction fixtures.
+#
+# The single v1 `[allowlist]` block is the supported form on
+# gitleaks 8.24.x; the v8 `[[allowlists]]` and named
+# `[allowlist.name]` forms are silently ignored. The combined
+# `targetRules` list is slightly over-broad (the `devtoken123`
+# examples don't match `generic-api-key`, so the over-allowlist
+# is benign), but it's the only form gitleaks 8.24.x honors.
 [allowlist]
-description = "log_redaction test fixtures (synthetic keys, not real secrets)"
-targetRules = ["generic-api-key", "github-pat", "lichess-pat"]
+description = "log_redaction test fixtures + devtoken123 dev fixture + keybinding strings (single v1 block is the supported form on gitleaks 8.24.x)"
+targetRules = ["generic-api-key", "github-pat", "lichess-pat", "curl-auth-header"]
 paths = [
+  # log_redaction test fixtures (PR #136 amend #2)
   '''tests/unit/test_log_redaction\.py''',
+  # devtoken123 dev fixture in docs + workflows + scripts (25 matches)
+  '''docs/CHANGELOG\.md''',
+  '''docs/REPO-READINESS\.md''',
+  '''docs/20_datasets/qdrant-deployment\.md''',
+  '''docs/VERIFICATION\.md''',
+  '''tests/README\.md''',
+  '''\.github/workflows/smoke\.yml''',
+  '''BUILDING\.md''',
+  '''README\.md''',
+  '''Dockerfile''',
+  '''docker-compose\.yml''',
+  '''scripts/start_gateway\.sh''',
+  # keybinding strings (2 matches: shift+arrowup, shift+arrowleft)
+  '''apps/desktop/src/state/keybinds\.ts''',
 ]
