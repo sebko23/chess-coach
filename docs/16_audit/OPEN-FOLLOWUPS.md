@@ -1559,6 +1559,16 @@ tests. Post-merge CI on `main` is 12/12 green.
 
 ## FU-19 — A-F11 (PDF parsing subprocess sandbox) has no test
 
+**Status:** **RESOLVED 2026-10-16 via squash-merge of PR #143**
+(commit `7d51afa0` on `main`, BBF-FU-19-A-F11-sandbox-tests).
+4 sandbox-isolation tests added to
+`tests/unit/test_pdf_ingest_security.py` (section E):
+1 real test for property 1 (subprocess isolation, PASS)
++ 3 `pytest.skip` tests for properties 2/3/4 (network
+isolation, read-only FS, 2 GiB cap) pointing at the
+future implementation BBFs (FU-22, FU-21, FU-20
+respectively). Documented by this BBF-doc-drift-flip.
+
 **Identified:** 2026-08-11, during the phase-completion audit session.
 Per `docs/08_security/security-strategy.md` §A-F11, "PDF parsing hard
 requirement": PDF parsing MUST run in an isolated subprocess with
@@ -1712,6 +1722,22 @@ no filesystem read-only enforcement on the parent" (line 128).
 ---
 
 ## FU-22 — A-F11 property 4 (2GB memory cap) has no implementation or test
+
+**Status:** **RESOLVED 2026-10-16 via squash-merge of PR #145**
+(commit `ae543ea8` on `main`, BBF-FU-22-impl). The new
+`services/chess_coach/pdf_ocr/subprocess_runner.py`
+module implements `set_rlimit_as_preexec(mem_cap_bytes)`
+which calls `resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))`
+in a `preexec_fn=` callback applied to the pdftoppm
+subprocess. The route's `pdf_ingest.py` was refactored
+to use `run_pdftoppm_in_subprocess` (the new A-F11-aware
+wrapper) instead of `convert_from_bytes`. The 2 GiB cap
+hit surfaces as 422 Unprocessable Entity. 12/12 CI green
+on `ae543ea8`. The `test_subprocess_respects_2gb_memory_cap`
+test in `tests/unit/test_pdf_ingest_security.py` (added
+by PR #143) is now a real (non-skip) test that asserts
+the new module is wired. Documented by this
+BBF-doc-drift-flip.
 
 **Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
 Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
