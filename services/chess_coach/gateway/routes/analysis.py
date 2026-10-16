@@ -11,9 +11,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from chess_coach.engine_orch.pool import EnginePool
-from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
+from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.protocol_types.analysis import AnalysisRequest
 
 from ..route_guard import route_guard

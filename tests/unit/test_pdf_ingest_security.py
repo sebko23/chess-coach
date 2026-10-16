@@ -22,9 +22,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from fastapi import UploadFile
 from services.chess_coach.gateway.routes import pdf_ingest
-from services.chess_coach.gateway.routes.pdf_ingest import import_pdf
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 
@@ -88,9 +86,10 @@ async def prod_client():
     """Build a real FastAPI app from create_app() so the route handlers
     (including @route_guard) run end-to-end.
     """
+    import httpx
+
     from chess_coach.gateway import create_app
     from chess_coach.gateway.config import GatewaySettings
-    import httpx
 
     settings = GatewaySettings()
     app = create_app(settings)
@@ -155,19 +154,18 @@ async def test_minimal_pdf_passes_magic_check(prod_client) -> None:
     with patch(
         "services.chess_coach.gateway.routes.pdf_ingest.run_pdftoppm_in_subprocess",
         return_value=[MagicMock()],
+    ), patch(
+        "services.chess_coach.gateway.routes.pdf_ingest._predict_fen",
+        new_callable=AsyncMock,
+        return_value=("8/8/8/4k3/8/8/8/4K2R w K - 0 1", 0.9, None),
     ):
-        with patch(
-            "services.chess_coach.gateway.routes.pdf_ingest._predict_fen",
-            new_callable=AsyncMock,
-            return_value=("8/8/8/4k3/8/8/8/4K2R w K - 0 1", 0.9, None),
-        ):
-            r = await prod_client.post(
-                "/v1/import/pdf",
-                headers=AUTH,
-                files={
-                    "file": ("ok.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")
-                },
-            )
+        r = await prod_client.post(
+            "/v1/import/pdf",
+            headers=AUTH,
+            files={
+                "file": ("ok.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")
+            },
+        )
     # The test is that we DIDN'T get 400 / 413.
     assert r.status_code not in (400, 413), (
         f"unexpected pre-validation rejection: {r.status_code} {r.text}"
@@ -499,7 +497,7 @@ def test_subprocess_respects_2gb_memory_cap() -> None:
     )
     # 2. MEM_CAP_BYTES is exactly 2 GB
     expected = 2 * 1024 * 1024 * 1024
-    assert MEM_CAP_BYTES == expected, (
+    assert expected == MEM_CAP_BYTES, (
         f"MEM_CAP_BYTES must be 2 GiB per A-F11 contract; "
         f"got {MEM_CAP_BYTES} bytes"
     )

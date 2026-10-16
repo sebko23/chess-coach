@@ -25,12 +25,10 @@ import os
 import sys
 
 import pytest
-
 from services.chess_coach.pdf_ocr.subprocess_runner import (
     MEM_CAP_BYTES,
     set_rlimit_as_preexec,
 )
-
 
 # Skip the cap-behavior test on Windows: the cap is a
 # no-op there (resource.setrlimit is Unix-only). The
@@ -155,7 +153,7 @@ def test_set_rlimit_as_preexec_returns_callable() -> None:
 def test_mem_cap_bytes_constant_is_2gb() -> None:
     """`MEM_CAP_BYTES` is the A-F11 contract value: 2 GB."""
     expected = 2 * 1024 * 1024 * 1024  # 2 GiB
-    assert MEM_CAP_BYTES == expected, (
+    assert expected == MEM_CAP_BYTES, (
         f"MEM_CAP_BYTES must be 2 GiB per A-F11 contract; "
         f"got {MEM_CAP_BYTES} bytes ({MEM_CAP_BYTES / (1024**3):.2f} GiB)"
     )

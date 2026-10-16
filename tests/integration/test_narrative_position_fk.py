@@ -74,7 +74,11 @@ class TestNarrationPositionFK:
         app.state.gateway.settings = MagicMock()
         app.state.gateway.settings.sqlite_path = fresh_db
         app.state.narration_pipeline = pipeline
-        app.state.engine_pool = MagicMock()  # FU-6: route Depends(_engine_pool) requires this; synthetic path doesn't call it, but the dependency resolves unconditionally at request time. See FU-6 entry in OPEN-FOLLOWUPS.md.
+        # FU-6: route Depends(_engine_pool) requires this; synthetic
+        # path doesn't call it, but the dependency resolves
+        # unconditionally at request time. See FU-6 entry in
+        # OPEN-FOLLOWUPS.md.
+        app.state.engine_pool = MagicMock()
         app.dependency_overrides[require_bearer] = lambda: None
         app.include_router(narration_router)
 
@@ -130,7 +134,11 @@ class TestNarrationPositionFK:
         app.state.gateway.settings = MagicMock()
         app.state.gateway.settings.sqlite_path = fresh_db
         app.state.narration_pipeline = pipeline
-        app.state.engine_pool = MagicMock()  # FU-6: route Depends(_engine_pool) requires this; synthetic path doesn't call it, but the dependency resolves unconditionally at request time. See FU-6 entry in OPEN-FOLLOWUPS.md.
+        # FU-6: route Depends(_engine_pool) requires this; synthetic
+        # path doesn't call it, but the dependency resolves
+        # unconditionally at request time. See FU-6 entry in
+        # OPEN-FOLLOWUPS.md.
+        app.state.engine_pool = MagicMock()
         app.dependency_overrides[require_bearer] = lambda: None
         app.include_router(narration_router)
 
@@ -182,7 +190,11 @@ class TestNarrationPositionFK:
         app.state.gateway.settings = MagicMock()
         app.state.gateway.settings.sqlite_path = fresh_db
         app.state.narration_pipeline = pipeline
-        app.state.engine_pool = MagicMock()  # FU-6: route Depends(_engine_pool) requires this; synthetic path doesn't call it, but the dependency resolves unconditionally at request time. See FU-6 entry in OPEN-FOLLOWUPS.md.
+        # FU-6: route Depends(_engine_pool) requires this; synthetic
+        # path doesn't call it, but the dependency resolves
+        # unconditionally at request time. See FU-6 entry in
+        # OPEN-FOLLOWUPS.md.
+        app.state.engine_pool = MagicMock()
         app.dependency_overrides[require_bearer] = lambda: None
         app.include_router(narration_router)
 
