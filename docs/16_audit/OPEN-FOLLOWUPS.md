@@ -334,6 +334,14 @@ status field lag was bookkeeping).
 
 ## FU-7 — Polyglot `.bin` opening-book import/export (low-priority feature gap)
 
+**Status:** **PARTIAL** — α shipped 2026-10-12 via BBF-FU-11c
+(commit `ee292874`, branch `bbf-fu-11c`). The α route
+opt-in to stored per-player book is on `main`. Tier 2+
+(persistent support; full `.bin` import/export) remains
+deferred to the Phase 2 trigger. This BBF-doc-drift-flip
+documents the partial state; the Tier 2+ work is its own
+follow-up.
+
 **Identified:** Masterboard design-reference brief, 2026-08-06, during a
 side-quest analysis of `https://github.com/IntermezzoSoftware/Masterboard`.
 Brief: `docs/16_audit/MASTERBOARD-DESIGN-REFERENCE-BRIEF.md`.
@@ -412,6 +420,14 @@ brief — findings-only, as scoped."
 ---
 
 ## FU-8 — Dead-code narration-context plumbing in `explain_simple()` (safe by accident, fragile)
+
+**Status:** **RESOLVED 2026-08-22 via commit `aee6038e`**
+(`fix(deps): FU-8 remove dead narration-context plumbing
+(Option A)`). The dead `context` / `move_san` /
+`game_phase` parameters were removed from
+`pipeline.explain_simple`; the route no longer builds a
+`prompt_context` that the pipeline ignores. Documented
+by this BBF-doc-drift-flip.
 
 **Identified:** FU-2 investigation, 2026-08-06, during the
 injection-pattern / tool-fabrication investigation.
@@ -631,6 +647,11 @@ leave it alone."
 
 ## FU-10 — Bump `h2` to `>=4.4.1` to resolve CVE-2026-71554 (moderate priority)
 
+**Status:** **RESOLVED 2026-08-07 via squash-merge of PR #83**
+(commit `2a6276bd` on `main`). `h2==4.4.1` is in
+`uv.lock`; pip-audit is green on `cab74655`. CVE-2026-71554
+is closed. Documented by this BBF-doc-drift-flip.
+
 **Identified:** 2026-08-07, during FU-6's PR #82 CI verification.
 The pip-audit job flagged:
 
@@ -790,6 +811,15 @@ a `BookIndex` abstraction that β would build on.
 ---
 
 ## FU-12 — Pre-existing JS dep vulps blocking `pnpm audit` (moderate priority, NOT blocking FU-7)
+
+**Status:** **RESOLVED 2026-08-09 via PR #123 commit `74cab77b`**
+(`chore(deps): add pnpm-workspace.yaml overrides to clear
+4 transitive-dep vulns`). The `nanoid: "^3.3.17"` and
+`dompurify: "^3.4.16"` overrides (plus `js-yaml`,
+`seroval`, `source-map-js`, `prosemirror-view`,
+`markdown-it`) are in `apps/desktop/pnpm-workspace.yaml`;
+pnpm-audit is green on `cab74655`. Documented by this
+BBF-doc-drift-flip.
 
 **Identified:** FU-7 BBF session, 2026-08-08, during CI verification
 of PR #84 (BBF-FU-7). Surfaced when the `security-audit` workflow's
@@ -1202,6 +1232,14 @@ RESOLVED line below.
 
 ## FU-16 — 3 pre-existing frontend test failures (ProfileDashboard async-data), deferred from FU-15
 
+**Status:** **RESOLVED 2026-08-09 via squash-merge of PR #89**
+(commit `77a83796` on `main`). The ProfileDashboard
+async-data test fix switched from `renderToStaticMarkup`
+to `@testing-library/react`'s `render` + `waitFor`;
+the 3 deferred tests (empty-state alert, card header,
+page-level header) all pass. Documented by this
+BBF-doc-drift-flip.
+
 **Identified:** FU-15 BBF session, 2026-08-08, as the deferred
 remainder of FU-15 after Test 4 was fixed. The 3 ProfileDashboard
 tests fail because the component's `loading` state starts `true` and
@@ -1297,6 +1335,13 @@ pass overall (3 pre-existing e2e failures unrelated — they import
 ---
 
 ## FU-17 — Pin pnpm version durably via `packageManager` + corepack (structural fix for FU-13)
+
+**Status:** **RESOLVED 2026-08-09 via squash-merge of PR #87**
+(commit `20792f48` on `main`). `apps/desktop/package.json`
+now has `"packageManager": "pnpm@11.21.0"` and the
+legacy `pnpm.overrides` block was removed (per the
+upstream "pnpm field in package.json is no longer read
+by pnpm" guidance). Documented by this BBF-doc-drift-flip.
 
 **Identified:** 2026-08-09, when FU-13's threshold tracker reached
 3/3 instances and the third instance (the pnpm-version drift in
@@ -1965,6 +2010,14 @@ as any other change in that class.
 
 ## FU-28 — Backend test-enforcement gap: CI runs 16 of 58 test files
 
+**Status:** **RESOLVED 2026-08-27 via commit `f0b07dac`**
+(`feat(ci): enforce-by-default for backend tests`). The
+gateway boot job now uses `pytest tests/unit tests/integration
+--ignore=...` (a glob) instead of a hardcoded 11-path list,
+so all unit + integration test files run by default. The
+remaining FU-30 / FU-31 / FU-32 sub-issues were co-closed
+in the same PR. Documented by this BBF-doc-drift-flip.
+
 **Identified:** 2026-08-25, session-opening state check (post PR #108), as the direct FU-25
 analogue on the backend side. Evidence gathered up front; **no implementation scope committed
 by this entry.**
@@ -2052,6 +2105,15 @@ factory design.
 
 ## FU-31 — `test_pdf_ingest_security.py::test_route_is_wired_to_smoke_yml` breaks under glob-based CI
 
+**Status:** **RESOLVED 2026-08-27 via commit `042f56c1`**
+(`fix(tests): rewrite test_route_is_wired_to_smoke_yml
+for FU-28 glob convention`). The meta-test now asserts
+the new structural convention (`tests/unit` appears in
+the boot-job's pytest invocation; the file is not
+ignored) rather than the literal file name in
+`smoke.yml`. Co-closed with FU-28 in PR #110. Documented
+by this BBF-doc-drift-flip.
+
 **Identified:** 2026-08-27, FU-28 wiring merge session. Surfaced when PR #110's `gateway boot (clean
 install)` job turned red on CI Linux (565 passed / 2 failed / 4 skipped in 84.96s, run 33012914337
 job 98323555321).
@@ -2094,6 +2156,14 @@ is a one-file change with no blast radius, well-suited to its own PR.
 **Status:** OPEN — log only. Meta-test fix deferred to a follow-up PR (test-only change).
 
 ## FU-32 — `test_repertoire_recommendations_polyglot.py::test_book_path_is_directory` is CI-Linux-only failure (route bug, not test bug)
+
+**Status:** **RESOLVED 2026-08-27 via commit `b4a8e5f0`**
+(`fix(route): add os.path.isdir() pre-check for
+polyglot_book_path (FU-32)`). The route now
+pre-checks `os.path.isdir(book_path)` before calling
+`chess.polyglot.open_reader`, eliminating the
+Linux-vs-Windows divergence. Co-closed with FU-28 in
+PR #110. Documented by this BBF-doc-drift-flip.
 
 **Identified:** 2026-08-27, FU-28 wiring merge session. Surfaced in the same PR #110 CI run as
 FU-31 (job 98323555321).
@@ -2141,6 +2211,16 @@ rationale as FU-31. The route fix is a code + test PR, well-suited to its own sc
 **Status:** OPEN — log only. Route fix deferred to a follow-up PR (code + test change).
 
 ## FU-33 — Stale `smoke.yml:178-192` reference in PR #110 commit body (FU-17-shape, file:line needs full path)
+
+**Status:** **RESOLVED 2026-08-27 via commit `fd984efd`**
+(`docs(OPEN-FOLLOWUPS): resolve FU-33 as accepted;
+co-close FU-28/31/32 (PR #113)`). The decision was to
+**accept** the stale `smoke.yml:178-192` reference (the
+file path is correct as a content description; only the
+σ-gate's full-path check fails) rather than amend the
+merge commit. The CI `commit ref verify` job is
+documented as tolerating the partial-path shape for
+this specific case. Documented by this BBF-doc-drift-flip.
 
 **Identified:** 2026-08-27, immediately post-merge of PR #110. Surfaced by `commit ref verify`
 on the security-audit workflow run `33049938611` (job 98442698577):
@@ -2337,6 +2417,17 @@ complication); docs/16_audit/BBF-PHASE-8-1.md.
 
 ## FU-39 — gitleaks-action v2 → v3 (Node 20 deprecation, Sep 2026)
 
+**Status:** **RESOLVED 2026-10-15 via squash-merge of PR #138**
+(commit `bd49dd1c` on `main`, merge commit `47062dfa`).
+The 2-line YAML edit to `.github/workflows/security-audit.yml`
+bumped `actions/checkout@v5` → `@v6` and
+`gitleaks/gitleaks-action@v2` → `@v3`. The companion
+`checkout@v5` → `@v6` bump is required by the v3 action
+per the upstream README. 12/12 CI green on `47062dfa`;
+`gitleaks (secret scan)` job verified as `success` on
+the v3 action with the same `[allowlist]` config.
+Documented by this BBF-doc-drift-flip.
+
 **Identified:** 2026-10-15, surfaced as a session-close
 follow-up audit after the BBF-FU-18-keyring-test-impl
 squash-merge. Per the upstream
@@ -2432,6 +2523,17 @@ You should also update `actions/checkout` to v6."
 
 ## FU-40 — smoke.yml Node-20 action pins (parallel to FU-39)
 
+**Status:** **RESOLVED 2026-10-15 via squash-merge of PR #139**
+(commit `8f79469c` on `main`, merge commit `3f056c6f`).
+The 4-pattern regex replace on `.github/workflows/smoke.yml`
+bumped 17 action pins in place (8× `actions/checkout@v4`
+→ `@v6`, 6× `actions/setup-python@v5` → `@v6`, 2×
+`actions/setup-node@v4` → `@v6`, 2× `pnpm/action-setup@v4`
+→ `@v6`). The 3 preexisting stale refs in `smoke.yml`
+context (`app.py:181` + 2 URLs) were folded in the same
+BBF amend via backtick-wrapping. 12/12 CI green on
+`3f056c6f`. Documented by this BBF-doc-drift-flip.
+
 **Identified:** 2026-10-15, surfaced as the explicit
 out-of-scope follow-up to BBF-FU-39-gitleaks-action-v3
 (PR #138, squash-merge commit `47062dfa`). The FU-39
@@ -2513,6 +2615,20 @@ action pins are matched.
 ---
 
 ## FU-38 — 29 pre-existing historical gitleaks findings (allowlist fix)
+
+**Status:** **RESOLVED 2026-10-15 via squash-merge of PR #140**
+(commit `d78b9b9b` on `main`, merge commit `1dbf59e8`).
+The single combined `[allowlist]` block in
+`.gitleaks.toml` (with `targetRules = ["generic-api-key",
+"github-pat", "lichess-pat", "curl-auth-header"]` + 13
+path entries) suppresses 27/27 in-scope false positives
+on the local full-history scan; the 2 deleted-file
+findings remain out of scope (require git-filter-repo
+or permanent allowlist). 12/12 CI green on `cab74655`.
+6 leaf-review nits were folded in a single amend at
+`d78b9b9b` (job attribution, "5 lines" vs "6 lines",
+"154" vs "164" line count, etc.). Documented by this
+BBF-doc-drift-flip.
 
 **Identified:** 2026-10-15, during the session-close
 follow-up audit of FU-18 (the BBF-FU-18-keyring-test-impl
@@ -2606,6 +2722,21 @@ gitleaks 8.24.x honors.
 ---
 
 ## FU-41 — security-audit.yml Node-20 action pins (completes the deprecation sweep)
+
+**Status:** **RESOLVED 2026-10-16 via squash-merge of PR #141**
+(commit `660e1172` on `main`, merge commit `cab74655`).
+The 2-pattern byte-mode string replace on
+`.github/workflows/security-audit.yml` bumped 6
+Node-20-era action pins in place (4× `actions/checkout@v5`
+→ `@v6`, 2× `astral-sh/setup-uv@v3` → `@v6`) across 4
+distinct jobs (`pip-audit`, `uv-lock-check`,
+`commit-refs-verify`, `pnpm-audit`). The 3 leaf-review
+nits (job attribution, "5 lines" vs "6 lines", "154"
+vs "164" line count) were folded in a single amend at
+`660e1172`. 12/12 CI green on `cab74655`. **This BBF
+completes the Node-20 deprecation sweep across all
+chess-coach CI workflows.** Documented by this
+BBF-doc-drift-flip.
 
 **Identified:** 2026-10-15, surfaced by the leaf review
 of BBF-FU-40-smoke-yml-node24 (PR #139) as an explicit
