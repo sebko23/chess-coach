@@ -13,9 +13,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from chess_coach.engine_orch.pool import EnginePool
-from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.auth import require_bearer
+from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.protocol_types.analysis import AnalysisRequest, AnalysisResult
 
 from ..route_guard import route_guard
@@ -53,7 +53,10 @@ async def engine_info(engine_id: str, pool: EnginePool = Depends(_pool)):
     if not pool.is_registered(engine_id):
         raise HTTPException(
             status_code=404,
-            detail={"code": ErrorCode.NOT_FOUND.value, "message": f"engine {engine_id} not registered"},
+            detail={
+                "code": ErrorCode.NOT_FOUND.value,
+                "message": f"engine {engine_id} not registered",
+            },
         )
     # Phase 8 BBF-2 Fix 3 Part B: return 503 if the engine was never
     # acquired (e.g., Stockfish binary missing at warmup).
@@ -86,7 +89,10 @@ async def analyze_position(
     if not pool.is_registered(engine_id):
         raise HTTPException(
             status_code=404,
-            detail={"code": ErrorCode.NOT_FOUND.value, "message": f"engine {engine_id} not registered"},
+            detail={
+                "code": ErrorCode.NOT_FOUND.value,
+                "message": f"engine {engine_id} not registered",
+            },
         )
     # Phase 8 BBF-2 Fix 3 Part B: return 503 if the engine was never
     # acquired (e.g., Stockfish binary missing at warmup).

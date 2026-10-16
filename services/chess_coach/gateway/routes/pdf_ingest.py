@@ -15,6 +15,7 @@ chessvision.ai API: POST https://app.chessvision.ai/predict (BBF-sec-01)
 # ruff: noqa: B008  -- FastAPI Depends() in argument defaults is the intended pattern; flagged uniformly across all route handlers.
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
@@ -22,10 +23,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-import asyncio
-
 import aiosqlite
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel, Field
+
+from ...pdf_ocr import predict_fen
+
 # FU-22-impl: use the same relative-import style as the existing
 # `from ...pdf_ocr import predict_fen` below. The absolute
 # `from services.chess_coach.pdf_ocr.subprocess_runner import`
@@ -36,11 +39,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 # the editable install (`uv pip install --system -e .`).
 from ...pdf_ocr.subprocess_runner import (
     run_pdftoppm_in_subprocess,
-    pdftoppm_available,
 )
-from pydantic import BaseModel, Field
-
-from ...pdf_ocr import predict_fen
 from ..auth import require_bearer
 from ..config import GatewaySettings
 from ..route_guard import route_guard
@@ -234,12 +233,12 @@ async def import_pdf(
             ),
             timeout=PARSER_TIMEOUT_SECONDS + ASYNCIO_WAIT_SLACK_SECONDS,
         )
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError:  # noqa: UP041 (test asserts the source contains `asyncio.TimeoutError`)
         raise HTTPException(
             status_code=504,
             detail=f"PDF parsing exceeded the {PARSER_TIMEOUT_SECONDS}s budget; "
             "the file may be malicious or pathological. Rejected per A-F11.",
-        )
+        ) from None
     except (MemoryError, OSError) as exc:
         # FU-22-impl: A-F11 property 4 hit. The subprocess
         # hit the 2 GB memory cap (set by setrlimit) and
@@ -247,7 +246,7 @@ async def import_pdf(
         # event, not a user error).
         raise HTTPException(
             status_code=422,
-            detail=f"PDF parsing exceeded the 2 GB memory cap; "
+            detail="PDF parsing exceeded the 2 GB memory cap; "
             "the file may be malicious or pathological. Rejected per A-F11.",
         ) from exc
     except Exception as exc:

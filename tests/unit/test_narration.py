@@ -333,6 +333,7 @@ class TestFU8DeadPlumbingRemoved:
     def test_build_user_prompt_signature_has_no_user_context_params(self):
         """build_user_prompt() must not accept user-controlled context fields."""
         import inspect
+
         from chess_coach.narration.prompt import build_user_prompt
         params = list(inspect.signature(build_user_prompt).parameters.keys())
         forbidden = ("context", "user_context", "prompt_context")
@@ -346,6 +347,7 @@ class TestFU8DeadPlumbingRemoved:
     def test_format_analysis_for_prompt_only_uses_analysis_result(self):
         """format_analysis_for_prompt() must take only AnalysisResult."""
         import inspect
+
         from chess_coach.narration.prompt import format_analysis_for_prompt
         params = list(inspect.signature(format_analysis_for_prompt).parameters.keys())
         assert params == ["result"], (
@@ -365,6 +367,7 @@ class TestFU8DeadPlumbingRemoved:
         """
         import ast
         import inspect
+
         from chess_coach.gateway.routes import narration
         src = inspect.getsource(narration)
         tree = ast.parse(src)
@@ -398,8 +401,9 @@ class TestFU8DeadPlumbingRemoved:
         But the call site that fed the dead prompt_context plumbing
         should be gone.
         """
-        from chess_coach.gateway.routes import narration
         import inspect
+
+        from chess_coach.gateway.routes import narration
         src = inspect.getsource(narration)
         assert b"sanitize_user_content" not in src.encode(), (
             "sanitize_user_content still called in narration route\n"
@@ -417,8 +421,9 @@ class TestFU8DeadPlumbingRemoved:
         This test catches that drift and points back to the FU-8
         entry in OPEN-FOLLOWUPS.md.
         """
-        from chess_coach.gateway.routes import narration
         import inspect
+
+        from chess_coach.gateway.routes import narration
         src = inspect.getsource(narration)
         assert "FU-8" in src, (
             "narration route module has no FU-8 marker comment.\n"

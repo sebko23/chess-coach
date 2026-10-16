@@ -30,7 +30,6 @@ Per the BBF's investigation, the smoke does NOT exercise:
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import signal
@@ -43,7 +42,6 @@ from typing import Any
 
 import httpx
 import pytest
-
 
 # Repo paths
 REPO_ROOT = Path(__file__).resolve().parents[2]  # tests/integration -> repo root
@@ -245,10 +243,11 @@ def test_pyinstaller_binary_serves_health_endpoint(tmp_path: Path) -> None:
         # /v1/system/health returns {"data": {...}} envelope per
         # ADR-0002 error envelope. Accept either wrapped or unwrapped
         # for forward-compat with envelope refactors.
-        if "data" in body and isinstance(body["data"], dict):
-            payload = body["data"]
-        else:
-            payload = body
+        payload = (
+            body["data"]
+            if "data" in body and isinstance(body["data"], dict)
+            else body
+        )
         assert payload.get("status") in ("ok", "degraded"), (
             f"Unexpected health status: {payload.get('status')!r} "
             f"(body={body!r})"

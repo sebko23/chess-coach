@@ -16,8 +16,8 @@ import aiosqlite
 import pydantic
 from fastapi import APIRouter, Depends, Request
 
-from chess_coach.llm_router.router import LLMUnavailableError
 from chess_coach.gateway.engine_availability import require_engine_available
+from chess_coach.llm_router.router import LLMUnavailableError
 from chess_coach.narration.pipeline import (
     NarrationOutput,
     _format_pv_fields,

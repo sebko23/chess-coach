@@ -36,8 +36,9 @@ import chess.pgn
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
-from ..auth import require_bearer
 from chess_coach.gateway.engine_availability import require_engine_available
+
+from ..auth import require_bearer
 from ..route_guard import route_guard
 
 logger = logging.getLogger(__name__)

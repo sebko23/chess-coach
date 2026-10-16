@@ -19,7 +19,6 @@ The mitigations:
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from chess_coach.narration.sanitize import (
     DEFAULT_MAX_BYTES,
