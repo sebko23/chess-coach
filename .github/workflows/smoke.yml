@@ -180,8 +180,7 @@ jobs:
                  --ignore=tests/integration/test_ocr_backend.py \
                  --ignore=tests/integration/test_pdf_import.py \
                  --ignore=tests/integration/test_probe_with_gold_set.py \
-                 --ignore=tests/integration/test_pyinstaller_binary.py \
-                 --ignore=tests/perf/test_kb_reembed_roundtrip.py \
+                 --ignore=tests/integration/test_pyinstaller_binary.py
 
 
   # BBF-Phase8-1: build the chess-coach-gateway binary via PyInstaller
