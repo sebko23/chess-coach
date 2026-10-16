@@ -30,7 +30,7 @@ from chess_coach.errors.exceptions import ChessCoachError, NotFoundError
 logger = logging.getLogger(__name__)
 
 
-def route_guard(fn: Callable) -> Callable:
+def route_guard(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Decorator that adds ADR-0002 compliant error handling to async route handlers."""
 
     @functools.wraps(fn)

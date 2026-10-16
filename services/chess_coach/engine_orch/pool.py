@@ -18,6 +18,7 @@ import itertools
 import logging
 import platform
 from dataclasses import dataclass, field
+from typing import Any
 
 from chess_coach.protocol_types.analysis import (
     AnalysisRequest,
@@ -123,7 +124,7 @@ class EnginePool:
         # Round-robin cursor per engine_id. itertools.count is monotonic
         # and atomic at the bytecode level for next(); with asyncio
         # (single-threaded event loop) this is race-free without a lock.
-        self._rr: dict[str, itertools.count] = {
+        self._rr: dict[str, itertools.count[int]] = {
             s.engine_id: itertools.count() for s in specs
         }
         self._default_depth = default_depth
@@ -180,8 +181,8 @@ class EnginePool:
                     # Drain the go() generator with an overall deadline.
                     # engine.go() is an async generator, so we consume it
                     # into a list inside a coroutine and wait_for that.
-                    async def _drain_go() -> list:
-                        events: list = []
+                    async def _drain_go() -> list[Any]:
+                        events: list[Any] = []
                         async for ev in engine.go(
                             depth=None if use_nodes else depth,
                             nodes=1 if use_nodes else None,
@@ -399,7 +400,7 @@ class EnginePool:
         return slots[idx]
 
     async def _acquire(
-        self, spec: EngineSpec, slot: _EngineSlot, options: dict
+        self, spec: EngineSpec, slot: _EngineSlot, options: dict[str, Any]
     ) -> UCIEngine:
         # NOTE: caller MUST already hold slot.lock. asyncio.Lock is NOT
         # reentrant, so we cannot re-acquire it here.
@@ -480,7 +481,7 @@ class EnginePool:
         pass
 
 
-def _hash_options(options: dict) -> str:
+def _hash_options(options: dict[str, Any]) -> str:
     """Deterministic hash of UCI option key-value pairs."""
     raw = "|".join(f"{k}={v}" for k, v in sorted(options.items()))
     return hashlib.sha256(raw.encode()).hexdigest()[:12]

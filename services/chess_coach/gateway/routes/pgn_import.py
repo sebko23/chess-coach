@@ -28,6 +28,7 @@ from __future__ import annotations
 import io
 import logging
 import uuid
+from typing import Any
 
 import aiosqlite
 import chess
@@ -82,7 +83,7 @@ def _db_path(request: Request) -> str:
     return str(request.app.state.gateway.settings.sqlite_path)
 
 
-async def _games_table_columns(db_path: str) -> list[tuple]:
+async def _games_table_columns(db_path: str) -> list[tuple[Any, ...]]:
     """Return PRAGMA table_info(games) rows: (cid, name, type, notnull, dflt_value, pk)."""
     async with aiosqlite.connect(db_path) as db:
         cur = await db.execute("PRAGMA table_info(games)")
@@ -166,7 +167,7 @@ async def import_pgn(
     games_cols = await _games_table_columns(db_path)
     games_notnull = {row[1] for row in games_cols if row[3] == 1}
 
-    parsed_games: list[tuple[int, chess.pgn.Game, dict]] = []
+    parsed_games: list[tuple[int, chess.pgn.Game, dict[str, Any]]] = []
     for i in range(body.max_games):
         try:
             game = chess.pgn.read_game(pgn_io)
