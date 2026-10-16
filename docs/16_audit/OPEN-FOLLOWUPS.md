@@ -2091,10 +2091,10 @@ decision first.
 (:59–63); grep across `.github/workflows/` finds **zero invocations of any of them**. Measured
 backlog (project `.venv`, 2026-08-25):
 
-- `mypy services/` → **154 errors in 31 files** (57 source files checked); exit 1.
-- `ruff check .` → **2,694 findings**, style-dominated (top classes: E501 ×185, S607 ×77,
-  quote-style Q1/Q2/Q3 ×~194, S310 ×70; 146 auto-fixable); exit 1.
-- Coverage: **no floor exists anywhere** — pytest-cov never invoked in CI or scripts.
+- `mypy libs services apps/cli` → **169 errors in 38 files** (86 source files checked); exit 1.
+- `ruff check libs services apps/cli tests scripts` → **33 findings** (26 auto-fixable); top classes: I001 ×13 (auto-fixable), E501 ×5, F401 ×5 (auto-fixable).
+- `ruff check .` (against the repo root) → **2,940 findings** (98.8% from the 131 untracked `tmp_*.py` operational scratch files; the 33 real findings are the proper-source-path number).
+- Coverage: **no floor exists** — pytest-cov never invoked, no `.coverage` file, no CI invocation.
 
 **Framing (honest weighting):** these are NOT "wire in the gate" tasks — naive wiring produces
 permanently red gates given the backlog sizes above. They are **burn-down-the-backlog-first,
