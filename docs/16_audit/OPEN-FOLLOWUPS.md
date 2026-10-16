@@ -2512,6 +2512,99 @@ action pins are matched.
 
 ---
 
+## FU-38 — 29 pre-existing historical gitleaks findings (allowlist fix)
+
+**Identified:** 2026-10-15, during the session-close
+follow-up audit of FU-18 (the BBF-FU-18-keyring-test-impl
+merge commit). A local full-history `gitleaks 8.24.2` scan
+(matching the v3 action's bundled CLI) on the current
+`main` (3f056c6f) reports 29 findings; 27 are in tracked
+files (in git history) and 2 are in files whose content
+remains in git history (introduced in `cd43906c`, deleted
+by `fa77660b` PR #52; gitleaks' full-history scan still
+sees the diff content).
+
+The CI's diff-scoped SARIF intentionally does not surface
+these findings; the full leak count will surface as soon as
+Code Scanning integration scans the post-merge `main` HEAD.
+
+**The 27 in-scope false positives (categorized):**
+
+| Rule | Count | Files |
+|---|---|---|
+| `curl-auth-header` (devtoken123) | 25 | docs/CHANGELOG.md, docs/REPO-READINESS.md, docs/20_datasets/qdrant-deployment.md, docs/VERIFICATION.md, tests/README.md, .github/workflows/smoke.yml, BUILDING.md, README.md, Dockerfile, docker-compose.yml, scripts/start_gateway.sh (11 files) |
+| `generic-api-key` (shift+arrow* keybindings) | 2 | apps/desktop/src/state/keybinds.ts (1 file) |
+| **Total** | **27** | **12 files** |
+
+**Why these are false positives:**
+
+1. `devtoken123` is the public dev fixture token, used
+   as the default `CHESS_COACH_BACKEND_TOKEN` in
+   `smoke.yml` and the gateway entrypoint. Every
+   CHANGELOG entry, README snippet, and BUILDING doc
+   that shows a curl example uses this exact string.
+   It is **not a real secret** — it's the documented
+   dev-mode value.
+2. `shift+arrowup` / `shift+arrowleft` are keyboard
+   shortcut bindings (e.g., "press shift+arrowup to flip
+   the board"), not API keys. gitleaks'
+   `generic-api-key` regex has a known false-positive on
+   long alphanumeric-with-special-char strings.
+
+**The fix:** add a **single combined** path-based +
+rule-based `[allowlist]` block to `.gitleaks.toml`
+(the v1 single-table form, which is the only form
+gitleaks 8.24.x honors; the v8 `[[allowlists]]` and
+named `[allowlist.name]` forms are silently ignored):
+
+- `targetRules = ["generic-api-key", "github-pat", "lichess-pat",
+  "curl-auth-header"]`
+- `paths` covers 13 entries (1 log_redaction fixture +
+  11 devtoken123 + 1 keybindings)
+
+Per the v0.7.117.1 σ-discipline: the allowlist is
+**path-based + rule-based** (not value-based), so any
+future real secret of the same value (`devtoken123` in
+a new context) would still be flagged. The combined
+`targetRules` list is slightly over-broad (the
+`devtoken123` examples don't match `generic-api-key`, so
+the over-allowlist is benign), but it's the only form
+gitleaks 8.24.x honors.
+
+**Status:** OPEN. Resolution BBF:
+`docs/16_audit/BBF-FU-38-pre-existing-leaks.md`.
+
+**Out of scope:**
+
+- The 2 deleted `CHESS COACH _*.md` files whose content
+  remains in git history (2 `generic-api-key` findings).
+  The 2 findings require either git-filter-repo history
+  rewrite (destructive) or a permanent allowlist entry
+  for the deleted-file SHAs. Both are heavy; out of scope
+  for a config-only fix. Tracked as a future BBF.
+- The 2 `shift+arrow*` matches in `keybinds.ts` could be
+  removed entirely (the strings are inside a TypeScript
+  object literal, not user input) but that's a refactor
+  not a security fix; out of scope.
+- The remaining `security-audit.yml` Node-20 pins
+  (`actions/checkout@v5` x 4 + `astral-sh/setup-uv@v3` x 1)
+  surfaced by the FU-40 leaf review. Tracked as a future
+  BBF (FU-41 candidate); out of scope for FU-38.
+
+**Cross-references:**
+
+- `docs/16_audit/BBF-FU-38-pre-existing-leaks.md`
+  (the brief for the resolution BBF).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-18 entry
+  (the implementation PR that exposed this follow-up
+  via its session-close audit).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-40 entry
+  (the immediately preceding BBF, which cited
+  "29 pre-existing historical gitleaks findings" as
+  an out-of-scope item; this is that BBF).
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
