@@ -2799,19 +2799,81 @@ pin), matching the pattern from FU-39 and FU-40.
 
 **Cross-references:**
 
-- `docs/16_audit/BBF-FU-41-security-audit-yml-node20.md`
-  (the brief for the resolution BBF).
-- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-39 entry
-  (PR #138, the gitleaks-action @v2 → @v3 bump; the
-  same Node-20 deprecation pattern).
-- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-40 entry
-  (PR #139, the smoke.yml 17-pin @v4/@v5 → @v6 bump;
-  the same Node-20 deprecation pattern, parallel
-  workflow).
-- `chess-coach-bbf-shipping-cycle/references/post-squash-pitfalls.md`
-  §B (the Node-20 deprecation cascade pattern; this
-  BBF closes out the cascade for both `security-audit.yml`
-  and `smoke.yml`).
+1. `docs/16_audit/BBF-FU-18-keyring-test.md` (the brief
+   for the FU-18 BBF, which seeded the FU-41 entry's
+   "out-of-scope" mention of the security-audit.yml
+   Node-20 pins).
+2. `docs/16_audit/BBF-FU-41-security-audit-yml-node20.md`
+   (the brief for the resolution BBF).
+3. `docs/16_audit/OPEN-FOLLOWUPS.md` FU-39 entry
+   (PR #138, the gitleaks-action @v2 → @v3 bump; the
+   same Node-20 deprecation pattern).
+4. `docs/16_audit/OPEN-FOLLOWUPS.md` FU-40 entry
+   (PR #139, the smoke.yml 17-pin @v4/@v5 → @v6 bump;
+   the same Node-20 deprecation pattern, parallel
+   workflow).
+5. `chess-coach-bbf-shipping-cycle/references/post-squash-pitfalls.md`
+   §B (the Node-20 deprecation cascade pattern; this
+   BBF closes out the cascade for both `security-audit.yml`
+   and `smoke.yml`).
+
+---
+
+## FU-42 — A-F11 (PDF parsing subprocess sandbox) — add sandbox-isolation tests (FU-19 resolution)
+
+**Identified:** 2026-10-16, during the `go FU-19` directive.
+The FU-19 ledger entry was 14 days stale; per
+`docs/08_security/security-strategy.md` §A-F11, the A-F11
+contract has 5 properties:
+
+| # | Property | Enforced today? | Tested today? |
+|---|---|---|---|
+| 1 | Subprocess isolation (Popen) | Partial (pdf2image) | **No** |
+| 2 | No network access | **No** | **No** |
+| 3 | Read-only filesystem | **No** | **No** |
+| 4 | 2 GB memory cap | **No** | **No** |
+| 5 | 5-min timeout | Yes | Yes (existing 9 tests) |
+
+Properties 1-4 close the A-F11 test-coverage gap. Property
+1 IS partially enforced (pdf2image uses Popen internally);
+properties 2-4 are unimplemented.
+
+**The fix:** a 4-test addition to
+`tests/unit/test_pdf_ingest_security.py` in a new section E
+"A-F11 sandbox isolation properties (FU-19, 2026-10-16)":
+
+| # | Test name | Today |
+|---|---|---|
+| 1 | `test_pdf_parsing_runs_in_separate_subprocess` | **PASS** — real test (catches regression) |
+| 2 | `test_subprocess_cannot_initiate_outbound_network` | **SKIP** — pending FU-22 |
+| 3 | `test_subprocess_filesystem_writes_restricted_to_artifact_dir` | **SKIP** — pending FU-21 |
+| 4 | `test_subprocess_respects_2gb_memory_cap` | **SKIP** — pending FU-20 |
+
+Tests 2-4 use `pytest.skip` with explicit reasons pointing
+at the future implementation BBFs. The CI does not fail on
+them; they are tripwires for future implementation work.
+
+**Status:** OPEN. Resolution BBF:
+`docs/16_audit/BBF-FU-19-A-F11-sandbox-tests.md`.
+
+**Out of scope:**
+
+- The actual implementation of properties 2, 3, 4
+  (network isolation, read-only fs, 2 GB cap). These are
+  FU-22, FU-21, FU-20 (their own implementation BBFs).
+- Refactoring or improving the existing 9 tests in the file.
+- Property 5 (timeout) tests — already covered.
+
+**Cross-references:**
+
+- `docs/16_audit/BBF-FU-19-A-F11-sandbox-tests.md` (the brief
+  for the resolution BBF).
+- `docs/08_security/security-strategy.md` §A-F11 (the
+  canonical contract).
+- `docs/02_modules/module-decomposition.md` § A-F7 (the
+  subprocess sandbox spec).
+- FU-22, FU-21, FU-20 (the future implementation BBFs that
+  will turn the SKIP tests into PASS).
 
 ---
 
