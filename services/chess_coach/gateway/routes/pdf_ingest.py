@@ -26,8 +26,18 @@ import asyncio
 
 import aiosqlite
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from pdf2image import convert_from_bytes
-from pdf2image.exceptions import PDFPopplerTimeoutError
+# FU-22-impl: use the same relative-import style as the existing
+# `from ...pdf_ocr import predict_fen` below. The absolute
+# `from services.chess_coach.pdf_ocr.subprocess_runner import`
+# works locally (when cwd is the repo root, pytest adds it to
+# sys.path) but FAILS in the Docker image (where WORKDIR is /data,
+# not /app). The relative form works in both because
+# `chess_coach.pdf_ocr` is installed as a top-level package via
+# the editable install (`uv pip install --system -e .`).
+from ...pdf_ocr.subprocess_runner import (
+    run_pdftoppm_in_subprocess,
+    pdftoppm_available,
+)
 from pydantic import BaseModel, Field
 
 from ...pdf_ocr import predict_fen
@@ -201,26 +211,45 @@ async def import_pdf(
     ASYNCIO_WAIT_SLACK_SECONDS = 30  # outer wait_for slack over inner.
 
     try:
+        # FU-22-impl: A-F11 property 4 (2 GB memory cap). The new
+        # `run_pdftoppm_in_subprocess` wraps pdftoppm with
+        # `preexec_fn=set_rlimit_as_preexec(MEM_CAP_BYTES)` so a
+        # malicious PDF that triggers unbounded allocation is
+        # killed at the 2 GB cap (the route catches the resulting
+        # OSError/MemoryError and surfaces 422 to the user).
+        # Bypasses pdf2image because pdf2image's
+        # `convert_from_bytes` API does not expose `preexec_fn` or
+        # any other `subprocess.Popen` parameter.
         pages = await asyncio.wait_for(
-            # Run the synchronous pdf2image call in the default thread
+            # Run the synchronous pdftoppm call in the default thread
             # pool so the FastAPI event loop is not blocked during the
             # potentially long-running pdftoppm subprocess.
             asyncio.to_thread(
-                convert_from_bytes,
+                run_pdftoppm_in_subprocess,
                 pdf_bytes,
                 dpi=DPI,
                 first_page=1,
                 last_page=max_pages,
-                timeout=PARSER_TIMEOUT_SECONDS,
+                timeout_seconds=PARSER_TIMEOUT_SECONDS,
             ),
             timeout=PARSER_TIMEOUT_SECONDS + ASYNCIO_WAIT_SLACK_SECONDS,
         )
-    except (PDFPopplerTimeoutError, asyncio.TimeoutError):
+    except asyncio.TimeoutError:
         raise HTTPException(
             status_code=504,
             detail=f"PDF parsing exceeded the {PARSER_TIMEOUT_SECONDS}s budget; "
             "the file may be malicious or pathological. Rejected per A-F11.",
         )
+    except (MemoryError, OSError) as exc:
+        # FU-22-impl: A-F11 property 4 hit. The subprocess
+        # hit the 2 GB memory cap (set by setrlimit) and
+        # was killed. Surface as 422 (the file is a security
+        # event, not a user error).
+        raise HTTPException(
+            status_code=422,
+            detail=f"PDF parsing exceeded the 2 GB memory cap; "
+            "the file may be malicious or pathological. Rejected per A-F11.",
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"PDF conversion failed: {exc}") from exc
 
