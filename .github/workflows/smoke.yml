@@ -516,4 +516,47 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker rm -f chess-coach-backend-ci 2>/dev/null || true
+        run: docker rm -f chess-coach-backend-ci 2>/dev/null || true  # FU-29-ruff-wire-ci: Stage 3 of the FU-29 ratchet (per
+  # docs/16_audit/BBF-FU-29-scoping-brief.md §2, shipped at e2da99c7).
+  # Wires `ruff check` to the smoke CI. As of 2026-10-16 (per
+  # docs/16_audit/BBF-FU-29-status-check.md, shipped at 8e4e62e3),
+  # `ruff check libs services apps/cli tests scripts` returns 0
+  # findings (down from 33 pre-burndown, per
+  # docs/16_audit/BBF-FU-29-ruff-burndown.md, shipped at a27da3f9).
+  # The current `ruff check` IS the ratchet: any new finding
+  # flips the gate red, so a future PR that introduces a new
+  # E501, F401, I001, etc. will fail this job. The ratchet
+  # baseline is 0 findings; new findings are not tolerated.
+  #
+  # The install step pins `ruff>=0.4` (matching the floor in
+  # pyproject.toml [dev] extras). The CI resolves to the latest
+  # 0.4.x release at run time, which may surface new rules
+  # introduced between the local-dev install and the CI run;
+  # this is intentional (the ratchet tightens as ruff evolves).
+  ruff:
+    name: ruff lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        # Pin the floor to match pyproject.toml [dev] extras. CI
+        # resolves to the latest 0.4.x release; a future bump to
+        # 0.5+ in pyproject.toml is a separate decision (tracked
+        # in the FU-29-ruff-*-followup chain).
+        run: pip install 'ruff>=0.4'
+
+      - name: Run ruff check
+        # Match the [tool.ruff] src paths in pyproject.toml:
+        # src = ["libs", "services", "apps/cli"]. The tests/ and
+        # scripts/ paths are also checked; per
+        # [tool.ruff.lint.per-file-ignores] the S (security) and
+        # ASYNC rules are silenced for tests/.
+        run: ruff check libs services apps/cli tests scripts
