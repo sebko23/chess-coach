@@ -172,7 +172,7 @@ class L2GoldEntry:
         "doc-only build" case).
         """
         try:
-            import chess  # type: ignore[import-not-found]
+            import chess
         except ImportError:
             return True
         try:

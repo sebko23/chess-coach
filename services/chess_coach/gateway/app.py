@@ -119,7 +119,7 @@ def _configure_logging(level_name: str) -> None:
 
 @contextlib.asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    state: GatewayState = app.state.gateway  # type: ignore[attr-defined]
+    state: GatewayState = app.state.gateway
     settings = state.settings
 
     # 1. Filesystem sanity + migrations.
@@ -166,7 +166,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         env_workers = int(os.environ.get("CHESS_COACH_MAX_WORKERS", "0"))
         max_workers = env_workers if env_workers > 0 else 1
         engine_pool = EnginePool(specs, max_workers=max_workers)
-        app.state.engine_pool = engine_pool  # type: ignore[attr-defined]
+        app.state.engine_pool = engine_pool
         # Warmup: start all N stockfish subprocesses eagerly so the
         # first PGN import doesn't pay Nx cold-start cost.
         await engine_pool.warmup()
@@ -181,7 +181,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_workers,
         )
     else:
-        engine_pool = app.state.engine_pool  # type: ignore[attr-defined]
+        engine_pool = app.state.engine_pool
         logger.info("gateway.startup: engine pool pre-injected, skipping auto-init")
 
     # 1c. Narration pipeline (stored on app.state for FastAPI Depends).
@@ -215,7 +215,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             _gold_version,
             _gold_version,
         )
-    app.state.narration_pipeline = NarrationPipeline(  # type: ignore[attr-defined]
+    app.state.narration_pipeline = NarrationPipeline(
         grounding=_grounding_index,
     )
     # 1d. Memory KB store — eager init, index positions from SQLite
@@ -244,7 +244,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "kb: index_positions failed (%s) — KB will return empty results",
                 exc,
             )
-    app.state.kb_ready = True  # type: ignore[attr-defined]
+    app.state.kb_ready = True
     logger.info("gateway.startup: narration pipeline ready")
 
     # 2. Token.
@@ -264,7 +264,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         else:
             remove_descriptor(settings.descriptor_path)
         try:
-            await engine_pool.shutdown()  # type: ignore[attr-defined]
+            await engine_pool.shutdown()
             logger.info("gateway.shutdown: engine pool stopped")
         except Exception as exc:
             logger.warning("gateway.shutdown: engine pool error: %s", exc)
@@ -296,7 +296,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         responses={},
         lifespan=_lifespan,
     )
-    app.state.gateway = GatewayState(  # type: ignore[attr-defined]
+    app.state.gateway = GatewayState(
         settings=settings,
         started_at=time.monotonic(),
     )

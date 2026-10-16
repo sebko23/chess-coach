@@ -55,7 +55,7 @@ def discover_migrations() -> list[Migration]:
     """
     pkg = files("chess_coach.storage.migrations")
     migrations: list[Migration] = []
-    for entry in sorted(pkg.iterdir(), key=lambda e: e.name):  # type: ignore[attr-defined]
+    for entry in sorted(pkg.iterdir(), key=lambda e: e.name):
         m = _MIGRATION_RE.match(entry.name)
         if not m:
             continue

@@ -10,7 +10,7 @@ from chess_coach.protocol_types.analysis import AnalysisResult, Score
 try:
     import chess
 except ImportError:
-    chess = None  # type: ignore[assignment]
+    chess = None
 
 _MOVE_RE = re.compile(r"<move>([^<]+)</move>")
 _EVAL_RE = re.compile(r"<eval>([^<]+)</eval>")
