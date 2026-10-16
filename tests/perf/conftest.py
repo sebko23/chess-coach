@@ -13,15 +13,35 @@ with no marker will be rejected.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 
 import pytest
 from qdrant_client import QdrantClient
 from qdrant_client.models import SnapshotPriority
 
-QDRANT_URL = "http://localhost:6333"
-SQLITE_DB_PATH = "/root/.local/share/chess-coach/sqlite/chess_coach.db"
+# FU-30 fix: derive these constants from env vars so the perf
+# test is portable across dev environments, CI runners, and
+# Docker rebuilds. Defaults match the Docker image's WORKDIR
+# (/data per Dockerfile line 122) and the local-dev
+# docker-compose Qdrant URL.
+QDRANT_URL = os.getenv("CHESS_COACH_QDRANT_URL", "http://localhost:6333")
+SQLITE_DB_PATH = os.path.join(
+    os.getenv("CHESS_COACH_DATA_DIR", "/data"),
+    "sqlite",
+    "chess_coach.db",
+)
 COLLECTION = "positions"
+# Base directory for the perf test's Qdrant snapshot files.
+# Used by the `qdrant_snapshot_guard` fixture below to construct
+# the `file://` URL passed to `client.recover_snapshot`. The
+# path is derived from CHESS_COACH_DATA_DIR for portability.
+QDRANT_SNAPSHOT_DIR = os.path.join(
+    os.getenv("CHESS_COACH_DATA_DIR", "/data"),
+    "qdrant",
+    "snapshots",
+    COLLECTION,
+)
 
 
 @pytest.fixture
@@ -37,7 +57,13 @@ def sqlite_db_path() -> str:
 
 
 @pytest.fixture
-def qdrant_snapshot_guard(qdrant_url: str) -> Iterator[int]:
+def qdrant_snapshot_dir() -> str:
+    """Live Qdrant snapshot dir. Override locally by parametrizing the test."""
+    return QDRANT_SNAPSHOT_DIR
+
+
+@pytest.fixture
+def qdrant_snapshot_guard(qdrant_url: str, qdrant_snapshot_dir: str) -> Iterator[int]:
     """Snapshot the live `positions` collection before the test, restore + delete on teardown.
 
     Yields the baseline ``points_count`` (so tests can use it as a known
@@ -49,14 +75,18 @@ def qdrant_snapshot_guard(qdrant_url: str) -> Iterator[int]:
     ``create_snapshot`` propagates cleanly without triggering a doomed
     restore attempt against a non-existent snapshot. The QdrantClient is
     closed at the end of teardown to release the connection.
+
+    FU-30 fix: the snapshot path is now derived from
+    `CHESS_COACH_DATA_DIR` (via the `qdrant_snapshot_dir` fixture)
+    instead of a hardcoded developer's container layout. The
+    default `<CHESS_COACH_DATA_DIR>/qdrant/snapshots/<collection>/`
+    path is the standard Qdrant snapshot location and is portable
+    across dev / CI / Docker environments.
     """
     client = QdrantClient(url=qdrant_url)
     baseline_count = client.count(collection_name=COLLECTION).count
     snap = client.create_snapshot(collection_name=COLLECTION)
-    snap_path = (
-        f"/a0/usr/projects/chess_coach/data/qdrant/snapshots/"
-        f"{COLLECTION}/{snap.name}"
-    )
+    snap_path = os.path.join(qdrant_snapshot_dir, snap.name)
     try:
         yield baseline_count
     finally:

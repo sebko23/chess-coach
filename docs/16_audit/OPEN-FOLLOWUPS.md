@@ -2109,6 +2109,23 @@ until the audit layer gets its own exclusion convention.
 
 ## FU-30 — Non-portable hardcoded path in `tests/perf/conftest.py:57`
 
+**Status:** **RESOLVED 2026-10-16 via BBF-FU-30-perf-conftest-portable
+(commit pending) (this BBF-doc-drift-flip) (PR pending).** The
+3 hardcoded paths in `tests/perf/conftest.py` (line 22
+`QDRANT_URL`, line 23 `SQLITE_DB_PATH`, line 57
+`snap_path`) are now derived from the existing
+`CHESS_COACH_DATA_DIR` and `CHESS_COACH_QDRANT_URL` env
+vars (with sensible defaults matching the Docker image's
+`WORKDIR` and the local-dev Qdrant URL). The
+`qdrant_snapshot_guard` fixture now takes
+`qdrant_snapshot_dir` as a fixture-injected parameter
+(following the existing "fixture factory" design per
+the conftest's docstring). The `smoke.yml`
+`--ignore=tests/perf/test_kb_reembed_roundtrip.py` line
+is removed (the test is now CI-enforceable; whether to
+include `tests/perf/` in the smoke.yml's `pytest` glob
+is future work). Documented by this BBF-doc-drift-flip.
+
 **Identified:** 2026-08-26, FU-28 wiring session triage re-read. Surfaced as a follow-up to the
 FU-28 hardcoded-path concern (which was partially retracted in the same commit — see FU-28 entry
 amendment).
