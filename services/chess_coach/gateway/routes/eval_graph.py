@@ -44,7 +44,7 @@ class EvalPoint(BaseModel):
 # Value: (future, expiry_monotonic). When expiry is past, the entry is stale
 # and the next caller will start a fresh analysis. asyncio.Future is used so
 # concurrent callers await the same Stockfish result instead of duplicating.
-_inflight: dict[tuple[str, int, str, int], tuple[asyncio.Future, float]] = {}
+_inflight: dict[tuple[str, int, str, int], tuple[asyncio.Future[Any], float]] = {}
 _DEDUP_TTL_S = 60.0
 
 # Async lock to make the get-then-put sequence in _coalesce_analyze atomic.
@@ -69,7 +69,7 @@ def _get_dedup_lock() -> asyncio.Lock:
     return _dedup_lock
 
 
-def _dedup_get(key: tuple[str, int, str, int]) -> asyncio.Future | None:
+def _dedup_get(key: tuple[str, int, str, int]) -> asyncio.Future[Any] | None:
     """Return the in-flight future for this cache key, or None if none."""
     entry = _inflight.get(key)
     if entry is None:
@@ -86,7 +86,7 @@ def _dedup_get(key: tuple[str, int, str, int]) -> asyncio.Future | None:
     return future
 
 
-def _dedup_put(key: tuple[str, int, str, int], future: asyncio.Future) -> None:
+def _dedup_put(key: tuple[str, int, str, int], future: asyncio.Future[Any]) -> None:
     _inflight[key] = (future, time.monotonic() + _DEDUP_TTL_S)
 
 
@@ -149,10 +149,10 @@ async def _coalesce_analyze(
 # Module-level cache for the analyses schema. Set on first call; never
 # invalidated because the schema is fixed for the gateway lifetime (new
 # columns only arrive via migrations, which require a restart).
-_analyses_cols_cache: list[tuple] | None = None
+_analyses_cols_cache: list[tuple[Any, ...]] | None = None
 
 
-async def _analyses_table_columns(db_path: str) -> list[tuple]:
+async def _analyses_table_columns(db_path: str) -> list[tuple[Any, ...]]:
     """PRAGMA table_info(analyses): (cid, name, type, notnull, dflt_value, pk).
 
     Memoized at module level. Safe because the analyses schema is fixed
@@ -168,7 +168,7 @@ async def _analyses_table_columns(db_path: str) -> list[tuple]:
 
 
 def _build_analyses_row(
-    position_id: str, depth: int, result: Any, analyses_cols: list[tuple] | None = None
+    position_id: str, depth: int, result: Any, analyses_cols: list[tuple[Any, ...]] | None = None
 ) -> dict[str, object]:
     """Build the analyses row dict from an AnalysisResult. Pure function.
 
@@ -224,7 +224,7 @@ async def _analyze_one_position(
     db: aiosqlite.Connection,
     pool: Any,
     AnalysisRequest: Any,
-    analyses_cols: list[tuple],
+    analyses_cols: list[tuple[Any, ...]],
     position_id: str,
     fen: str,
     depth: int,
@@ -333,7 +333,7 @@ async def get_eval_graph(
     # explosion that hit the per-process thread limit on a 19-ply PGN).
     # The Stockfish calls themselves are serialized by the pool's semaphore.
     missing: list[tuple[str, int, str]] = []
-    out_by_ply: dict[int, dict] = {}
+    out_by_ply: dict[int, dict[str, Any]] = {}
     for r in rows:
         ply = r["ply"]
         if r["score_cp"] is None and r["score_mate"] is None:

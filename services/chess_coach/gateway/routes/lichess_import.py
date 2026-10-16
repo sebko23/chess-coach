@@ -13,6 +13,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import aiohttp
 import aiosqlite
@@ -49,7 +50,7 @@ class LichessImportResult(BaseModel):
 async def _fetch_games_ndjson(
     username: str, max_games: int,
     perf_type: str | None, rated: bool | None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch game objects from the Lichess API as NDJSON."""
     params: dict[str, str | int] = {
         "max": max_games,
@@ -99,7 +100,7 @@ async def _fetch_games_ndjson(
             )
 
         text = await resp.text()
-    objs: list[dict] = []
+    objs: list[dict[str, Any]] = []
     for line in text.split(chr(10)):
         line = line.strip()
         if line:
@@ -110,7 +111,7 @@ async def _fetch_games_ndjson(
     return objs
 
 
-def _parse_game(obj: dict) -> tuple[str, dict, str] | None:
+def _parse_game(obj: dict[str, Any]) -> tuple[str, dict[str, Any], str] | None:
     """Parse a Lichess NDJSON game object."""
     pgn_raw = obj.get("pgn", "")
     if not pgn_raw:
@@ -144,7 +145,7 @@ def _parse_game(obj: dict) -> tuple[str, dict, str] | None:
 
 
 async def _insert_game(
-    db: aiosqlite.Connection, game: dict, pgn_raw: str,
+    db: aiosqlite.Connection, game: dict[str, Any], pgn_raw: str,
 ):
     """Insert a single game and all its positions into the DB."""
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%fZ")

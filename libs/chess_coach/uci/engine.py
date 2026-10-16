@@ -20,6 +20,7 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass, field
+from typing import Any
 
 from ..protocol_types.analysis import Score
 
@@ -244,7 +245,7 @@ def _parse_info(text: str) -> InfoEvent | None:
     parts = text.split()
     if not parts or parts[0] != "info":
         return None
-    fields: dict = {}
+    fields: dict[str, Any] = {}
     i = 1
     while i < len(parts):
         tok = parts[i]

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Request
@@ -135,11 +136,11 @@ class MetricExplainResponse(BaseModel):
 
     player_name: str
     metric_id: str
-    effect: dict
+    effect: dict[str, Any]
     passes_b4_gate: bool
     methodology: str
-    raw_inputs: dict
-    intermediate_values: dict
+    raw_inputs: dict[str, Any]
+    intermediate_values: dict[str, Any]
     caveats: list[str] = Field(default_factory=list)
 
 
@@ -215,7 +216,7 @@ def _load_methodology_for(metric_id: str) -> str:
     """
     if not hasattr(_load_methodology_for, "_cache"):
         _load_methodology_for._cache = {}  # type: ignore[attr-defined]
-    cache: dict = _load_methodology_for._cache  # type: ignore[attr-defined]
+    cache: dict[str, Any] = _load_methodology_for._cache  # type: ignore[attr-defined]
     if metric_id in cache:
         return cache[metric_id]
     # Locate the doc file. The path is resolved relative
@@ -251,7 +252,7 @@ def _load_methodology_for(metric_id: str) -> str:
     return cache[metric_id]
 
 
-def _effect_to_dict(effect: EffectSize) -> dict:
+def _effect_to_dict(effect: EffectSize) -> dict[str, Any]:
     """Serialize an EffectSize dataclass to a JSON-friendly dict.
 
     The endpoint returns a dict rather than the Pydantic
@@ -270,7 +271,7 @@ def _effect_to_dict(effect: EffectSize) -> dict:
     }
 
 
-def _archetype_to_dict(assignment: ArchetypeAssignment) -> dict:
+def _archetype_to_dict(assignment: ArchetypeAssignment) -> dict[str, Any]:
     """Serialize an ArchetypeAssignment to a dict."""
     return {
         "label": assignment.label,
@@ -345,7 +346,7 @@ async def explain_metric(player: str, metric_id: str, request: Request):
         # them to cluster_archetypes.
         from chess_coach.profile import cluster_archetypes
         metric_values: dict[str, float] = {}
-        intermediate: dict = {}
+        intermediate: dict[str, Any] = {}
         # Run the 6 metrics (skip sequence_based_tilt --
         # it's a separate dimension, not part of the
         # 6-metric vector). Use the _METRIC_REGISTRY

@@ -11,6 +11,7 @@ Tests inject a fake pool to avoid spawning real subprocesses.
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from chess_coach.engine_orch.pool import EnginePool, EngineSpec
 from chess_coach.protocol_types.analysis import AnalysisRequest, AnalysisResult
@@ -31,7 +32,7 @@ async def eval_deltas(
     depth: int = 15,
     top_n: int = 3,
     pool: EnginePool | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Run engine analysis at the given depth with multi-PV=top_n.
 
     Returns a list of {"move_uci": str, "score_cp": int, "delta_cp": int}.
@@ -51,7 +52,7 @@ async def eval_deltas(
         return 0
 
     best_score = score_cp(result.pvs[0])
-    deltas: list[dict] = []
+    deltas: list[dict[str, Any]] = []
     for pv in result.pvs:
         if not pv.moves:
             continue

@@ -32,6 +32,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 # ID pattern: AG-<version>-NNNN where <version> is either a numeric
 # version (e.g. v1) or the hand-curated seed token (hand-curated-v0),
@@ -71,11 +72,11 @@ class ArchetypeGoldEntry:
 
     id: str
     archetype_label: str
-    metrics: dict = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
     # BBF-88.x: auto corpora attach per-entry provenance. v1 has
     # no _provenance field; the dataclass field is optional and
     # `None` for v1 entries.
-    _provenance: dict | None = None
+    _provenance: dict[str, Any] | None = None
 
 
 def load_archetype_gold(version: str = "v1", base_path=None):
