@@ -2605,6 +2605,85 @@ gitleaks 8.24.x honors.
 
 ---
 
+## FU-41 — security-audit.yml Node-20 action pins (completes the deprecation sweep)
+
+**Identified:** 2026-10-15, surfaced by the leaf review
+of BBF-FU-40-smoke-yml-node24 (PR #139) as an explicit
+out-of-scope follow-up. The FU-40 leaf reviewer noted
+that after bumping `smoke.yml`, `security-audit.yml`
+still had `actions/checkout@v5` x 4 + `astral-sh/setup-uv@v3`
+x 1 — the leaf reviewer undercounted by 1 (`setup-uv@v3`
+appears 2x, not 1x), for a true total of **6 Node-20-era
+pins across 6 lines** (the 4 `checkout@v5` lines are
+distinct; the 2 `setup-uv@v3` lines are distinct). The
+4 jobs affected: `pip-audit`, `uv-lock-check`,
+`commit-refs-verify`, `pnpm-audit`. The `gitleaks` job
+itself is unaffected — its `actions/checkout` was
+already bumped to `@v6` by PR #138.
+
+**The 6 Node-20-era pins (line-precise):**
+
+| Line | Current | Target |
+|---|---|---|
+| 37  | `actions/checkout@v5`        | `@v6` |
+| 42  | `astral-sh/setup-uv@v3`       | `@v6` |
+| 113 | `actions/checkout@v5`        | `@v6` |
+| 116 | `astral-sh/setup-uv@v3`       | `@v6` |
+| 144 | `actions/checkout@v5`        | `@v6` |
+| 185 | `actions/checkout@v5`        | `@v6` |
+
+The same Jun 2, 2026 / Sep 16, 2026 GitHub-runner
+deprecation timeline applies. After this BBF, every
+action in `security-audit.yml` is on the Node-24 era
+(`@v6`), matching the pattern established in PR #138
+(gitleaks-action) and PR #139 (smoke.yml). The Node-20
+deprecation sweep across chess-coach CI workflows is
+**complete** after this BBF lands.
+
+**The fix:** a 2-pattern regex replace on
+`.github/workflows/security-audit.yml` bumping 6 action
+pins in place. All bumps go to `@v6` (the Node-24-era
+pin), matching the pattern from FU-39 and FU-40.
+
+**Status:** OPEN. Resolution BBF:
+`docs/16_audit/BBF-FU-41-security-audit-yml-node20.md`.
+
+**Out of scope:**
+
+- **FU-37** — pnpm v1.x migration (already in flight,
+  separate BBF).
+- The 2 deleted `CHESS COACH _*.md` files whose content
+  remains in git history (2 `generic-api-key` findings
+  from PR #140 FU-38; documented as a future BBF).
+- The 4 preexisting stale references in `smoke.yml`
+  context (a `app.py:181` code reference plus 3 URLs
+  with `//host:port` patterns that the σ-gate's
+  Format 1 regex matches). These are not introduced by
+  this BBF; they predate the σ-discipline tightening.
+  The CI's `commit ref verify` job runs the σ-gate
+  against the commit body / PR body, not the diff, so
+  these preexisting refs do not fail the gate. A
+  separate doc-drift BBF can fix them; out of scope
+  here.
+
+**Cross-references:**
+
+- `docs/16_audit/BBF-FU-41-security-audit-yml-node20.md`
+  (the brief for the resolution BBF).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-39 entry
+  (PR #138, the gitleaks-action @v2 → @v3 bump; the
+  same Node-20 deprecation pattern).
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-40 entry
+  (PR #139, the smoke.yml 17-pin @v4/@v5 → @v6 bump;
+  the same Node-20 deprecation pattern, parallel
+  workflow).
+- `chess-coach-bbf-shipping-cycle/references/post-squash-pitfalls.md`
+  §B (the Node-20 deprecation cascade pattern; this
+  BBF closes out the cascade for both `security-audit.yml`
+  and `smoke.yml`).
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
