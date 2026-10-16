@@ -24,7 +24,7 @@ router = APIRouter(tags=["engines"], dependencies=[Depends(require_bearer)])
 
 
 def _pool(request: Request) -> EnginePool:
-    pool = request.app.state.engine_pool  # type: ignore[attr-defined]
+    pool = request.app.state.engine_pool
     if pool is None:
         raise HTTPException(
             status_code=503,

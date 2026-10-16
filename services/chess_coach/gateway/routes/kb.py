@@ -85,7 +85,7 @@ async def reindex(body: IndexRequest, request: Request) -> dict[str, str]:
             qdrant_url=qdrant_url,
             qdrant_api_key=qdrant_api_key,
         )
-        request.app.state.kb_ready = True  # type: ignore[attr-defined]
+        request.app.state.kb_ready = True
         return {"status": "ok", "indexed": str(count)}
     except Exception as exc:  # noqa: BLE001
         logger.error("kb/index: failed: %s", exc)

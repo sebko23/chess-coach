@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 try:
     import chess
 except ImportError:
-    chess = None  # type: ignore[assignment]
+    chess = None
 
 
 class NarrationRequest(BaseModel):

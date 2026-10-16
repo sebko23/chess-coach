@@ -183,7 +183,7 @@ class NarrativeGoldEntry:
         build" case).
         """
         try:
-            import chess  # type: ignore[import-not-found]
+            import chess
         except ImportError:
             return True
         try:

@@ -111,7 +111,7 @@ async def _run_async(settings: GatewaySettings, *, dev_secrets: bool = False) ->
         )
         write_descriptor(settings.descriptor_path, descriptor)
         # Stamp on app state so the lifespan shutdown knows to clean up.
-        app.state.gateway.descriptor = descriptor  # type: ignore[attr-defined]
+        app.state.gateway.descriptor = descriptor
         logger.info(
             "gateway.ready: serving %s:%d  descriptor=%s",
             settings.host, bound_port, settings.descriptor_path,

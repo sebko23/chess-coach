@@ -160,6 +160,19 @@ mypy_path = "libs:services:apps/cli"
 module = ["chess.*"]
 ignore_missing_imports = true
 
+# FU-29-mypy-burndown: 18 import-not-found errors. The 4 modules
+# below have no type stubs (or the stubs are not in mypy_path).
+# `ignore_missing_imports = true` tells mypy to treat these as
+# untyped (Any), which is the standard pattern for libraries
+# without type annotations.
+# - aiosqlite: 14 occurrences (gateway routes)
+# - keyring: 1 occurrence (services/chess_coach/keychain/__init__.py)
+# - sentence_transformers: 1 occurrence (services/chess_coach/kb/embedder.py)
+# - sklearn.metrics.pairwise: 1 occurrence (services/chess_coach/kb/embedder.py)
+[[tool.mypy.overrides]]
+module = ["aiosqlite", "keyring", "sentence_transformers", "sklearn.metrics.pairwise"]
+ignore_missing_imports = true
+
 # ---- pytest ----
 
 [tool.pytest.ini_options]
