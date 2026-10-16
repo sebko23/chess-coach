@@ -143,10 +143,17 @@ async def test_minimal_pdf_passes_magic_check(prod_client) -> None:
     """A valid %PDF- header must reach the parser (subsequent parse
     may fail; the assertion is that the magic check ALLOWED it past
     pre-validation, not that parsing succeeds). We mock
-    convert_from_bytes so we don't actually need pdftoppm.
+    run_pdftoppm_in_subprocess so we don't actually need pdftoppm.
+
+    FU-22-impl note: the mock target changed from
+    `pdf_ingest.convert_from_bytes` (the old pdf2image-based
+    path) to `pdf_ingest.run_pdftoppm_in_subprocess` (the new
+    A-F11-aware path that wraps pdftoppm with a 2 GB memory
+    cap via preexec_fn). The mock target must match the new
+    function the route calls.
     """
     with patch(
-        "services.chess_coach.gateway.routes.pdf_ingest.convert_from_bytes",
+        "services.chess_coach.gateway.routes.pdf_ingest.run_pdftoppm_in_subprocess",
         return_value=[MagicMock()],
     ):
         with patch(
@@ -204,12 +211,24 @@ def test_route_uses_asyncio_wait_for_wrapper() -> None:
     """Static assertion: the route uses asyncio.wait_for as the outer
     safety net, with a slack over PARSER_TIMEOUT_SECONDS. Smoke.yml
     gate stays honest about what enforces the A-F11 5-minute budget.
+
+    FU-22-impl note: the inner timeout error class changed
+    from `PDFPopplerTimeoutError` (the pdf2image-specific
+    exception raised by `convert_from_bytes(timeout=...)`) to
+    `asyncio.TimeoutError` (raised by the outer `asyncio.wait_for`
+    when the inner `run_pdftoppm_in_subprocess` exceeds the
+    PARSER_TIMEOUT_SECONDS budget). The new code path catches
+    `asyncio.TimeoutError` (not `PDFPopplerTimeoutError`) and
+    surfaces 504 Gateway Timeout. The smoke.yml assertion
+    here is updated to match.
     """
     import inspect
     src = inspect.getsource(pdf_ingest.import_pdf)
     assert "asyncio.wait_for" in src
     assert "PARSER_TIMEOUT_SECONDS + ASYNCIO_WAIT_SLACK_SECONDS" in src
-    assert "PDFPopplerTimeoutError" in src
+    # FU-22-impl: the inner timeout class is now asyncio.TimeoutError
+    # (raised by the outer wait_for), not PDFPopplerTimeoutError
+    # (which was pdf2image-specific).
     assert "asyncio.TimeoutError" in src
     # 504 Gateway Timeout is the HTTP status for the A-F11 violation
     assert "status_code=504" in src
@@ -217,6 +236,10 @@ def test_route_uses_asyncio_wait_for_wrapper() -> None:
     assert "status_code=413" in src
     # 400 Bad Request for the magic-bytes rejection
     assert "status_code=400" in src
+    # FU-22-impl: 422 Unprocessable Entity is for the 2 GB memory cap hit
+    assert "status_code=422" in src
+    # FU-22-impl: the route uses the new subprocess_runner module
+    assert "run_pdftoppm_in_subprocess" in src
 
 
 # ===========================================================================
@@ -315,37 +338,56 @@ def test_route_is_wired_to_smoke_yml() -> None:
 def test_pdf_parsing_runs_in_separate_subprocess() -> None:
     """A-F11 property 1: PDF parsing runs in a separate OS subprocess.
 
-    The current implementation uses pdf2image.convert_from_bytes, which
-    internally invokes subprocess.Popen to spawn pdftoppm. This test
-    asserts the call path goes through Popen, not an in-process library
-    like PyMuPDF (which would not be a separate process).
+    Per FU-22-impl (2026-10-16): the implementation changed
+    from `pdf2image.convert_from_bytes` (which used
+    `subprocess.Popen` internally) to
+    `services.chess_coach.pdf_ocr.subprocess_runner.run_pdftoppm_in_subprocess`
+    (which uses `subprocess.Popen` directly with a
+    `preexec_fn=` argument for the A-F11 2 GB memory cap).
+    The architectural property (separate OS process) is
+    PRESERVED; the new code path is the A-F11-aware
+    implementation.
 
-    This is a real, non-skip test: a regression where someone replaces
-    pdf2image.convert_from_bytes with PyMuPDF (or similar in-process
-    library) would fail this test. The historical A-F11 description
-    (in docs/08_security/security-strategy.md) originally anticipated
-    PyMuPDF; the current implementation uses pdf2image/Poppler for the
-    same threat model (native-code PDF parser with RCE-class CVE
-    history). This test holds that architectural choice.
+    This test asserts the new architectural choice: the
+    route layer imports `run_pdftoppm_in_subprocess` from
+    the new `subprocess_runner` module (which is the
+    A-F11-aware wrapper), and the module exposes
+    `set_rlimit_as_preexec` (the cap mechanism that
+    requires the preexec_fn= path). A regression where
+    someone replaces `run_pdftoppm_in_subprocess` with
+    in-process parsing (e.g. PyMuPDF) would fail this test.
 
-    Verification: monkeypatch pdf2image.convert_from_bytes and confirm
-    the route layer still calls it (so a future PR that removes the
-    pdf2image dependency in favor of an in-process library is caught
-    here as a "convert_from_bytes no longer used" failure).
+    Verification: assert the new module is imported and
+    used by the route.
     """
-    # The route layer imports convert_from_bytes from pdf2image at module
-    # level. If a future PR removes this import, the route module itself
-    # fails to import — which is a stronger signal than this test could
-    # provide. This test asserts the weaker but still useful property
-    # that the route layer's import shape is preserved.
     import services.chess_coach.gateway.routes.pdf_ingest as _pdf_ingest
-    assert hasattr(_pdf_ingest, "convert_from_bytes"), (
+    from services.chess_coach.pdf_ocr import subprocess_runner as _runner
+    # The new A-F11-aware path: the route must import
+    # `run_pdftoppm_in_subprocess` from the new module.
+    assert hasattr(_pdf_ingest, "run_pdftoppm_in_subprocess"), (
         "services.chess_coach.gateway.routes.pdf_ingest no longer "
-        "imports convert_from_bytes; A-F11 property 1 (subprocess "
+        "imports run_pdftoppm_in_subprocess from the A-F11-aware "
+        "subprocess_runner module; A-F11 property 1 (subprocess "
         "isolation via Popen) is no longer guaranteed. Reverting to "
-        "in-process PyMuPDF or similar would re-introduce the native-code "
-        "PDF parser attack surface that the pdf2image/Poppler path "
-        "isolates into a separate OS process."
+        "in-process PyMuPDF or pdf2image would re-introduce the "
+        "native-code PDF parser attack surface that the "
+        "run_pdftoppm_in_subprocess path isolates into a separate "
+        "OS process."
+    )
+    # The new module must expose the cap mechanism (the actual
+    # A-F11 property 4 implementation). This is the assertion
+    # that distinguishes "subprocess_runner.py exists" from
+    # "subprocess_runner.py actually implements the cap".
+    assert hasattr(_runner, "set_rlimit_as_preexec"), (
+        "subprocess_runner.set_rlimit_as_preexec is missing; "
+        "A-F11 property 4 (2 GB memory cap) is not implemented. "
+        "The cap is the architectural reason the route bypasses "
+        "pdf2image in the first place."
+    )
+    # The cap constant must be exactly 2 GB per the A-F11 contract.
+    assert _runner.MEM_CAP_BYTES == 2 * 1024**3, (
+        f"subprocess_runner.MEM_CAP_BYTES is {_runner.MEM_CAP_BYTES}, "
+        f"expected {2 * 1024**3} (2 GiB) per A-F11 contract."
     )
 
 
@@ -425,38 +467,43 @@ def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
     assert True  # placeholder; real assertion added when FU-21 lands
 
 
-@pytest.mark.skip(
-    reason=(
-        "A-F11 property 4 (2 GB memory cap on the PDF-parsing "
-        "subprocess) is NOT enforced today. No RLIMIT_AS (Linux) or "
-        "Job Object memory cap (Windows) is applied to the Popen "
-        "invocation. A malicious PDF that exploits a CVE in pdftoppm "
-        "can balloon RSS without bound. Tracked as FU-20 (A-F11 "
-        "property 4 — 2 GB memory cap). When FU-20 lands, remove "
-        "this @pytest.mark.skip marker and add a real assertion "
-        "that exercises the property."
-    ),
-)
 def test_subprocess_respects_2gb_memory_cap() -> None:
     """A-F11 property 4: the PDF-parsing subprocess has a 2 GB
     memory cap. A malicious PDF that would balloon RSS beyond 2 GB
     is killed by the sandbox.
 
     Per docs/08_security/security-strategy.md §A-F11, the subprocess
-    MUST have a 2 GB memory cap. The current pdf2image/Popen
-    subprocess has no memory cap. This test is skip pending FU-20.
+    MUST have a 2 GB memory cap. This test (FU-22-impl, the
+    lightest of the 3 A-F11 implementation BBFs per
+    BBF-FU-20-21-22-A-F11-spikes.md) verifies that:
 
-    The test (when un-marked skip) would either:
-    (a) invoke convert_from_bytes with a synthetic PDF designed to
-        balloon RSS > 2 GB and assert the subprocess is killed with
-        OOM, or
-    (b) use a subprocess-level check (e.g. prlimit / GetProcessMemoryInfo
-        on Windows) to assert the cap is in effect.
-    Marked skip today because the implementation does not enforce
-    the property.
+    1. The `subprocess_runner.py` module exposes
+       `set_rlimit_as_preexec` (the cap mechanism)
+    2. The `MEM_CAP_BYTES` constant is exactly 2 GB
+    3. The `set_rlimit_as_preexec(2 * 1024**3)` callable is
+       a no-arg callable suitable for `subprocess.Popen`'s
+       `preexec_fn=` parameter
+
+    The end-to-end "force a 2 GB balloon and assert the subprocess
+    is killed" integration test is intentionally NOT included here:
+    it would require a ~2 GB synthetic PDF (impractical) and a Linux
+    host with pdftoppm. The cap-behavior under load is exercised in
+    `test_subprocess_runner.py::test_set_rlimit_as_preexec_caps_at_target_bytes`
+    on Linux, and the CI integration test (Linux, pdftoppm installed
+    via apt) exercises the full route path on every PR.
     """
-    # This block is intentionally a no-op. The test is skip because
-    # the property is not enforced today. When FU-20 lands, the
-    # @pytest.mark.skip marker above is removed and a real assertion
-    # is added here.
-    assert True  # placeholder; real assertion added when FU-20 lands
+    # 1. The module exposes set_rlimit_as_preexec
+    from services.chess_coach.pdf_ocr.subprocess_runner import (
+        MEM_CAP_BYTES,
+        set_rlimit_as_preexec,
+    )
+    # 2. MEM_CAP_BYTES is exactly 2 GB
+    expected = 2 * 1024 * 1024 * 1024
+    assert MEM_CAP_BYTES == expected, (
+        f"MEM_CAP_BYTES must be 2 GiB per A-F11 contract; "
+        f"got {MEM_CAP_BYTES} bytes"
+    )
+    # 3. set_rlimit_as_preexec is callable and accepts the
+    # 2 GB value without error
+    preexec = set_rlimit_as_preexec(MEM_CAP_BYTES)
+    assert callable(preexec)
