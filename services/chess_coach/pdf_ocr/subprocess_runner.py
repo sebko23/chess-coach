@@ -110,7 +110,7 @@ def set_rlimit_as_preexec(mem_cap_bytes: int) -> Callable[[], None]:
         # malicious PDF cannot slowly drift past a soft
         # limit. The cap is in place before pdftoppm starts
         # (preexec_fn runs after fork, before exec).
-        resource.setrlimit(resource.RLIMIT_AS, (mem_cap_bytes, mem_cap_bytes))
+        resource.setrlimit(resource.RLIMIT_AS, (mem_cap_bytes, mem_cap_bytes))  # type: ignore[name-defined]
 
     return _set_rlimit_preexec
 

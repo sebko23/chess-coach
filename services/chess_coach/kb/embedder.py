@@ -32,7 +32,7 @@ See validate_embedder() for the acceptance test.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer  # noqa: F401
@@ -120,7 +120,7 @@ def _fen_to_text(fen: str) -> str:
     return " ".join(parts_out)
 
 
-def _get_model():
+def _get_model() -> Any:
     global _model
     if _model is None:
         # Lazy import: deferred to first model load so the ~600MB

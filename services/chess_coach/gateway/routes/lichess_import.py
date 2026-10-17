@@ -94,7 +94,7 @@ async def _fetch_games_ndjson(
             raise HTTPException(
                 resp.status,
                 detail={
-                    "code": ErrorCode.UPSTREAM_ERROR.value,
+                    "code": ErrorCode.SERVER_UNAVAILABLE.value,
                     "message": f"Lichess API error: {body[:200]}",
                 },
             )
@@ -207,7 +207,7 @@ async def import_lichess(body: LichessImportRequest, request: Request):
         raise HTTPException(
             502,
             detail={
-                "code": ErrorCode.UPSTREAM_ERROR.value,
+                "code": ErrorCode.SERVER_UNAVAILABLE.value,
                 "message": f"Failed to fetch from Lichess: {exc}",
             },
         ) from exc

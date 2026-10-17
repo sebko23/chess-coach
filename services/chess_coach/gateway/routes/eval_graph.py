@@ -293,7 +293,7 @@ async def get_eval_graph(
         raise HTTPException(
             status_code=503,
             detail={
-                "code": ErrorCode.SERVICE_UNAVAILABLE.value,
+                "code": ErrorCode.SERVER_UNAVAILABLE.value,
                 "message": "engine pool not initialized; cannot compute lazy analyses",
             },
         )
@@ -369,7 +369,7 @@ async def get_eval_graph(
 
                 async def _run(
                     pid=position_id, f=fen, p=ply, k=key,
-                ):
+                ) -> None:
                     # Each task binds its own copy of pid/f/p/k via
                     # default-arg closure so the gather's shared
                     # ``for`` loop variable doesn't trip the late-bind

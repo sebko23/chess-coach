@@ -44,12 +44,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from chess_coach.gateway.auth import require_bearer
 from chess_coach.profile import (
+    EffectSize,
     blunder_rate_vs_rating,
     conversion_ability,
     decision_fatigue,
@@ -224,9 +226,10 @@ async def get_profile_analysis(
         "opening_breadth": 0,
     }
     for i, (mid, (_fn, legacy_field)) in enumerate(_METRIC_REGISTRY.items()):
-        effect = effects[i]
-        if isinstance(effect, Exception):
+        raw_effect = effects[i]
+        if isinstance(raw_effect, Exception):
             continue
+        effect: EffectSize = cast(EffectSize, raw_effect)
         passes_gate = gate_metric(effect)
         metrics.append(ProfileMetric(
             id=mid,
@@ -258,6 +261,6 @@ async def get_profile_analysis(
     return ProfileAnalysisResponse(
         player_name=resolved,
         total_games=total_games,
-        **legacy,
+        **{k: int(v) for k, v in legacy.items()},
         metrics=metrics,
     )
