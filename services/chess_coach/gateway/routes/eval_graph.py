@@ -16,7 +16,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, cast
 
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -378,7 +378,7 @@ async def get_eval_graph(
                     # default-arg closure so the gather's shared
                     # ``for`` loop variable doesn't trip the late-bind
                     # bug.
-                    return await _coalesce_analyze(
+                    result = await _coalesce_analyze(
                         k,
                         lambda: _analyze_one_position(
                             db,
@@ -390,6 +390,7 @@ async def get_eval_graph(
                             depth,
                         ),
                     )
+                    return cast(None, result)
 
                 tasks.append(_run())
 

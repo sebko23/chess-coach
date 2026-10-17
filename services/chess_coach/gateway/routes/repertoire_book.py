@@ -65,7 +65,7 @@ import logging
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -223,7 +223,7 @@ def _books_dir(request: Request) -> Path:
     settings = request.app.state.gateway.settings
     books = settings.books_dir
     books.mkdir(parents=True, exist_ok=True)
-    return books
+    return cast(Path, books)
 
 
 def _book_path(books: Path, player: str) -> Path:

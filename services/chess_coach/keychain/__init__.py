@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import cast
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ def get_secret(name: str, *, dev_fallback: bool = True) -> str | None:
 
         value = keyring.get_password(SERVICE_NAME, name)
         if value is not None:
-            return value
+            return cast("str | None", value)
     except keyring.errors.KeyringError as exc:
         # Backend unavailable (no Secret Service on Linux CI, etc.).
         # Log and fall through to the env-var fallback.

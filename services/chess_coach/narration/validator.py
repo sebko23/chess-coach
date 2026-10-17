@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from chess_coach.protocol_types.analysis import AnalysisResult, Score
 
@@ -45,7 +45,7 @@ def _normalize_move(fen: str, san: str) -> str | None:
     try:
         board = chess.Board(fen)
         move = board.parse_san(san)
-        return move.uci()
+        return cast(str, move.uci())
     except Exception:
         return None
 
