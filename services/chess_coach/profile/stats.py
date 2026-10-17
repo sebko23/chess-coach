@@ -782,7 +782,10 @@ def decision_fatigue(
     predicted = [mean_b + slope * (p - mean_p) for p in positions]
     residuals = [blunders[i] - predicted[i] for i in range(n)]
     resid_std = (sum(r ** 2 for r in residuals) / (n - 2)) ** 0.5 if n > 2 else 0.0
-    d = None if resid_std == 0 or var_p ** 0.5 == 0 else slope * var_p ** 0.5 / resid_std
+    d: float | None = (
+        None if resid_std == 0 or var_p ** 0.5 == 0
+        else slope * var_p ** 0.5 / resid_std
+    )
     ci_low, ci_high = bootstrap_ci(blunders, seed=seed)
     return EffectSize(
         point_estimate=round(point_estimate, 4),

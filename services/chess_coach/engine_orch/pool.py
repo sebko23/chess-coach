@@ -157,7 +157,7 @@ class EnginePool:
         multipv = req.multipv
         options = dict(req.options)
         # ensure sensible defaults
-        skip = getattr(spec, "skip_options", frozenset())
+        skip: set[str] = getattr(spec, "skip_options", set())
         if "Threads" not in skip:
             options.setdefault("Threads", self._default_threads)
         if "Hash" not in skip:
@@ -272,7 +272,7 @@ class EnginePool:
                         multipv=multipv,
                         settings_hash=settings_hash,
                         cpu_arch=self._cpu_arch,
-                        thread_count=options.get("Threads", self._default_threads),
+                        thread_count=int(options.get("Threads", self._default_threads)),
                         pvs=pvs,
                     )
                 finally:
@@ -421,7 +421,8 @@ class EnginePool:
             # If the previous subprocess is dead, log it and drop the
             # broken UCIEngine instance so we start fresh.
             if slot.engine is not None and slot.engine._proc is not None:
-                retcode = slot.engine._proc.poll()
+                assert slot.engine._proc is not None
+                retcode = slot.engine._proc.poll()  # type: ignore[attr-defined]
                 logger.warning(
                     "engine_pool: slot %d for %s has dead pid (retcode=%s); "
                     "starting fresh subprocess",
@@ -462,6 +463,7 @@ class EnginePool:
             filtered_options = {
                 k: v for k, v in options.items() if k not in spec.skip_options
             }
+            assert slot.engine is not None  # narrowed by `needs_new_engine` check above
             try:
                 await slot.engine.set_options(filtered_options)
             except Exception as e:
@@ -471,6 +473,7 @@ class EnginePool:
                     slot.slot_index,
                     e,
                 )
+        assert slot.engine is not None  # narrowed above
         return slot.engine
 
     async def _release(

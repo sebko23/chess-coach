@@ -126,7 +126,7 @@ def validate_archetype_gold(corpus):
     return errors
 
 
-def _default_base_path():
+def _default_base_path() -> Path:
     """Return the default base path for the archetype gold corpus.
 
     Default: <repo>/tests/gold/archetypes/ -- parallel to

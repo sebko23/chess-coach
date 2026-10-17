@@ -20,7 +20,7 @@ import re
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal, cast
 
 from ..protocol_types.analysis import Score
 
@@ -259,7 +259,9 @@ def _parse_info(text: str) -> InfoEvent | None:
             fields["multipv"] = int(parts[i + 1])
             i += 2
         elif tok == "score" and i + 2 < len(parts):
-            fields["score"] = Score(kind=parts[i + 1], value=int(parts[i + 2]))
+            fields["score"] = Score(
+                kind=cast(Literal["cp", "mate"], parts[i + 1]), value=int(parts[i + 2])
+            )
             i += 3
         elif tok == "nodes" and i + 1 < len(parts):
             fields["nodes"] = int(parts[i + 1])

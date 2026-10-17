@@ -57,9 +57,17 @@ class PositionStore:
         existing = [c.name for c in self._client.get_collections().collections]
         if COLLECTION in existing:
             info = self._client.get_collection(COLLECTION)
-            existing_dim = info.config.params.vectors.size
+            if info.config.params.vectors is not None:
+                existing_dim = info.config.params.vectors.size
+            else:
+                existing_dim = None
             existing_count = info.points_count
-            if existing_dim == dim and existing_count > 0:
+            if (
+                existing_dim is not None
+                and existing_dim == dim
+                and existing_count is not None
+                and existing_count > 0
+            ):
                 self._dim = dim
                 logger.info(
                     "PositionStore: reusing existing collection dim=%d count=%d",
@@ -112,12 +120,13 @@ class PositionStore:
         hits = resp.points
         return [
             SearchResult(
-                fen=h.payload["fen"],
-                ply=h.payload["ply"],
-                game_id=h.payload["game_id"],
+                fen=h.payload["fen"] if h.payload else "",
+                ply=h.payload["ply"] if h.payload else 0,
+                game_id=h.payload["game_id"] if h.payload else "",
                 score=h.score,
             )
             for h in hits
+            if h.payload is not None
         ]
 
     def count(self) -> int:

@@ -126,7 +126,7 @@ async def get_queue(player: str, request: Request, limit: int = 20):
 
         if player and player != 'default':
             where = f"WHERE tc.player_name = ? AND{due_clause}"
-            params = (player, limit)
+            params: tuple[str | int, ...] = (player, limit)
         else:
             where = f"WHERE{due_clause}"
             params = (limit,)
