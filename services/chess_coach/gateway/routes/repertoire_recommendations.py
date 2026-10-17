@@ -164,7 +164,7 @@ def _uci_to_san(fen: str, uci: str) -> str:
         board = chess.Board(fen)
         move = chess.Move.from_uci(uci)
         if move in board.legal_moves:
-            return cast(str, board.san(move))
+            return board.san(move)
     except (ImportError, ValueError) as exc:
         logger.debug("Falling back to UCI for move %s: %s", uci, exc)
     return uci
@@ -303,7 +303,8 @@ async def get_recommendations(
             (resolved, resolved, side, limit),
         )
 
-    total_gaps = len(rows)
+    rows_list = list(rows)
+    total_gaps = len(rows_list)
 
     async def _analyze_row(row: aiosqlite.Row) -> list[RecommendationItem]:
         """Return one or more items per FEN.

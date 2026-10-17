@@ -560,3 +560,52 @@ jobs:
         # [tool.ruff.lint.per-file-ignores] the S (security) and
         # ASYNC rules are silenced for tests/.
         run: ruff check libs services apps/cli tests scripts
+
+  mypy:
+    name: mypy strict
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Sync deps via uv (uses uv.lock for reproducibility)
+        # mypy needs the chess_coach package importable so it can
+        # resolve cross-package imports (e.g. `from chess_coach.X
+        # import Y`). `uv sync --extra dev` installs the package
+        # in editable mode AND all dev deps (mypy, ruff, pytest)
+        # pinned to the exact versions in uv.lock. This ensures
+        # CI uses the same dependency versions that were validated
+        # locally, avoiding drift between `pip install` (which
+        # resolves to latest compatible) and the lock file.
+        # FU-29 Stage 3: after the Stage 1 mypy burn-down
+        # (BBF-FU-29-mypy-* chain, culminating in
+        # BBF-FU-29-mypy-misc-followup at ed258fdc), mypy is at
+        # 0 errors with strict mode enabled, so this gate can
+        # fail the build on any new mypy error.
+        run: uv sync --extra dev
+
+      - name: Run mypy strict
+        # Match the [tool.mypy] config in pyproject.toml:
+        # - python_version = "3.11"
+        # - strict = true (warn_unused_ignores, disallow_untyped_defs, etc.)
+        # - show_error_codes = true
+        # - mypy_path = "libs:services:apps/cli"
+        # The 4 [tool.mypy.overrides] blocks (chess.*, aiosqlite,
+        # keyring, sentence_transformers, sklearn.metrics.pairwise)
+        # silence missing-import errors for untyped third-party libs.
+        # FU-29-ruff-burndown established ruff at 0 findings; this
+        # job establishes mypy at 0 errors as a required CI gate.
+        # `uv run` ensures mypy is invoked from the venv created
+        # by `uv sync` (avoids exit code 127 = command not found).
+        run: uv run mypy libs services apps/cli --no-incremental

@@ -51,7 +51,8 @@ async def get_profile(player: str, request: Request) -> ProfileStats:
         cur = await db.execute(
             "SELECT COUNT(*) FROM games WHERE white = ? OR black = ?", (player, player)
         )
-        total_games = (await cur.fetchone())[0]
+        total_games_row = await cur.fetchone()
+        total_games = total_games_row[0] if total_games_row else 0
 
         result_rows = await db.execute_fetchall(
             "SELECT result, COUNT(*) as cnt FROM games "
@@ -63,20 +64,23 @@ async def get_profile(player: str, request: Request) -> ProfileStats:
         draws = sum(r[1] for r in result_rows if r[0] == "1/2-1/2")
 
         cur = await db.execute("SELECT COUNT(*) FROM analyses")
-        total_analyses = (await cur.fetchone())[0]
+        total_analyses_row = await cur.fetchone()
+        total_analyses = total_analyses_row[0] if total_analyses_row else 0
 
         cur = await db.execute(
             "SELECT COUNT(*) FROM analyses "
             "WHERE classification LIKE '%blunder%' OR ABS(COALESCE(cp_delta,0)) > 150"
         )
-        blunder_count = (await cur.fetchone())[0]
+        blunder_count_row = await cur.fetchone()
+        blunder_count = blunder_count_row[0] if blunder_count_row else 0
 
         cur = await db.execute(
             "SELECT COUNT(*) FROM training_cards "
             "WHERE player_name = ? AND due <= strftime('%Y-%m-%dT%H:%M:%fZ','now')",
             (player,),
         )
-        training_cards_due = (await cur.fetchone())[0]
+        training_cards_due_row = await cur.fetchone()
+        training_cards_due = training_cards_due_row[0] if training_cards_due_row else 0
 
     return ProfileStats(
         player_name=player,

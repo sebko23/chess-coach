@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any
 
 from chess_coach.protocol_types.analysis import AnalysisResult, Score
 
 try:
     import chess
 except ImportError:
-    chess = None
+    chess = None  # type: ignore[assignment]
 
 _MOVE_RE = re.compile(r"<move>([^<]+)</move>")
 _EVAL_RE = re.compile(r"<eval>([^<]+)</eval>")
@@ -45,7 +45,7 @@ def _normalize_move(fen: str, san: str) -> str | None:
     try:
         board = chess.Board(fen)
         move = board.parse_san(san)
-        return cast(str, move.uci())
+        return move.uci()
     except Exception:
         return None
 

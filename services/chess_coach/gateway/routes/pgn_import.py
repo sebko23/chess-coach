@@ -28,7 +28,7 @@ from __future__ import annotations
 import io
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import aiosqlite
 import chess
@@ -87,7 +87,7 @@ async def _games_table_columns(db_path: str) -> list[tuple[Any, ...]]:
     """Return PRAGMA table_info(games) rows: (cid, name, type, notnull, dflt_value, pk)."""
     async with aiosqlite.connect(db_path) as db:
         cur = await db.execute("PRAGMA table_info(games)")
-        return list(await cur.fetchall())
+        return cast("list[tuple[Any, ...]]", list(await cur.fetchall()))
 
 
 def _walk_game(game: chess.pgn.Game) -> list[tuple[int, str, str | None, str | None]]:

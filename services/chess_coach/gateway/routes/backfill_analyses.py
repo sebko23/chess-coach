@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
-from typing import Any, cast
+from typing import Any
 
 import aiosqlite
 import chess
@@ -179,7 +179,7 @@ async def _insert_position(
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (position_id, game_id, prev_id, fen, move_uci, move_san, ply_idx, 1),
         )
-        return cast(bool, cur.rowcount == 1) if cur.rowcount is not None else False
+        return cur.rowcount == 1 if cur.rowcount is not None else False
     except Exception as exc:
         logger.warning(
             "backfill %s: positions insert failed for %s: %s",
@@ -202,7 +202,7 @@ async def _insert_analysis(
     sql = f"INSERT OR IGNORE INTO analyses ({cols_csv}) VALUES ({placeholders_sql})"  # noqa: S608
     try:
         cur = await db.execute(sql, list(row.values()))
-        return cast(bool, cur.rowcount == 1) if cur.rowcount is not None else False
+        return cur.rowcount == 1 if cur.rowcount is not None else False
     except Exception as exc:
         logger.warning(
             "backfill: analyses insert failed for %s: %s", position_id, exc,
