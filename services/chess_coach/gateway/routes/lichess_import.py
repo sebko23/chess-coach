@@ -146,7 +146,7 @@ def _parse_game(obj: dict[str, Any]) -> tuple[str, dict[str, Any], str] | None:
 
 async def _insert_game(
     db: aiosqlite.Connection, game: dict[str, Any], pgn_raw: str,
-):
+) -> None:
     """Insert a single game and all its positions into the DB."""
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%fZ")
     await db.execute(
@@ -190,7 +190,7 @@ async def _insert_game(
 
 @router.post("/v1/import/lichess", response_model=LichessImportResult)
 @route_guard
-async def import_lichess(body: LichessImportRequest, request: Request):
+async def import_lichess(body: LichessImportRequest, request: Request) -> LichessImportResult:
     """Fetch games from Lichess and import into the local DB."""
     settings = request.app.state.gateway.settings
     games_fetched = 0

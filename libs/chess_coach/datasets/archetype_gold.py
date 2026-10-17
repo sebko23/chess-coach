@@ -79,7 +79,9 @@ class ArchetypeGoldEntry:
     _provenance: dict[str, Any] | None = None
 
 
-def load_archetype_gold(version: str = "v1", base_path=None):
+def load_archetype_gold(
+    version: str = "v1", base_path: str | None = None
+) -> list[ArchetypeGoldEntry]:
     """Load the corpus for the given version.
 
     Returns: list[ArchetypeGoldEntry].
@@ -88,7 +90,9 @@ def load_archetype_gold(version: str = "v1", base_path=None):
     return [ArchetypeGoldEntry(**e) for e in raw["entries"]]
 
 
-def load_archetype_gold_with_metadata(version: str = "v1", base_path=None):
+def load_archetype_gold_with_metadata(
+    version: str = "v1", base_path: str | None = None
+) -> list[dict[str, Any]]:
     """Same, but returns the full dict (preserves _metadata)."""
     base = Path(base_path) if base_path is not None else _default_base_path()
     corpus_path = base / version / "corpus.json"
@@ -110,7 +114,7 @@ def load_archetype_gold_with_metadata(version: str = "v1", base_path=None):
     return raw
 
 
-def validate_archetype_gold(corpus):
+def validate_archetype_gold(corpus: list[Any]) -> list[str]:
     """Validate the corpus shape. Returns a list of error strings."""
     errors = []
     seen_ids = set()

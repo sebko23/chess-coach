@@ -101,7 +101,7 @@ def _fsrs_next(
 
 @router.get("/v1/training/queue/{player}", response_model=QueueResponse)
 @route_guard
-async def get_queue(player: str, request: Request, limit: int = 20):
+async def get_queue(player: str, request: Request, limit: int = 20) -> QueueResponse:
     """Return up to limit due training cards for player.
     When player='default' (no specific player on the Windows host),
     aggregate due cards across ALL players."""
@@ -159,7 +159,7 @@ async def get_queue(player: str, request: Request, limit: int = 20):
 
 
 @router.post("/v1/training/review/{card_id}", response_model=ReviewResponse)
-async def review_card(card_id: str, body: ReviewRequest, request: Request):
+async def review_card(card_id: str, body: ReviewRequest, request: Request) -> ReviewResponse:
     """Submit a review rating; update FSRS parameters."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
@@ -202,7 +202,7 @@ async def review_card(card_id: str, body: ReviewRequest, request: Request):
 
 @router.post("/v1/training/seed-from-blunders")
 @route_guard
-async def seed_from_blunders(body: SeedRequest, request: Request):
+async def seed_from_blunders(body: SeedRequest, request: Request) -> dict[str, dict[str, int]]:
     """Create training cards from blunder positions."""
     settings = request.app.state.gateway.settings
     created = 0

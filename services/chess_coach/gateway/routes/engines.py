@@ -38,14 +38,14 @@ def _pool(request: Request) -> EnginePool:
 
 @router.get("/v1/engines")
 @route_guard
-async def list_engines(pool: EnginePool = Depends(_pool)):
+async def list_engines(pool: EnginePool = Depends(_pool)) -> dict[str, Any]:
     ids = list(pool._specs.keys())
     return {"data": {"engine_ids": ids}}
 
 
 @router.get("/v1/engines/{engine_id}")
 @route_guard
-async def engine_info(engine_id: str, pool: EnginePool = Depends(_pool)):
+async def engine_info(engine_id: str, pool: EnginePool = Depends(_pool)) -> dict[str, Any]:
     # Phase 8 BBF-2 Finding B: preserve 404 vs 503 contract.
     # Unknown engine_id (not in pool._specs) → 404, not 503.
     # require_engine_available() alone would collapse both cases

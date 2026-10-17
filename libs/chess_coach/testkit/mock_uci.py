@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import Any
 
 from chess_coach.protocol_types.analysis import Score
 from chess_coach.uci.engine import InfoEvent
@@ -43,7 +44,7 @@ class MockUCIEngine:
         self._fen = fen or ""
         self._moves = moves or []
 
-    async def go(self, **kwargs) -> AsyncIterator[InfoEvent]:
+    async def go(self, **kwargs: Any) -> AsyncIterator[InfoEvent]:
         if not self._go_output:
             # Default output: a single 1.d4 at depth 10
             ev = InfoEvent(

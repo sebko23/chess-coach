@@ -50,7 +50,7 @@ async def get_repertoire_tree(
     player: str,
     request: Request,
     color: str = Query(default="white", pattern="^(white|black)$"),
-):
+) -> TreeResponse:
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
@@ -72,7 +72,7 @@ async def get_repertoire_gaps(
     player: str,
     request: Request,
     color: str = Query(default="white", pattern="^(white|black)$"),
-):
+) -> list[GapItem]:
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
@@ -90,5 +90,5 @@ async def get_repertoire_novelties(
     player: str,
     request: Request,
     color: str = Query(default="white", pattern="^(white|black)$"),
-):
+) -> list[NoveltyItem]:
     return []

@@ -33,7 +33,7 @@ class GamesListResponse(BaseModel):
 
 @router.get("/v1/games", response_model=GamesListResponse)
 @route_guard
-async def list_games(request: Request, limit: int = 100, offset: int = 0):
+async def list_games(request: Request, limit: int = 100, offset: int = 0) -> GamesListResponse:
     """Return a page of games ordered by creation date descending."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
@@ -56,7 +56,7 @@ async def list_games(request: Request, limit: int = 100, offset: int = 0):
 
 @router.get("/v1/games/{game_id}/pgn", response_class=PlainTextResponse)
 @route_guard
-async def get_game_pgn(game_id: str, request: Request):
+async def get_game_pgn(game_id: str, request: Request) -> PlainTextResponse:
     """Return the raw PGN for a game."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:

@@ -44,7 +44,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import cast
+from collections.abc import Callable
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -107,31 +108,31 @@ class ProfileAnalysisResponse(BaseModel):
 # returns an EffectSize. The legacy_field_name is the
 # field on the old ProfileAnalysisResponse that this
 # metric was previously reported under.
-def _metric_tactical(db_path, player, **_):
+def _metric_tactical(db_path: str, player: str, **_: Any) -> EffectSize:
     return tactical_vs_positional_bias(db_path, player)
 
 
-def _metric_time_pressure(db_path, player, **_):
+def _metric_time_pressure(db_path: str, player: str, **_: Any) -> EffectSize:
     return time_pressure_quality(db_path, player)
 
 
-def _metric_opening(db_path, player, **_):
+def _metric_opening(db_path: str, player: str, **_: Any) -> EffectSize:
     return opening_comfort(db_path, player)
 
 
-def _metric_conversion(db_path, player, **_):
+def _metric_conversion(db_path: str, player: str, **_: Any) -> EffectSize:
     return conversion_ability(db_path, player)
 
 
-def _metric_blunder_rating(db_path, player, **_):
+def _metric_blunder_rating(db_path: str, player: str, **_: Any) -> EffectSize:
     return blunder_rate_vs_rating(db_path, player)
 
 
-def _metric_decision_fatigue(db_path, player, **_):
+def _metric_decision_fatigue(db_path: str, player: str, **_: Any) -> EffectSize:
     return decision_fatigue(db_path, player)
 
 
-def _metric_sequence_tilt(db_path, player, **_):
+def _metric_sequence_tilt(db_path: str, player: str, **_: Any) -> EffectSize:
     return sequence_based_tilt(db_path, player)
 
 
@@ -164,7 +165,7 @@ def _db_path(request: Request) -> str:
     return str(request.app.state.gateway.settings.sqlite_path)
 
 
-async def _run_metric_in_thread(fn, db_path: str, player: str):
+async def _run_metric_in_thread(fn: Callable[..., Any], db_path: str, player: str) -> Any:
     """Offload a sync metric call to a worker thread.
 
     The chess_coach.profile metrics are sync functions.
