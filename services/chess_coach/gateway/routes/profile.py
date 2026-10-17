@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Request
@@ -219,7 +219,7 @@ def _load_methodology_for(metric_id: str) -> str:
         _load_methodology_for._cache = {}  # type: ignore[attr-defined]
     cache: dict[str, Any] = _load_methodology_for._cache  # type: ignore[attr-defined]
     if metric_id in cache:
-        return cache[metric_id]
+        return cast(str, cache[metric_id])
     # Locate the doc file. The path is resolved relative
     # to the package root (services/chess_coach/gateway/
     # routes/profile.py -> 4 levels up to the repo root).
@@ -233,7 +233,7 @@ def _load_methodology_for(metric_id: str) -> str:
             f"Methodology doc not found at {doc_path}. "
             f"See docs/15_methodology/profile-metrics-v1.md."
         )
-        return cache[metric_id]
+        return cast(str, cache[metric_id])
     text = doc_path.read_text(encoding="utf-8")
     # Slice: the section for `metric_id` runs from
     # "## <metric_id>" to the next "## " heading.
@@ -243,14 +243,14 @@ def _load_methodology_for(metric_id: str) -> str:
             f"Methodology section for {metric_id!r} not "
             f"found in {doc_path}."
         )
-        return cache[metric_id]
+        return cast(str, cache[metric_id])
     start = text.index(section_start)
     # Find the next H2 after start
     rest = text[start + len(section_start):]
     next_h2 = rest.find("\n## ")
     section_text = rest if next_h2 == -1 else rest[:next_h2]
     cache[metric_id] = section_text.strip()
-    return cache[metric_id]
+    return cast(str, cache[metric_id])
 
 
 def _effect_to_dict(effect: EffectSize) -> dict[str, Any]:

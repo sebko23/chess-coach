@@ -60,7 +60,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import aiosqlite
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -94,7 +94,7 @@ DEFAULT_PLAYER: str = "ebassti"
 
 
 def _pool(request: Request) -> EnginePool:
-    return request.app.state.engine_pool
+    return cast(EnginePool, request.app.state.engine_pool)
 
 
 def _db_path(request: Request) -> str:
@@ -111,7 +111,7 @@ def _books_dir_path(request: Request) -> Path:
     is created on the PUT path but never on the GET/α path. We
     therefore expose a no-side-effect variant here.
     """
-    return request.app.state.gateway.settings.books_dir
+    return cast(Path, request.app.state.gateway.settings.books_dir)
 
 
 class RecommendationItem(BaseModel):
@@ -164,7 +164,7 @@ def _uci_to_san(fen: str, uci: str) -> str:
         board = chess.Board(fen)
         move = chess.Move.from_uci(uci)
         if move in board.legal_moves:
-            return board.san(move)
+            return cast(str, board.san(move))
     except (ImportError, ValueError) as exc:
         logger.debug("Falling back to UCI for move %s: %s", uci, exc)
     return uci

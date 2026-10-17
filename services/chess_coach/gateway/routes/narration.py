@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import aiosqlite
 import pydantic
@@ -85,7 +85,7 @@ async def _resolve_position_id(db_path: str, fen: str) -> str:
         ) as cur:
             row = await cur.fetchone()
         if row is not None:
-            return row[0]
+            return cast(str, row[0])
         # No existing row; insert a freeform positions row.
         new_id = str(uuid.uuid4())
         await db.execute(

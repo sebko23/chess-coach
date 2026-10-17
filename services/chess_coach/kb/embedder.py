@@ -32,7 +32,7 @@ See validate_embedder() for the acceptance test.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer  # noqa: F401
@@ -146,7 +146,7 @@ def fit_and_embed(fens: list[str]) -> np.ndarray:
     """
     model = _get_model()
     texts = [_fen_to_text(f) for f in fens]
-    return model.encode(texts, convert_to_numpy=True).astype(np.float32)
+    return cast(np.ndarray, model.encode(texts, convert_to_numpy=True).astype(np.float32))
 
 
 def embed(fens: list[str]) -> np.ndarray:
@@ -160,7 +160,7 @@ def embed_one(fen: str) -> np.ndarray:
     Raises RuntimeError if the model cannot be loaded.
     """
     try:
-        return embed([fen])[0]
+        return cast(np.ndarray, embed([fen])[0])
     except Exception as exc:
         raise RuntimeError(f"embedder: failed to embed FEN: {exc}") from exc
 

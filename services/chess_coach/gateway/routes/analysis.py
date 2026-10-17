@@ -6,7 +6,7 @@ Protocol §4.6:
 # ruff: noqa: B008  -- FastAPI Depends() in argument defaults is the intended pattern; flagged uniformly across all route handlers.
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
@@ -31,7 +31,7 @@ def _pool_from_request(request: Request) -> EnginePool:
                 "message": "Engine pool not initialised",
             },
         )
-    return pool
+    return cast(EnginePool, pool)
 
 
 @router.post("/v1/analysis/positions")

@@ -33,7 +33,7 @@ import time  # noqa: E402
 import uuid  # noqa: E402
 from collections.abc import AsyncIterator, Awaitable, Callable  # noqa: E402
 from dataclasses import dataclass  # noqa: E402
-from typing import TYPE_CHECKING  # noqa: E402
+from typing import TYPE_CHECKING, cast  # noqa: E402
 
 from fastapi import FastAPI, Request, Response  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -328,7 +328,7 @@ def create_app(settings: GatewaySettings | None = None) -> FastAPI:
         gi = getattr(pipeline, "_grounding", None)
         if gi is None:
             return None
-        return gi.size
+        return cast("int | None", gi.size)
 
     app.include_router(
         build_system_router(

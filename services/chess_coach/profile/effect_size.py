@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from typing import cast
 
 
 @dataclass(frozen=True)
@@ -121,7 +122,7 @@ def cohens_d(
     std = variance ** 0.5
     if std == 0:
         return None
-    return (mean - null_value) / std
+    return cast("float | None", (mean - null_value) / std if std != 0 else None)
 
 
 def bootstrap_ci(
