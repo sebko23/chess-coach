@@ -609,3 +609,53 @@ jobs:
         # `uv run` ensures mypy is invoked from the venv created
         # by `uv sync` (avoids exit code 127 = command not found).
         run: uv run mypy libs services apps/cli --no-incremental
+
+  coverage:
+    name: pytest-cov baseline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Sync deps via uv (uses uv.lock for reproducibility)
+        run: uv sync --extra dev
+
+      - name: Run pytest with coverage
+        # FU-29-pytest-cov-baseline: establish the 61% coverage
+        # baseline (4785 statements, 1711 missed, 1082 branches,
+        # 94 partial). This is the first run; future runs should
+        # not regress below this number. The gate is "no regression
+        # below baseline" — the ratchet strategy is:
+        # Stage 1 (this BBF): establish baseline
+        # Stage 2 (future): raise the floor incrementally
+        # Stage 3 (future): wire the floor as a CI gate
+        #
+        # The baseline report is saved to coverage-baseline.txt
+        # and committed to the repo (see BBF-FU-29-pytest-cov-baseline.md).
+        # Skipping platform-specific tests (keychain, sec01) because
+        # they require OS-level dependencies not available in CI.
+        run: |
+          uv run pytest             --cov=libs/chess_coach             --cov=services/chess_coach             --cov=apps/cli/chess_coach             --cov-report=term             --cov-report=xml:coverage.xml             --no-header             --tb=no             --ignore=tests/unit/test_keychain.py             --ignore=tests/unit/test_sec01_https_chessvision.py             tests/unit/
+
+      - name: Verify coverage meets baseline
+        # The baseline is 61%. This check fails if the current
+        # coverage drops below 55% (a 6% regression tolerance
+        # for natural variation in which tests are run). The
+        # tight tolerance is intentional — we want to catch
+        # regressions early, not allow drift.
+        run: |
+          uv run python -c "
+          import coverage
+          cov = coverage.Coverage()
+          cov.load()
+          report = cov.report()
+          print(f'Coverage: {report:.1f}%')
+          assert report >= 55, f'Coverage {report:.1f}% < baseline floor 55%'
+          "
+
