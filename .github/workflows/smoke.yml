@@ -641,7 +641,14 @@ jobs:
         # Skipping platform-specific tests (keychain, sec01) because
         # they require OS-level dependencies not available in CI.
         run: |
-          uv run pytest             --cov=libs/chess_coach             --cov=services/chess_coach             --cov=apps/cli/chess_coach             --cov-report=term             --cov-report=xml:coverage.xml             --no-header             --tb=no             --ignore=tests/unit/test_keychain.py             --ignore=tests/unit/test_sec01_https_chessvision.py             tests/unit/
+          # FU-29-stage-2-baseline-ratchet: the --cov-fail-under=55
+          # flag is the native pytest-cov mechanism for enforcing a
+          # coverage floor. This is more robust than a post-test
+          # Python assertion because it fails the pytest process
+          # itself (exit code 2), which the CI runner treats as a
+          # job failure. The 55% floor is 6% below the 61% baseline
+          # (see quality-ratchet.json for the ratchet strategy).
+          uv run pytest             --cov=libs/chess_coach             --cov=services/chess_coach             --cov=apps/cli/chess_coach             --cov-report=term             --cov-report=xml:coverage.xml             --cov-fail-under=55             --no-header             --tb=no             --ignore=tests/unit/test_keychain.py             --ignore=tests/unit/test_sec01_https_chessvision.py             tests/unit/
 
       - name: Verify coverage meets baseline
         # The baseline is 61%. This check fails if the current

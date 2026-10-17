@@ -1,0 +1,57 @@
+{
+  "$comment": "FU-29 Stage 2 baseline-and-no-regressions ratchet. This file codifies the current baseline for each quality tool. The CI gates (in .github/workflows/smoke.yml) enforce these floors. To raise a floor, update the value here AND in the corresponding CI job, and document the change in a BBF brief.",
+
+  "ruff": {
+    "findings": 0,
+    "floor": 0,
+    "tolerance": 0,
+    "ci_job": "ruff",
+    "ci_job_file": ".github/workflows/smoke.yml",
+    "last_raised": null,
+    "last_raised_sha": null,
+    "strategy": "no ratchet needed — ruff is at 0 findings, the CI job enforces the 0 floor on every PR"
+  },
+
+  "mypy": {
+    "errors": 0,
+    "floor": 0,
+    "tolerance": 0,
+    "ci_job": "mypy",
+    "ci_job_file": ".github/workflows/smoke.yml",
+    "last_raised": null,
+    "last_raised_sha": null,
+    "strategy": "no ratchet needed — mypy is at 0 errors, the CI job enforces the 0 floor on every PR"
+  },
+
+  "pytest_cov": {
+    "baseline_percent": 61,
+    "floor_percent": 55,
+    "tolerance_percent": 6,
+    "ci_job": "coverage",
+    "ci_job_file": ".github/workflows/smoke.yml",
+    "last_raised": null,
+    "last_raised_sha": null,
+    "strategy": "coverage is at 61% baseline; the CI job enforces a 55% floor (6% tolerance for natural variation in which tests are skipped on different platforms). To raise the floor, update 'floor_percent' here AND in the coverage CI job, and document the change in a BBF brief."
+  },
+
+  "$history": [
+    {
+      "date": "2026-10-17",
+      "bbf": "BBF-FU-29-pytest-cov-baseline",
+      "sha": "0d09fd55",
+      "action": "established 61% baseline; set 55% floor; 5 tests skipped (platform-specific)"
+    },
+    {
+      "date": "2026-10-17",
+      "bbf": "BBF-FU-29-mypy-wire-ci",
+      "sha": "379851ff",
+      "action": "mypy at 0; wired CI gate with uv run mypy"
+    },
+    {
+      "date": "2026-10-16",
+      "bbf": "BBF-FU-29-ruff-wire-ci",
+      "sha": "98780986",
+      "action": "ruff at 0; wired CI gate"
+    }
+  ]
+}
