@@ -47,7 +47,7 @@ async def list_games(request: Request, limit: int = 100, offset: int = 0) -> Gam
         )
         rows = await cur.fetchall()
     return GamesListResponse(
-        games=[dict(r) for r in rows],
+        games=[GameSummary(**dict(r)) for r in rows],
         total=total,
         limit=limit,
         offset=offset,

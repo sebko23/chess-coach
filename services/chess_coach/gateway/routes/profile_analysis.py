@@ -204,7 +204,7 @@ async def get_profile_analysis(
     # CPU-bound; threading gives no real parallelism, but
     # it does avoid blocking the event loop).
     coros = [
-        _run_metric_in_thread(fn, db_path, player)
+        _run_metric_in_thread(cast(Callable[..., Any], fn), db_path, player)
         for fn, _ in _METRIC_REGISTRY.values()
     ]
     effects = await asyncio.gather(*coros, return_exceptions=True)

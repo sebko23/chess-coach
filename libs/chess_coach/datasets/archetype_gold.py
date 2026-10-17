@@ -92,7 +92,7 @@ def load_archetype_gold(
 
 def load_archetype_gold_with_metadata(
     version: str = "v1", base_path: str | None = None
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Same, but returns the full dict (preserves _metadata)."""
     base = Path(base_path) if base_path is not None else _default_base_path()
     corpus_path = base / version / "corpus.json"
