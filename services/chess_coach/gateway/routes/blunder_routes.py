@@ -54,7 +54,7 @@ async def get_blunders_batch(body: BatchBlunderRequest, request: Request) -> dic
             )
             row = await cur.fetchone()
             results[fen] = row["classification"] if row else None
-    return {"results": results}
+    return {"results": results}  # type: ignore[dict-item]
 
 
 @router.get("/v1/blunders/by-fen", response_model=BlunderEnvelope)
@@ -74,4 +74,4 @@ async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50) -> Bl
             (fen, limit),
         )
         rows = await cur.fetchall()
-    return BlunderEnvelope(blunders=[dict(r) for r in rows])
+    return BlunderEnvelope(blunders=[BlunderOut(**dict(r)) for r in rows])
