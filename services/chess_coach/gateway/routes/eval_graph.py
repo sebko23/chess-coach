@@ -426,4 +426,4 @@ async def get_eval_graph(
                         "classification": r["classification"],
                     }
 
-    return [out_by_ply[r["ply"]] for r in rows]
+    return [cast(EvalPoint, out_by_ply[r["ply"]]) for r in rows]

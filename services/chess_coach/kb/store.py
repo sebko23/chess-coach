@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 from qdrant_client import QdrantClient
@@ -58,7 +59,7 @@ class PositionStore:
         if COLLECTION in existing:
             info = self._client.get_collection(COLLECTION)
             if info.config.params.vectors is not None:
-                existing_dim = info.config.params.vectors.size
+                existing_dim = cast("VectorParams", info.config.params.vectors).size
             else:
                 existing_dim = None
             existing_count = info.points_count

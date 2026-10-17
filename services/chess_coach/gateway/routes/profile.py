@@ -334,7 +334,7 @@ async def explain_metric(player: str, metric_id: str, request: Request) -> Metri
     db_path = str(settings.sqlite_path)
     methodology = _load_methodology_for(metric_id)
     caveats: list[str] = []
-    raw_inputs = {
+    raw_inputs: dict[str, Any] = {
         "player": player,
         "db_path": db_path,
         "metric_id": metric_id,
@@ -355,7 +355,7 @@ async def explain_metric(player: str, metric_id: str, request: Request) -> Metri
         for mid, (mfn, _) in _METRIC_REGISTRY.items():
             if mid == "sequence_based_tilt":
                 continue
-            effect = await _run_metric_in_thread(mfn, db_path, player)
+            effect = await _run_metric_in_thread(cast(Callable[..., Any], mfn), db_path, player)
             metric_values[mid] = effect.point_estimate
             intermediate[mid] = {
                 "point_estimate": effect.point_estimate,
@@ -394,7 +394,7 @@ async def explain_metric(player: str, metric_id: str, request: Request) -> Metri
         )
 
     fn, section_name = _METRIC_REGISTRY[metric_id]
-    effect = await _run_metric_in_thread(fn, db_path, player)
+    effect = await _run_metric_in_thread(cast(Callable[..., Any], fn), db_path, player)
     if not _gate_passes(effect):
         caveats.append(
             f"Effect size d={effect.d} is below the §B4 "
