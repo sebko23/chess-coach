@@ -1,0 +1,65 @@
+Name                                                                Stmts   Miss Branch BrPart  Cover   Missing
+---------------------------------------------------------------------------------------------------------------
+apps\cli\chess_coach\cli\__main__.py                                   29     29      6      0     0%   2-47
+libs\chess_coach\datasets\archetype_gold.py                            47      4     16      4    87%   106, 110, 123, 125
+libs\chess_coach\datasets\l2_gold.py                                   98      6     44      2    94%   110, 176-177, 180-181, 246
+libs\chess_coach\datasets\narrative_gold.py                           104      5     50      1    96%   187-188, 191-192, 254
+libs\chess_coach\protocol_types\narration.py                           35      9      2      0    70%   8-9, 77-83
+libs\chess_coach\storage\__init__.py                                    5      0      2      1    86%   11->22
+libs\chess_coach\storage\migrate.py                                   102     33     20      3    66%   67->74, 71, 85, 89-103, 144-145, 163-168, 185-192, 201-207
+libs\chess_coach\testkit\mock_uci.py                                   43      8      8      2    73%   34->exit, 38, 41, 62-66, 69
+libs\chess_coach\uci\engine.py                                        216    147    102      3    28%   73-82, 88-116, 120-129, 135-139, 145-148, 167-200, 204, 209-212, 215-220, 224-232, 277, 281-284, 286, 301-345
+services\chess_coach\engine_orch\pool.py                              175     49     46     10    65%   79, 104, 142, 154, 161->163, 163->165, 166, 220->237, 230-231, 244->243, 255->243, 263, 283-304, 320-332, 341-348, 375-378, 441-442, 463-470
+services\chess_coach\gateway\__main__.py                               72     72     24      0     0%   7-169
+services\chess_coach\gateway\app.py                                   155     62     20      1    56%   122-271, 330
+services\chess_coach\gateway\auth.py                                   55      1     28      0    99%   66
+services\chess_coach\gateway\config.py                                 40      6      4      2    82%   13, 15, 76, 80, 84, 93
+services\chess_coach\gateway\descriptor.py                             37      5      2      1    85%   61, 63-67
+services\chess_coach\gateway\engine_availability.py                     7      1      2      1    78%   45
+services\chess_coach\gateway\exception_handlers.py                     50     11     12      5    74%   59, 64, 78-83, 102, 104, 106, 120-122
+services\chess_coach\gateway\pyinstaller_rthook.py                      7      7      2      0     0%   59-74
+services\chess_coach\gateway\route_guard.py                            29      7      2      1    74%   42, 46-61
+services\chess_coach\gateway\routes\analysis.py                        31      7      2      1    76%   27, 46-47, 57-63
+services\chess_coach\gateway\routes\backfill_analyses.py              159    122     46      0    18%   67, 71, 83-105, 120-121, 132-150, 175-188, 197-210, 217-222, 249-369
+services\chess_coach\gateway\routes\blunder_routes.py                  40     15      2      0    60%   41-57, 64-77
+services\chess_coach\gateway\routes\engines.py                         44      9      6      1    80%   29, 42-43, 67-68, 102-108
+services\chess_coach\gateway\routes\eval_graph.py                     165     97     50      1    38%   130->132, 133-136, 163-168, 181-221, 243-269, 289-429
+services\chess_coach\gateway\routes\eval_verifier.py                   88     26     18      5    67%   72, 98, 111-114, 117-118, 122-123, 129, 139, 198-220
+services\chess_coach\gateway\routes\game_routes.py                     44     16      2      0    61%   38-50, 62-71
+services\chess_coach\gateway\routes\kb.py                              47     18      2      0    59%   53-63, 77-92
+services\chess_coach\gateway\routes\lichess_import.py                 117     84     26      0    23%   55-111, 116-144, 151-183, 195-230
+services\chess_coach\gateway\routes\narration.py                       88     61      6      0    29%   39, 43, 55, 76-97, 126-311
+services\chess_coach\gateway\routes\pdf_ingest.py                      96     34     16      1    60%   147-151, 155-162, 183, 237, 247, 255-320
+services\chess_coach\gateway\routes\pgn_import.py                     141     99     30      0    25%   83, 88-90, 101-112, 117-128, 154-296
+services\chess_coach\gateway\routes\players.py                         17      5      0      0    71%   22-34
+services\chess_coach\gateway\routes\profile.py                        133     32     20      4    75%   47-85, 226, 241-257, 381->389, 402->410
+services\chess_coach\gateway\routes\profile_analysis.py                75     33     10      0    49%   112, 116, 120, 124, 128, 132, 136, 165, 175, 206-262
+services\chess_coach\gateway\routes\repertoire.py                      54     14      0      0    74%   54-66, 76-84, 94
+services\chess_coach\gateway\routes\repertoire_book.py                 96     45      4      0    51%   123, 199-211, 223-226, 230, 239-240, 252-259, 302-337, 365-379, 406-415
+services\chess_coach\gateway\routes\repertoire_recommendations.py     137     91     28      0    28%   97, 101, 114, 144-151, 156-157, 162-170, 181-223, 266-442
+services\chess_coach\gateway\routes\system.py                          38      0      6      1    98%   96->120
+services\chess_coach\gateway\routes\training.py                       115     61     10      0    43%   31-32, 89-97, 108-159, 165-194, 208-233
+services\chess_coach\gateway\routes\training_planner.py               112     67     22      0    34%   27, 82-86, 108-240
+services\chess_coach\gold\eval_delta.py                                29      4     10      4    79%   46, 52, 58, 68
+services\chess_coach\kb\embedder.py                                    82     66     18      0    16%   73-120, 125-137, 147-149, 154, 162-165, 179-208
+services\chess_coach\kb\pipeline.py                                    43     33      8      0    20%   26-28, 45-90, 99-108
+services\chess_coach\kb\store.py                                       65     16     16      4    70%   45-46, 57, 60-78, 115, 137-138
+services\chess_coach\keychain\__init__.py                              38     29      6      0    20%   49-70, 83-93, 105-118
+services\chess_coach\llm_router\router.py                              35     25     10      0    22%   36, 39-51, 68-101
+services\chess_coach\log_redaction\__init__.py                         25      8      8      0    64%   63-64, 83-88
+services\chess_coach\narration\grounding.py                            56      1     12      1    97%   263
+services\chess_coach\narration\pipeline.py                            117     10     26      6    89%   93-97, 129-135, 153, 166, 292->296, 296->300, 300->305, 306
+services\chess_coach\narration\prompt.py                               20      1      6      1    92%   59
+services\chess_coach\narration\validator.py                           110      8     46      5    92%   12-13, 44, 93->90, 174-175, 181-182, 189
+services\chess_coach\pdf_ocr\adapter.py                                89     60     20      0    27%   94-101, 112-134, 145-150, 159-163, 181-200, 216-228, 247-251
+services\chess_coach\pdf_ocr\protection.py                            137      1     30      0    99%   237
+services\chess_coach\pdf_ocr\subprocess_runner.py                      47     17      8      2    58%   43, 107-115, 220-243
+services\chess_coach\profile\archetypes.py                            101     14     46      7    83%   152-158, 204, 209, 215->214, 244, 263, 298, 351-353
+services\chess_coach\profile\effect_size.py                            58      7     18      1    84%   176-184
+services\chess_coach\profile\stats.py                                 166     10     50      8    92%   107-119, 407, 507, 512, 519, 754, 763, 768
+services\chess_coach\profile\tilt.py                                   59      2     26      3    94%   210->201, 217, 232
+services\chess_coach\repertoire\polyglot_writer.py                     40      1      8      1    96%   106
+---------------------------------------------------------------------------------------------------------------
+TOTAL                                                                4785   1711   1082     94    61%
+
+27 files skipped due to complete coverage.
