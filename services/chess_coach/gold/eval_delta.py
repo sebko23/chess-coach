@@ -45,7 +45,7 @@ async def eval_deltas(
     if not result.pvs:
         return []
 
-    def score_cp(pv) -> int:
+    def score_cp(pv: Any) -> int:
         score = pv.score
         if score.kind == "cp" and score.value is not None:
             return int(score.value)

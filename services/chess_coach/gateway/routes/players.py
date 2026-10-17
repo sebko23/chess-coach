@@ -17,7 +17,7 @@ class PlayerListResponse(BaseModel):
 
 @router.get("/v1/players", response_model=PlayerListResponse)
 @route_guard
-async def list_players(request: Request):
+async def list_players(request: Request) -> PlayerListResponse:
     """Return all distinct player names from the games table."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:

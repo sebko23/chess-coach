@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 import aiosqlite
@@ -92,7 +93,7 @@ def _dedup_put(key: tuple[str, int, str, int], future: asyncio.Future[Any]) -> N
 
 async def _coalesce_analyze(
     key: tuple[str, int, str, int],
-    coro_factory,
+    coro_factory: Callable[[], Coroutine[Any, Any, Any]],
 ) -> Any:
     """Either await an in-flight analysis for ``key`` or run a fresh one.
 
@@ -368,7 +369,10 @@ async def get_eval_graph(
                 key = (game_id, ply, "stockfish", depth)
 
                 async def _run(
-                    pid=position_id, f=fen, p=ply, k=key,
+                    pid: str = position_id,
+                    f: str = fen,
+                    p: int = ply,
+                    k: tuple[str, int, str, int] = key,
                 ) -> None:
                     # Each task binds its own copy of pid/f/p/k via
                     # default-arg closure so the gather's shared

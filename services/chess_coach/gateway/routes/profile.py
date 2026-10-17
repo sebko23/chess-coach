@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import aiosqlite
@@ -41,7 +42,7 @@ class ProfileStats(BaseModel):
 
 @router.get("/v1/profile/{player}", response_model=ProfileStats)
 @route_guard
-async def get_profile(player: str, request: Request):
+async def get_profile(player: str, request: Request) -> ProfileStats:
     """Aggregated statistics for a player."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
@@ -150,25 +151,25 @@ class MetricExplainResponse(BaseModel):
 # The methodology_section_name is the H2 heading in
 # docs/15_methodology/profile-metrics-v1.md for this
 # metric (used to slice the doc into per-metric sections).
-def _metric_tactical(db_path, player, **_):
+def _metric_tactical(db_path: str, player: str, **_: Any) -> EffectSize:
     return tactical_vs_positional_bias(db_path, player)
 
-def _metric_time_pressure(db_path, player, **_):
+def _metric_time_pressure(db_path: str, player: str, **_: Any) -> EffectSize:
     return time_pressure_quality(db_path, player)
 
-def _metric_opening(db_path, player, **_):
+def _metric_opening(db_path: str, player: str, **_: Any) -> EffectSize:
     return opening_comfort(db_path, player)
 
-def _metric_conversion(db_path, player, **_):
+def _metric_conversion(db_path: str, player: str, **_: Any) -> EffectSize:
     return conversion_ability(db_path, player)
 
-def _metric_blunder_rating(db_path, player, **_):
+def _metric_blunder_rating(db_path: str, player: str, **_: Any) -> EffectSize:
     return blunder_rate_vs_rating(db_path, player)
 
-def _metric_decision_fatigue(db_path, player, **_):
+def _metric_decision_fatigue(db_path: str, player: str, **_: Any) -> EffectSize:
     return decision_fatigue(db_path, player)
 
-def _metric_sequence_tilt(db_path, player, **_):
+def _metric_sequence_tilt(db_path: str, player: str, **_: Any) -> EffectSize:
     return sequence_based_tilt(db_path, player)
 
 _METRIC_REGISTRY: dict[str, tuple[object, str]] = {
@@ -288,8 +289,8 @@ def _gate_passes(effect: EffectSize) -> bool:
 
 
 async def _run_metric_in_thread(
-    fn, db_path: str, player: str
-):
+    fn: Callable[..., Any], db_path: str, player: str
+) -> Any:
     """Run a sync metric function in a worker thread.
 
     The chess_coach.profile metrics are sync functions.
@@ -308,7 +309,7 @@ async def _run_metric_in_thread(
     response_model=MetricExplainResponse,
 )
 @route_guard
-async def explain_metric(player: str, metric_id: str, request: Request):
+async def explain_metric(player: str, metric_id: str, request: Request) -> MetricExplainResponse:
     """§B4 rule 4: methodology + raw inputs + intermediate values.
 
     Returns the EffectSize result + a full methodology

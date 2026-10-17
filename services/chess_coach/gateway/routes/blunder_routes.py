@@ -36,7 +36,7 @@ class BatchBlunderRequest(BaseModel):
 
 @router.post("/v1/blunders/batch-by-fen", response_model=dict)
 @route_guard
-async def get_blunders_batch(body: BatchBlunderRequest, request: Request):
+async def get_blunders_batch(body: BatchBlunderRequest, request: Request) -> dict[str, str | None]:
     """Return blunder classifications for multiple FENs in one round trip."""
     settings = request.app.state.gateway.settings
     results: dict[str, str | None] = {}
@@ -59,7 +59,7 @@ async def get_blunders_batch(body: BatchBlunderRequest, request: Request):
 
 @router.get("/v1/blunders/by-fen", response_model=BlunderEnvelope)
 @route_guard
-async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50):
+async def get_blunders_by_fen(fen: str, request: Request, limit: int = 50) -> BlunderEnvelope:
     """Return blunders matching a specific FEN."""
     settings = request.app.state.gateway.settings
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:

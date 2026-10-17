@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import aiosqlite
 import pydantic
@@ -38,11 +39,11 @@ def _db_path(request: Request) -> str:
     return str(request.app.state.gateway.settings.sqlite_path)
 
 
-def _pipeline(request: Request):
+def _pipeline(request: Request) -> Any:
     return request.app.state.narration_pipeline
 
 
-def _engine_pool(request: Request):
+def _engine_pool(request: Request) -> Any:
     """Return the engine pool wired into the gateway app state.
 
     BBF-87.2: the narration route now invokes engine_pool.analyze()
@@ -118,8 +119,8 @@ class NarrationRouteResponse(NarrationResponse):
 async def explain_position(
     body: NarrationRequest,
     db_path: str = Depends(_db_path),
-    pipeline=Depends(_pipeline),
-    engine_pool=Depends(_engine_pool),
+    pipeline: Any = Depends(_pipeline),
+    engine_pool: Any = Depends(_engine_pool),
 ) -> NarrationResponse:
     """Generate grounded coaching commentary for a chess position."""
     narration_id = str(uuid.uuid4())

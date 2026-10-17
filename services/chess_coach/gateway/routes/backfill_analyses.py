@@ -67,7 +67,7 @@ def _db_path(request: Request) -> str:
     return str(request.app.state.gateway.settings.sqlite_path)
 
 
-def _engine_pool(request: Request):
+def _engine_pool(request: Request) -> Any:
     return request.app.state.engine_pool
 
 
