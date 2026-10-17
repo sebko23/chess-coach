@@ -164,7 +164,7 @@ async def _analyses_table_columns(db_path: str) -> list[tuple[Any, ...]]:
         return _analyses_cols_cache
     async with aiosqlite.connect(db_path) as db:
         cur = await db.execute("PRAGMA table_info(analyses)")
-        _analyses_cols_cache = list(await cur.fetchall())
+        _analyses_cols_cache = cast("list[tuple[Any, ...]]", list(await cur.fetchall()))
     return _analyses_cols_cache
 
 

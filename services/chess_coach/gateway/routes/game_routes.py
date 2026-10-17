@@ -39,7 +39,8 @@ async def list_games(request: Request, limit: int = 100, offset: int = 0) -> Gam
     async with aiosqlite.connect(str(settings.sqlite_path)) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("SELECT COUNT(*) as cnt FROM games")
-        total = (await cur.fetchone())["cnt"]
+        total_row = await cur.fetchone()
+        total = total_row["cnt"] if total_row else 0
         cur = await db.execute(
             "SELECT id, white, black, date, event, result, import_status "
             "FROM games ORDER BY created_at DESC LIMIT ? OFFSET ?",

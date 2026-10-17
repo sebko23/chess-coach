@@ -153,7 +153,8 @@ async def get_queue(player: str, request: Request, limit: int = 20) -> QueueResp
         # Count query
         count_params = (player,) if player and player != 'default' else ()
         cur2 = await db.execute(f"{count_sql} {where}", count_params)
-        due_count = (await cur2.fetchone())[0]
+        due_row = await cur2.fetchone()
+        due_count = due_row[0] if due_row else 0
 
     return QueueResponse(due_count=due_count, cards=cards)
 

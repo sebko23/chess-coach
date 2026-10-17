@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Query, Request
@@ -119,7 +120,8 @@ async def get_training_schedule(
                    WHERE black != '?' GROUP BY black
                    ORDER BY cnt DESC LIMIT 1"""
             )
-            resolved = row[0]["player"] if row else "default"
+            row_list = list(row)
+            resolved = row_list[0]["player"] if row_list and row_list[0] else "default"
         else:
             resolved = player
 
@@ -144,10 +146,11 @@ async def get_training_schedule(
                 (resolved, window_end.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"),
             )
 
-    total_due = len(cards_raw)
+    cards_raw_list = list(cards_raw)
+    total_due = len(cards_raw_list)
 
     # Score and sort all cards
-    scored = []
+    scored: list[dict[str, Any]] = []
     for c in cards_raw:
         try:
             due_dt = datetime.fromisoformat(c["due"].replace("Z", "+00:00"))
@@ -191,7 +194,7 @@ async def get_training_schedule(
         # Pass 1: add review cards (not new)
         temp_idx = card_idx
         while temp_idx < len(scored) and day_minutes < daily_minutes:
-            c = scored[temp_idx]
+            c = scored[temp_idx]  # type: ignore[assignment]
             if not c["is_new"]:
                 mins = MINUTES_PER_CARD.get(c["card_type"], DEFAULT_MINUTES)
                 if day_minutes + mins <= daily_minutes:
@@ -207,7 +210,7 @@ async def get_training_schedule(
             and day_minutes < daily_minutes
             and new_cards_added < new_card_budget
         ):
-            c = scored[temp_idx]
+            c = scored[temp_idx]  # type: ignore[assignment]
             if c["is_new"] and c not in [dc.model_dump() for dc in day_cards]:
                 mins = MINUTES_PER_CARD.get(c["card_type"], DEFAULT_MINUTES)
                 if day_minutes + mins <= daily_minutes:
