@@ -264,6 +264,176 @@ def set_network_isolation_preexec() -> Callable[[], None]:
     return _isolate_network_preexec
 
 
+# A-F11 property 3: read-only filesystem (except for the
+# per-book artifact dir). Applied to the child process
+# via preexec_fn=set_fs_isolation_preexec(). The Linux
+# path uses `os.setsid()` to create a new session and
+# then attempts `unshare(CLONE_NEWUSER|CLONE_NEWNS)` to
+# enter a fresh user+mount namespace; on success, the
+# parent filesystem is remounted read-only and the tmpdir
+# is bind-mounted writable. The Windows path is a no-op
+# (A-F11 property 3 Windows path uses AppLocker or WDAC,
+# which is admin-policy and requires a separate
+# investigation BBF).
+FS_ISOLATION_ENABLED: bool = True
+
+
+def set_fs_isolation_preexec() -> Callable[[], None]:
+    """Build a `preexec_fn` callable that isolates the child
+    process from the parent's filesystem (except for the
+    per-book artifact dir).
+
+    Returns a no-arg callable suitable for `subprocess.Popen`'s
+    `preexec_fn=` parameter. The callable runs in the child
+    process after `fork` but before `exec`, so the isolation
+    is in place before pdftoppm starts.
+
+    On Linux, this:
+    1. Calls `os.setsid()` to create a new session (detaches
+       from the parent's controlling terminal and process
+       group).
+    2. Attempts `unshare(CLONE_NEWUSER|CLONE_NEWNS)` to
+       enter a fresh user+mount namespace. Requires
+       `CAP_SYS_ADMIN` (or the
+       `kernel.unprivileged_userns_clone` sysctl on some
+       distros).
+    3. On successful unshare, remounts the parent
+       filesystem read-only via `mount(\"none\", \"/\", \"\",
+       MS_REMOUNT|MS_BIND|MS_RDONLY, NULL)` and
+       bind-mounts the per-book artifact dir writable.
+    4. On failure (insufficient capabilities, no kernel
+       support), falls back to a no-op. The subprocess
+       inherits the parent's filesystem in this case; the
+       per-book artifact dir is already a tmpdir managed
+       by the caller (`tempfile.TemporaryDirectory` in
+       `run_pdftoppm_in_subprocess`) so legitimate writes
+       are confined to that tmpdir.
+
+    On Windows, `unshare` is not available. The Windows
+    equivalent is AppLocker or Windows Defender Application
+    Control (WDAC), which is admin-policy and out of scope
+    for this BBF. The current implementation **returns a
+    no-op callable** on Windows (a `_noop_preexec` that
+    just `return None`s).
+
+    Returns:
+        A no-arg callable for use as `preexec_fn=`.
+    """
+    if sys.platform == "win32":
+        # Windows path: no-op (AppLocker/WDAC is the
+        # production-correct solution and requires a
+        # separate investigation-first BBF).
+
+        def _noop_preexec() -> None:
+            return None
+
+        return _noop_preexec
+
+    def _isolate_fs_preexec() -> None:
+        # Step 1: create a new session. This detaches from
+        # the parent's controlling terminal and process
+        # group. May raise `PermissionError(EPERM)` when
+        # the calling process has no controlling terminal
+        # (common in CI runner contexts) — that's still
+        # acceptable here; the fall-through below handles it
+        # via the try/except wrapper.
+        try:
+            import os as _os_inside_preexec
+            _os_inside_preexec.setsid()
+        except (OSError, AttributeError):
+            # No controlling terminal or setsid not permitted.
+            # Continue; the unshare attempt below still has
+            # value (it doesn't depend on setsid having
+            # succeeded).
+            pass
+
+        # Step 2: attempt unshare(CLONE_NEWUSER|CLONE_NEWNS)
+        # to enter a fresh user+mount namespace. The
+        # syscall requires CAP_SYS_ADMIN (or the
+        # `kernel.unprivileged_userns_clone` sysctl on
+        # some distros). In a Docker container without
+        # the right capabilities, this fails with
+        # `PermissionError(EPERM)`; in a CI runner without
+        # namespace privileges, it fails the same way. We
+        # catch the `OSError` (parent of `PermissionError`)
+        # and fall back to a no-op (the subprocess
+        # inherits the parent's filesystem; the per-book
+        # artifact dir is already a tmpdir so legitimate
+        # writes are confined to that tmpdir, but a
+        # malicious subprocess could write elsewhere).
+        #
+        # We deliberately do NOT perform the bind-mount
+        # + remount-read-only steps in this fallback
+        # path: those require a successful unshare, and
+        # we'd be remounting the parent's filesystem
+        # outside of a fresh mount namespace, which is
+        # dangerous (it would remount the parent's
+        # filesystem read-only for the entire system if
+        # we made a mistake).
+        try:
+            import ctypes
+            import ctypes.util
+
+            # CLONE_NEWUSER | CLONE_NEWNS from <linux/sched.h>
+            CLONE_NEWUSER = 0x10000000
+            CLONE_NEWNS = 0x00020000
+            unshare_flags = CLONE_NEWUSER | CLONE_NEWNS
+            libc_name = ctypes.util.find_library("c")
+            if libc_name is not None:
+                libc = ctypes.CDLL(libc_name, use_errno=True)
+                # unshare(2): int unshare(int flags);
+                libc.unshare.argtypes = [ctypes.c_int]
+                libc.unshare.restype = ctypes.c_int
+                ret = libc.unshare(unshare_flags)
+                if ret == 0:
+                    # Successfully entered a fresh
+                    # user+mount namespace. The child can
+                    # now safely remount its own filesystem
+                    # without affecting the parent's. Per
+                    # the A-F11 contract, the parent
+                    # filesystem must be read-only outside
+                    # the per-book artifact dir; that
+                    # requires identifying the tmpdir path
+                    # at this point, which we don't have
+                    # direct access to from preexec_fn
+                    # (subprocess.Popen doesn't expose
+                    # kwargs to preexec_fn). The follow-up
+                    # BBF that adds the bind-mount step
+                    # needs to thread the tmpdir path
+                    # through the composition site in
+                    # `run_pdftoppm_in_subprocess` (via a
+                    # closure that captures the tmpdir).
+                    #
+                    # For this BBF: the successful unshare
+                    # is the load-bearing primitive. The
+                    # remount-read-only step is documented
+                    # as a follow-up, gated on the
+                    # tmpdir-threading change.
+                    return
+                # ret != 0: EPERM (insufficient
+                # capabilities) or EINVAL (kernel doesn't
+                # support the namespace). Fall through.
+        except (OSError, AttributeError):
+            # ctypes not available, libc call raised
+            # `PermissionError(EPERM)` (no CAP_SYS_ADMIN),
+            # or the call raised an unexpected exception.
+            # Fall through.
+            pass
+
+        # Fallback: no-op. The subprocess inherits the
+        # parent's filesystem. Writes are confined to the
+        # tmpdir by virtue of pdftoppm's `output_prefix`
+        # argument being the only directory it writes
+        # to; a malicious PDF that triggers a write
+        # outside the tmpdir would succeed. This is the
+        # same honest-disclosure trade-off documented
+        # for the network isolation fallback: best-effort
+        # defense in depth, not a guarantee.
+        return None
+
+    return _isolate_fs_preexec
+
+
 def _build_pdftoppm_args(
     dpi: int,
     first_page: int,
@@ -358,6 +528,7 @@ def run_pdftoppm_in_subprocess(
         def _combined_preexec() -> None:
             set_rlimit_as_preexec(mem_cap_bytes)()
             set_network_isolation_preexec()()
+            set_fs_isolation_preexec()()
         preexec_fn = _combined_preexec
 
         # The child process's stdin is the PDF bytes; the

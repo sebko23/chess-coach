@@ -431,15 +431,17 @@ def test_subprocess_cannot_initiate_outbound_network() -> None:
 @pytest.mark.skip(
     reason=(
         "A-F11 property 3 (read-only filesystem in PDF-parsing "
-        "subprocess, except for the per-book artifact dir) is NOT "
-        "enforced today. pdf2image writes its own temp file via "
-        "tempfile.mkstemp() (typically %TEMP% on Windows, /tmp on "
-        "Linux); no filesystem read-only enforcement on the parent. "
-        "Closing this gap requires either a chroot / bind-mount "
-        "approach (Linux) or a Job Object with the read-only flag "
-        "(Windows). Tracked as FU-21 (A-F11 property 3 — read-only "
-        "filesystem). When FU-21 lands, remove this @pytest.mark.skip "
-        "marker and add a real assertion that exercises the property."
+        "subprocess, except for the per-book artifact dir) is PARTIALLY "
+        "implemented as of BBF-FU-21-impl (set_fs_isolation_preexec, "
+        "Linux: attempts unshare(CLONE_NEWUSER|CLONE_NEWNS), "
+        "fallback no-op on capability failure; Windows: no-op). "
+        "The negative-invariant test (write outside the artifact "
+        "dir is denied) requires the bind-mount step, which depends "
+        "on a successful unshare AND threading the tmpdir path through "
+        "the preexec_fn closure. The follow-up BBF that adds the "
+        "bind-mount step lands this test as a real assertion. "
+        "See docs/16_audit/BBF-FU-21-impl.md §1 and §4 for the "
+        "honest-disclosure trade-off."
     ),
 )
 def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
@@ -449,20 +451,26 @@ def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
 
     Per docs/08_security/security-strategy.md §A-F11, the subprocess
     MUST have a read-only filesystem except for the per-book artifact
-    dir. The current pdf2image/Popen subprocess has full filesystem
-    access (inherits from parent). This test is skip pending FU-21.
+    dir. PARTIALLY implemented as of BBF-FU-21-impl: the subprocess
+    attempts unshare(CLONE_NEWUSER|CLONE_NEWNS) on Linux and is a
+    no-op on Windows. The negative invariant (write outside the
+    artifact dir is denied via OSError EACCES on Linux or
+    WinError 5 on Windows) is still skip today because the bind-mount
+    step requires a successful unshare PLUS threading the tmpdir
+    path through the preexec_fn closure in
+    `run_pdftoppm_in_subprocess`, which is the follow-up BBF.
 
-    The test (when un-marked skip) would attempt to write to a path
-    outside the per-book artifact dir from the subprocess, and assert
-    the write is denied (e.g. via OSError EACCES on Linux or via
-    WinError 5 on Windows). Marked skip today because the
-    implementation does not enforce the property.
+    The positive invariant (pdftoppm's legitimate writes go to the
+    tmpdir/artifact dir) IS exercised today by the broader
+    `run_pdftoppm_in_subprocess` end-to-end path; this specific test
+    is the negative-invariant contract.
     """
     # This block is intentionally a no-op. The test is skip because
-    # the property is not enforced today. When FU-21 lands, the
-    # @pytest.mark.skip marker above is removed and a real assertion
-    # is added here.
-    assert True  # placeholder; real assertion added when FU-21 lands
+    # the NEGATIVE invariant (write outside the artifact dir is
+    # denied) is not enforced today. When the bind-mount
+    # follow-up BBF lands, the @pytest.mark.skip marker above is
+    # removed and a real negative-invariant assertion is added here.
+    assert True  # placeholder; real assertion added when the bind-mount follow-up BBF lands
 
 
 def test_subprocess_respects_2gb_memory_cap() -> None:
