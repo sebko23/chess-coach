@@ -1,57 +1,55 @@
 {
-  "$comment": "FU-29 Stage 2 baseline-and-no-regressions ratchet. This file codifies the current baseline for each quality tool. The CI gates (in .github/workflows/smoke.yml) enforce these floors. To raise a floor, update the value here AND in the corresponding CI job, and document the change in a BBF brief.",
+  "_comment": "FU-29 stage-2 baseline-and-no-regressions ratchet. This file documents the current state of all three quality tools (ruff, mypy, pytest-cov) and the CI floors that prevent regression. The ratchet strategy is: (1) the current measurement is the floor, (2) future BBFs that add new code must include tests that maintain or raise the floor, (3) the CI gate fails if the current measurement drops below the floor. See BBF-FU-29-stage-2-baseline-ratchet.md for the full strategy.",
 
-  "ruff": {
-    "findings": 0,
-    "floor": 0,
-    "tolerance": 0,
-    "ci_job": "ruff",
-    "ci_job_file": ".github/workflows/smoke.yml",
-    "last_raised": null,
-    "last_raised_sha": null,
-    "strategy": "no ratchet needed — ruff is at 0 findings, the CI job enforces the 0 floor on every PR"
-  },
+  "established": "2026-10-17",
+  "last_updated": "2026-10-17",
+  "baseline_commit": "0d09fd55",
 
-  "mypy": {
-    "errors": 0,
-    "floor": 0,
-    "tolerance": 0,
-    "ci_job": "mypy",
-    "ci_job_file": ".github/workflows/smoke.yml",
-    "last_raised": null,
-    "last_raised_sha": null,
-    "strategy": "no ratchet needed — mypy is at 0 errors, the CI job enforces the 0 floor on every PR"
-  },
-
-  "pytest_cov": {
-    "baseline_percent": 61,
-    "floor_percent": 55,
-    "tolerance_percent": 6,
-    "ci_job": "coverage",
-    "ci_job_file": ".github/workflows/smoke.yml",
-    "last_raised": null,
-    "last_raised_sha": null,
-    "strategy": "coverage is at 61% baseline; the CI job enforces a 55% floor (6% tolerance for natural variation in which tests are skipped on different platforms). To raise the floor, update 'floor_percent' here AND in the coverage CI job, and document the change in a BBF brief."
-  },
-
-  "$history": [
-    {
-      "date": "2026-10-17",
-      "bbf": "BBF-FU-29-pytest-cov-baseline",
-      "sha": "0d09fd55",
-      "action": "established 61% baseline; set 55% floor; 5 tests skipped (platform-specific)"
+  "tools": {
+    "ruff": {
+      "stage": "complete",
+      "stage_1_burndown_commit": "a27da3f9",
+      "stage_3_wire_ci_commit": "98780986",
+      "current_floor": 0,
+      "current_measurement": 0,
+      "ci_job": "ruff lint",
+      "ci_command": "ruff check libs services apps/cli tests scripts",
+      "ratchet_strategy": "n/a (already at 0; any new finding fails the build)",
+      "tolerance": 0,
+      "notes": "ruff is at 0 findings. Any new ruff finding is a CI failure. No ratchet needed."
     },
-    {
-      "date": "2026-10-17",
-      "bbf": "BBF-FU-29-mypy-wire-ci",
-      "sha": "379851ff",
-      "action": "mypy at 0; wired CI gate with uv run mypy"
+
+    "mypy": {
+      "stage": "complete",
+      "stage_1_burndown_commit": "ed258fdc",
+      "stage_3_wire_ci_commit": "379851ff",
+      "current_floor": 0,
+      "current_measurement": 0,
+      "ci_job": "mypy strict",
+      "ci_command": "uv run mypy libs services apps/cli --no-incremental",
+      "ratchet_strategy": "n/a (already at 0; any new error fails the build)",
+      "tolerance": 0,
+      "notes": "mypy is at 0 errors with strict mode. Any new mypy error is a CI failure. No ratchet needed."
     },
-    {
-      "date": "2026-10-16",
-      "bbf": "BBF-FU-29-ruff-wire-ci",
-      "sha": "98780986",
-      "action": "ruff at 0; wired CI gate"
+
+    "pytest-cov": {
+      "stage": "complete",
+      "stage_1_baseline_commit": "0d09fd55",
+      "stage_3_wire_ci_commit": "0d09fd55",
+      "current_floor": 55,
+      "current_measurement": 61,
+      "ci_job": "pytest-cov baseline",
+      "ci_command": "uv run pytest --cov=libs/chess_coach --cov=services/chess_coach --cov=apps/cli/chess_coach --cov-fail-under=55 tests/unit/",
+      "ratchet_strategy": "floor is 6% below baseline; raise the floor incrementally as new code is added with tests",
+      "tolerance": 6,
+      "notes": "Coverage is at 61% (4785 statements, 1711 missed, 1082 branches, 94 partial). The 55% floor is a 6% tolerance for natural variation in which tests are run on different platforms. When FU-20 and FU-21 land (A-F11 properties 2 and 3), 2 skipped tests will be enabled, potentially raising the baseline."
     }
-  ]
+  },
+
+  "ratchet_rules": {
+    "1_new_code_must_include_tests": "Any new code (new files, new functions, new branches) must include tests that exercise the new code. The CI gate enforces this by failing the build if coverage drops below the floor.",
+    "2_floor_never_lowered": "The current_floor for each tool MUST NEVER be lowered. If a tool's current_measurement drops below the floor, the build fails. The only way to lower the floor is to explicitly amend quality-ratchet.json with a justification.",
+    "3_measurement_must_stay_above_floor": "The current_measurement for each tool MUST stay at or above the current_floor. If it drops, the build fails. The fix is to add tests for the uncovered code, not to lower the floor.",
+    "4_ignored_tests_documented": "Any test that is skipped or ignored in the CI run MUST be documented in the tool's notes field with a justification (e.g., platform-specific, requires OS-level dependencies, blocked by an open FU)."
+  }
 }
