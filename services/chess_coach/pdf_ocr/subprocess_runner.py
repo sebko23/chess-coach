@@ -160,15 +160,48 @@ def set_network_isolation_preexec() -> Callable[[], None]:
         A no-arg callable for use as `preexec_fn=`.
     """
     if sys.platform == "win32":
-        # The Windows path uses a Job Object with
-        # `JOB_OBJECT_NET_RATE_CONTROL`. That requires
-        # `pywin32` and the `win32job` module, which is
-        # not currently a project dependency. The follow-up
-        # BBF (Windows FU-20 path) can add this. For now,
-        # the isolation is a no-op on Windows.
-        def _noop_preexec() -> None:
-            return None
-        return _noop_preexec
+        # Windows path: best-effort network isolation.
+        #
+        # The ideal Windows implementation would use a Job
+        # Object with `JOB_OBJECT_NET_RATE_CONTROL` (Windows
+        # 8+), but the `pywin32` module does not expose the
+        # `SetInformationJobObject` API for this info class.
+        # The `win32job` module exposes:
+        #   - CreateJobObject
+        #   - AssignProcessToJobObject
+        #   - SetInformationJobObject (limited info classes)
+        #   - JOB_OBJECT_LIMIT_PROCESS_MEMORY (memory cap,
+        #     already used by FU-22-impl for the 2 GB cap)
+        #
+        # The Windows network isolation therefore degrades to
+        # a best-effort approach: strip network-related env
+        # vars (proxy config, etc.) so the child can't use
+        # inherited proxy settings to bypass whatever
+        # network policy the host has. This is NOT a
+        # guarantee of network isolation (a determined
+        # attacker can still open raw sockets); it's a
+        # defense-in-depth measure.
+        #
+        # A follow-up BBF can add the full Windows network
+        # isolation via:
+        # 1. A custom C extension calling
+        #    `SetInformationJobObject` with
+        #    `JobObjectNetRateControlInformation`
+        # 2. Windows Firewall rules via `netsh advfirewall`
+        #    (requires admin, not recommended for a subprocess)
+        # 3. AppContainer (requires significant new code)
+        def _windows_isolate_network() -> None:
+            # Best-effort: strip proxy env vars so the child
+            # can't use inherited proxy config. This is the
+            # same fallback as the Linux path.
+            for var in (
+                "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+                "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+            ):
+                import os as _os
+                _os.environ.pop(var, None)
+
+        return _windows_isolate_network
 
     def _isolate_network_preexec() -> None:
         # Step 1: create a new session. This detaches from
