@@ -1711,6 +1711,38 @@ no filesystem read-only enforcement on the parent" (line 128).
 (2) refactor pdf_ingest.py to use that wrapper, (3) add a test that asserts
   the subprocess cannot write outside the per-book artifact dir.
 
+**Status (clarified 2026-10-18, doc-drift flip-6):** **PARTIALLY RESOLVED
+2026-10-18 via squash-merge of PR #166** (commit `8877ab81`,
+BBF-FU-21-impl, brief at `docs/16_audit/BBF-FU-21-impl.md`). The Linux path
+is partial: `set_fs_isolation_preexec()` in
+`services/chess_coach/pdf_ocr/subprocess_runner.py` calls `os.setsid()`
+(wrapped in try/except so `PermissionError(EPERM)` falls through on CI
+runners with no controlling-terminal context), then attempts
+`unshare(CLONE_NEWUSER|CLONE_NEWNS)` via ctypes to enter a fresh
+user+mount namespace (CLONE_NEWUSER = `0x10000000`,
+CLONE_NEWNS = `0x00020000`). On success: returns silently. On failure
+(EPERM or kernel doesn't support): falls back to a no-op. The
+full read-only filesystem enforcement requires threading the
+per-book artifact dir through the preexec_fn closure to perform the
+bind-mount read-only step, which is gated on a follow-up BBF
+that depends on the `subprocess.Popen` kwargs-to-preexec_fn
+threading pattern (see BBF-FU-21-impl §4 honest-disclosure #2).
+The Windows path is a no-op (AppLocker/WDAC requires
+system-wide admin policy and is documented as the
+production-correct solution in `docs/16_audit/BBF-FU-20-21-22-A-F11-spikes.md`
+Section B; the follow-up BBF-FU-21-windows-scope scope brief is
+the next sequence).
+
+The original `**Status:** OPEN` line above is preserved as historical
+context (it was accurate at the time of the FU-19 / A-F11 BBF
+session on 2026-08-13). The LIVE status is the **PARTIALLY
+RESOLVED** clarification block above. Per the prior doc-drift
+flip-3 (PR #162) convention, the clarification block cites the
+squash-merge SHA (`8877ab81`) and the squash feature commit
+(via `git show 8877ab81 --stat`); the BBF-FU-21-impl brief landed
+on main as a single feature commit (squash-style), so the
+squash-merge SHA IS the feature SHA in this case.
+
 **Why this is FU-21:**
 
 - Per-property follow-on to FU-19; same heavy-lift caveat as FU-20.
@@ -1722,6 +1754,11 @@ no filesystem read-only enforcement on the parent" (line 128).
 - FU-20 (this file) for the related network-isolation work; both properties
   require a subprocess-wrapper module but with different Linux/Windows
   primitives (namespace/Job Object for network; chroot/AppLocker for FS).
+- `docs/16_audit/BBF-FU-21-impl.md` (brief, squash `8877ab81`)
+- `docs/16_audit/BBF-FU-20-21-22-A-F11-spikes.md` Section B (the
+  investigation-first spike that scoped this implementation; the
+  Windows path deferral note in Section B is the upstream record
+  for the AppLocker/WDAC constraint).
 
 ---
 
