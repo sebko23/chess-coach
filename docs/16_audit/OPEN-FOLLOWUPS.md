@@ -1620,6 +1620,10 @@ for record-keeping per the directive. Investigation-first BBF would:
 - `docs/02_modules/module-decomposition.md` § A-F7 (subprocess sandbox spec)
 ## FU-20 — A-F11 property 2 (network isolation) has no implementation or test
 
+**Status:** **PARTIALLY RESOLVED 2026-10-18 via squash-merge of PR #163 and PR #164** (feature commits `190a0c27` (under merge `4c11159c`) and `913652c3` (under merge `fa0bfd73`), BBF-FU-20-impl + BBF-FU-20-impl-windows). The Linux path is complete: `set_network_isolation_preexec()` in `services/chess_coach/pdf_ocr/subprocess_runner.py` calls `os.setsid()` to create a new session, then `unshare(CLONE_NEWNET)` via ctypes to enter a fresh network namespace (no loopback, no localhost, no DNS, no outbound TCP/UDP). The Windows path is best-effort: strips proxy env vars (`http_proxy`, `https_proxy`, `all_proxy`, `no_proxy` and their uppercase variants) since the `pywin32` module does not expose `SetInformationJobObject` for `JobObjectNetRateControlInformation`. 3 new tests added to `tests/unit/test_subprocess_runner.py` (7 passed, 2 skipped on Windows). CI: 15/15 green on main (`fa0bfd73`).
+
+**Out of scope (follow-up BBFs):** (1) Full Windows network isolation via custom C extension or AppContainer (requires significant new code). (2) Verification that `unshare(CLONE_NEWNET)` actually creates a new network namespace (the existing test only verifies `os.setsid()` runs). (3) The `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (memory cap on Windows, separate from network isolation) — was deferred by FU-22-impl.
+
 **Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
 Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
 property 2: "No network access. *Not currently enforced.* The subprocess
