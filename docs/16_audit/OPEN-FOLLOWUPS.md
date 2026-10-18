@@ -2085,6 +2085,28 @@ decision first.
 
 ## FU-29 — Declared-but-unused quality tooling: ruff, mypy, pytest-cov
 
+**Status:** **RESOLVED 2026-10-17 via BBF-FU-29 chain (12 BBFs, squashed across main)**.
+The FU-29 ratchet is COMPLETE — all 3 stages (burn-down, baseline, wire CI)
+done for all 3 tools (ruff, mypy, pytest-cov).
+
+- **ruff:** Stage 1 burn-down at `a27da3f9` (33 → 0 findings). Stage 3
+  wire-CI at `98780986` (13/13 green). The CI gate fails on any new
+  ruff finding.
+- **mypy:** Stage 1 burn-down at `ed258fdc` (169 → 0 errors across
+  6 sub-task BBFs: easy-burndown, type-arg, misc, no-untyped-def,
+  no-any-return, misc-followup). Stage 3 wire-CI at `379851ff`
+  (14/14 green after 2 amends: `uv sync` + `uv run mypy`). Stage 2
+  baseline ratchet at `70a1cb38` (`quality-ratchet.json` +
+  `scripts/dev/check_quality_ratchet.py`). The CI gate fails on
+  any new mypy error.
+- **pytest-cov:** Stage 1 baseline at `0d09fd55` (61% coverage, 4785
+  statements / 1711 missed / 1082 branches / 94 partial). Stage 3
+  wire-CI at `0d09fd55` (15/15 green, `--cov-fail-under=55`).
+  Stage 2 baseline ratchet at `70a1cb38` (55% floor, 6% tolerance).
+
+**Final state on main (`70a1cb38`):** ruff 0/0, mypy 0/0, pytest-cov 61/55%.
+All three tools are CI-gated and self-enforcing.
+
 **Identified:** 2026-08-25, same state check as FU-28. Evidence-only entry; no scope committed.
 
 **Finding:** `pyproject.toml` `[dev]` extras declare `ruff>=0.4`, `mypy>=1.10`, `pytest-cov>=4.1`
@@ -2359,6 +2381,10 @@ entry under `## Resolved` below for the full disposition.
 ---
 
 ## FU-35 — `chess_coach` implicit namespace package blocks clean PyInstaller packaging
+
+**Status:** **PARTIALLY RESOLVED 2026-10-17 via squash-merge of PR #161** (commit `99a355df`, BBF-FU-35-explicit-namespace). The structural fix is complete: `chess_coach/__init__.py` was added at the repo root (option (b) from the FU-35 resolution shape), and `[tool.setuptools.package-dir]` in `pyproject.toml` was updated with the self-mapping `"chess_coach" = "chess_coach"`. The per-package mappings (`chess_coach.errors` → `libs/chess_coach/errors`, etc.) are preserved, so the editable install continues to work. CI: 15/15 green on main (`92aa7dfc`).
+
+**Out of scope for the structural fix (follow-up BBF `BBF-FU-35-pyi-cleanup`):** the PyInstaller spec update (use `collect_all('chess_coach')` instead of tree-level `datas=` entries), removal of the runtime hook (`services/chess_coach/gateway/pyinstaller_rthook.py`), and verification of the PyInstaller binary smoke test without the runtime hook. These are the remaining work for the FU-35 resolution.
 
 **Identified:** 2026-09-05, surfaced during BBF-Phase8-1 (PR #119) iteration 3
 on the PyInstaller spec. See the BBF audit doc at
