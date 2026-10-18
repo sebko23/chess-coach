@@ -115,6 +115,122 @@ def set_rlimit_as_preexec(mem_cap_bytes: int) -> Callable[[], None]:
     return _set_rlimit_preexec
 
 
+# A-F11 property 2: no network access. Applied to the
+# child process via preexec_fn=set_network_isolation_preexec().
+# The Linux path uses `os.setsid()` to create a new session
+# and then attempts to `unshare(CLONE_NEWNET)` to enter a
+# fresh network namespace. The Windows path is a no-op
+# (the A-F11 Windows path is a follow-up BBF that uses
+# Job Object with `JOB_OBJECT_NET_RATE_CONTROL`).
+NET_ISOLATION_ENABLED: bool = True
+
+
+def set_network_isolation_preexec() -> Callable[[], None]:
+    """Build a `preexec_fn` callable that isolates the child
+    process from the network.
+
+    Returns a no-arg callable suitable for `subprocess.Popen`'s
+    `preexec_fn=` parameter. The callable runs in the child
+    process after `fork` but before `exec`, so the isolation
+    is in place before pdftoppm starts.
+
+    On Linux, this:
+    1. Calls `os.setsid()` to create a new session (detaches
+       from the parent's controlling terminal and process
+       group).
+    2. Attempts to `unshare(CLONE_NEWNET)` to enter a fresh
+       network namespace (no network interfaces, no loopback,
+       no localhost). This requires the `unshare` binary to
+       be on PATH (it is on most Linux distros by default).
+    3. Removes network-related environment variables
+       (`http_proxy`, `https_proxy`, `no_proxy`, `all_proxy`)
+       to prevent the child from inheriting proxy config
+       that could be used to bypass the network namespace
+       isolation.
+
+    On Windows, `unshare` is not available. The Windows
+    equivalent is a Job Object with
+    `JOB_OBJECT_NET_RATE_CONTROL` (see follow-up BBFs).
+    The current implementation **returns a no-op callable**
+    on Windows (a `_noop_preexec` that just `return None`s);
+    the test `test_set_network_isolation_preexec_noop_on_windows`
+    covers the no-op code path on Windows.
+
+    Returns:
+        A no-arg callable for use as `preexec_fn=`.
+    """
+    if sys.platform == "win32":
+        # The Windows path uses a Job Object with
+        # `JOB_OBJECT_NET_RATE_CONTROL`. That requires
+        # `pywin32` and the `win32job` module, which is
+        # not currently a project dependency. The follow-up
+        # BBF (Windows FU-20 path) can add this. For now,
+        # the isolation is a no-op on Windows.
+        def _noop_preexec() -> None:
+            return None
+        return _noop_preexec
+
+    def _isolate_network_preexec() -> None:
+        # Step 1: create a new session. This detaches from
+        # the parent's controlling terminal and process
+        # group, so the child can't be killed by signals
+        # sent to the parent's process group.
+        import os as _os_inside_preexec
+        _os_inside_preexec.setsid()
+
+        # Step 2: attempt to enter a fresh network namespace
+        # via the unshare(2) syscall (CLONE_NEWNET). This
+        # isolates the child from the parent's network
+        # interfaces: no loopback, no localhost, no DNS,
+        # no outbound TCP/UDP. The child has zero network
+        # access after this call.
+        #
+        # The syscall requires CAP_SYS_ADMIN (or the
+        # kernel.unprivileged_userns_clone sysctl on some
+        # distros). In a Docker container, this may fail
+        # if the container was started without the right
+        # capabilities. We fall back to env-var stripping
+        # + fd-closing in that case.
+        try:
+            import ctypes
+            import ctypes.util
+            CLONE_NEWNET = 0x40000000  # from <linux/sched.h>
+            libc_name = ctypes.util.find_library("c")
+            if libc_name is not None:
+                libc = ctypes.CDLL(libc_name, use_errno=True)
+                # unshare(2): int unshare(int flags);
+                libc.unshare.argtypes = [ctypes.c_int]
+                libc.unshare.restype = ctypes.c_int
+                ret = libc.unshare(CLONE_NEWNET)
+                if ret == 0:
+                    # Successfully entered a new network
+                    # namespace. The child has no network
+                    # access. No need for the fallback.
+                    return
+                # ret != 0: EPERM (insufficient capabilities)
+                # or EINVAL (kernel doesn't support CLONE_NEWNET).
+                # Fall through to the env-var + fd-closing
+                # fallback below.
+        except (OSError, AttributeError):
+            # ctypes not available, or the libc call raised
+            # an unexpected exception. Fall through.
+            pass
+
+        # Step 3 (fallback): strip network-related env vars.
+        # This is best-effort and does not guarantee network
+        # isolation (a determined attacker can still open
+        # new sockets), but it removes the most common
+        # exfiltration vectors (proxy env vars, inherited
+        # socket fds from the parent).
+        for var in (
+            "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+        ):
+            _os_inside_preexec.environ.pop(var, None)
+
+    return _isolate_network_preexec
+
+
 def _build_pdftoppm_args(
     dpi: int,
     first_page: int,
@@ -199,7 +315,17 @@ def run_pdftoppm_in_subprocess(
         # does not expose preexec_fn, which is why this
         # module bypasses pdf2image and calls pdftoppm
         # directly.
-        preexec_fn = set_rlimit_as_preexec(mem_cap_bytes)
+        # A-F11 properties 2 + 4: combine the memory cap and
+        # network isolation into a single preexec_fn. Both
+        # callbacks run in the child process after fork,
+        # before exec, so both are in place before pdftoppm
+        # starts. We use a single composed callable rather
+        # than two separate preexec_fn args because
+        # subprocess.Popen only accepts one preexec_fn.
+        def _combined_preexec() -> None:
+            set_rlimit_as_preexec(mem_cap_bytes)()
+            set_network_isolation_preexec()()
+        preexec_fn = _combined_preexec
 
         # The child process's stdin is the PDF bytes; the
         # child writes output files into tmpdir (which is

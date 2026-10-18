@@ -22,11 +22,13 @@ succeeds (skipped if the system doesn't have 3 GB of RAM
 from __future__ import annotations
 
 import os
+import os as _os
 import sys
 
 import pytest
 from services.chess_coach.pdf_ocr.subprocess_runner import (
     MEM_CAP_BYTES,
+    set_network_isolation_preexec,
     set_rlimit_as_preexec,
 )
 
@@ -187,3 +189,75 @@ def test_module_exposes_pdftoppm_available() -> None:
     # callable and returns a bool).
     result = pdftoppm_available()
     assert isinstance(result, bool)
+
+
+def test_set_network_isolation_preexec_returns_callable() -> None:
+    """The network isolation preexec_fn is always a callable.
+
+    On Linux, it runs `os.setsid()` then `unshare(CLONE_NEWNET)`
+    via ctypes. On Windows, it returns a no-op callable.
+    The contract is the same: a no-arg callable suitable
+    for `subprocess.Popen`'s `preexec_fn=` parameter.
+    """
+    preexec_fn = set_network_isolation_preexec()
+    assert callable(preexec_fn)
+    # Calling it should not raise (the Linux path may
+    # fall back to the env-var stripping if unshare
+    # fails; both paths are best-effort and must not
+    # raise from the parent's perspective).
+    preexec_fn()
+
+
+def test_set_network_isolation_preexec_is_noop_on_windows() -> None:
+    """On Windows, the network isolation is a no-op.
+
+    Per A-F11, the Windows path is a follow-up BBF that
+    uses Job Object with `JOB_OBJECT_NET_RATE_CONTROL`.
+    The current implementation returns a no-op callable
+    on Windows (a `_noop_preexec` that just `return None`s).
+    """
+    if sys.platform != "win32":
+        pytest.skip("Windows-only test")
+    preexec_fn = set_network_isolation_preexec()
+    # Calling it should be a no-op (return None, not raise)
+    result = preexec_fn()
+    assert result is None
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="A-F11 net isolation (unshare) is Unix-only; Windows is a follow-up BBF",
+)
+def test_set_network_isolation_preexec_calls_setsid() -> None:
+    """On Linux, the preexec_fn calls `os.setsid()` to create a new session.
+
+    We verify this by forking and checking that the child
+    process has a different session ID (SID) and process
+    group ID (PGID) from the parent. The `unshare(CLONE_NEWNET)`
+    call is best-effort (may fail in containers without
+    CAP_SYS_ADMIN), but the `os.setsid()` call always
+    succeeds on Linux.
+    """
+    pid = os.fork()
+    if pid == 0:
+        # Child process
+        try:
+            set_network_isolation_preexec()()
+            # After setsid, the child's PGID == its PID
+            child_pgid = os.getpgrp()
+            child_pid = os.getpid()
+            # Exit 0 if PGID == PID (setsid worked),
+            # exit 1 otherwise.
+            if child_pgid == child_pid:
+                _os._exit(0)
+            else:
+                _os._exit(1)
+        except Exception:
+            _os._exit(2)
+    else:
+        # Parent process: wait for child
+        _, status = os.waitpid(pid, 0)
+        assert os.WIFEXITED(status), "child did not exit normally"
+        exit_code = os.WEXITSTATUS(status)
+        assert exit_code == 0, f"setsid failed in child (exit {exit_code})"
+
