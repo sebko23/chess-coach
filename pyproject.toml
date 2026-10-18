@@ -105,6 +105,12 @@ packages = [
 ]
 
 [tool.setuptools.package-dir]
+# FU-35: explicit `chess_coach` namespace package marker. The per-package
+# mappings below redirect each `chess_coach.X` subpackage to its source
+# directory (libs/ or services/ or apps/cli/). The root `chess_coach/`
+# directory contains only `__init__.py` (a namespace marker); no code lives
+# there. This is option (b) from the FU-35 resolution shape.
+"chess_coach"                    = "chess_coach"
 "chess_coach.errors"             = "libs/chess_coach/errors"
 "chess_coach.storage"            = "libs/chess_coach/storage"
 "chess_coach.storage.migrations" = "libs/chess_coach/storage/migrations"
