@@ -1733,6 +1733,42 @@ production-correct solution in `docs/16_audit/BBF-FU-20-21-22-A-F11-spikes.md`
 Section B; the follow-up BBF-FU-21-windows-scope scope brief is
 the next sequence).
 
+**Status (clarified 2026-10-19, doc-drift flip-7):** **RESOLVED
+2026-10-19 on both the Linux full-enforcement surface AND the
+Windows deployment-config surface.** The Linux path is
+now full (the bind-mount step threads the per-book artifact
+dir through the preexec_fn closure and on a successful
+`unshare(CLONE_NEWUSER|CLONE_NEWNS)` performs
+`mount("none", "/", "", MS_REMOUNT|MS_BIND|MS_RDONLY, NULL)` +
+`mount("none", "<tmpdir>", "", MS_BIND, NULL)` — via the new
+`set_fs_isolation_preexec(tmpdir: Path | None = None)`
+signature). Implementation: PR #169 squash-merge
+`d3fbb35c` (BBF-FU-21-bind-mount, brief at
+`docs/16_audit/BBF-FU-21-bind-mount.md`). The test
+`test_set_fs_isolation_preexec_performs_mount_on_linux_with_capability`
+verifies the bind-mount step via `/proc/self/mountinfo` parsing
+in a forked child (skip-gated on environments without
+CAP_SYS_ADMIN or `kernel.unprivileged_userns_clone`).
+
+The Windows path is now closed as a **deployment-config
+concern** per PR #168 squash-merge `db0e4121`
+(BBF-FU-21-windows-scope, brief at
+`docs/16_audit/BBF-FU-21-windows-scope.md`). AppLocker / WDAC
+are the production-correct answer for Windows filesystem
+enforcement on a per-machine basis; system-wide policy
+configuration lives in a separate deployment-config repo,
+not in this repo's Python code.
+
+The `**Status (clarified 2026-10-18, doc-drift flip-6):**`
+PARTIALLY-RESOLVED block above is preserved as historical
+context (true at the time of flip-6 + BBF-FU-21-impl). The
+LIVE status is the new `**Status (clarified 2026-10-19,
+doc-drift flip-7):**` **RESOLVED** block above. Per the
+flip-3 / flip-6 / flip-7 convention, the clarification
+block cites the actual squash SHAs (`d3fbb35c` for
+Linux full-enforcement, `db0e4121` for Windows
+deployment-config close-out).
+
 The original `**Status:** OPEN` line above is preserved as historical
 context (it was accurate at the time of the FU-19 / A-F11 BBF
 session on 2026-08-13). The LIVE status is the **PARTIALLY
@@ -1755,10 +1791,15 @@ squash-merge SHA IS the feature SHA in this case.
   require a subprocess-wrapper module but with different Linux/Windows
   primitives (namespace/Job Object for network; chroot/AppLocker for FS).
 - `docs/16_audit/BBF-FU-21-impl.md` (brief, squash `8877ab81`)
+- `docs/16_audit/BBF-FU-21-bind-mount.md` (brief, squash `d3fbb35c`)
+- `docs/16_audit/BBF-FU-21-windows-scope.md` (brief, squash `db0e4121`)
 - `docs/16_audit/BBF-FU-20-21-22-A-F11-spikes.md` Section B (the
   investigation-first spike that scoped this implementation; the
   Windows path deferral note in Section B is the upstream record
   for the AppLocker/WDAC constraint).
+- `docs/16_audit/BBF-doc-drift-flip-6.md` (the prior ledger flip,
+  squash `1487ff76`)
+- `docs/16_audit/BBF-doc-drift-flip-7.md` (this ledger flip)
 
 ---
 
