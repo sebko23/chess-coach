@@ -432,16 +432,24 @@ def test_subprocess_cannot_initiate_outbound_network() -> None:
     reason=(
         "A-F11 property 3 (read-only filesystem in PDF-parsing "
         "subprocess, except for the per-book artifact dir) is PARTIALLY "
-        "implemented as of BBF-FU-21-impl (set_fs_isolation_preexec, "
-        "Linux: attempts unshare(CLONE_NEWUSER|CLONE_NEWNS), "
-        "fallback no-op on capability failure; Windows: no-op). "
-        "The negative-invariant test (write outside the artifact "
-        "dir is denied) requires the bind-mount step, which depends "
-        "on a successful unshare AND threading the tmpdir path through "
-        "the preexec_fn closure. The follow-up BBF that adds the "
-        "bind-mount step lands this test as a real assertion. "
-        "See docs/16_audit/BBF-FU-21-impl.md §1 and §4 for the "
-        "honest-disclosure trade-off."
+        "implemented as of BBF-FU-21-bind-mount: the bind-mount step "
+        "(`set_fs_isolation_preexec(tmpdir)` performs "
+        "mount(MS_REMOUNT|MS_BIND|MS_RDONLY) + mount(MS_BIND) on the "
+        "artifact dir after a successful "
+        "unshare(CLONE_NEWUSER|CLONE_NEWNS)). The negative-invariant "
+        "test (write outside the artifact dir is denied) requires "
+        "CAP_SYS_ADMIN or `kernel.unprivileged_userns_clone` sysctl "
+        "in the test environment; this test environment lacks the "
+        "capability, so the assertion is skip-gated. See "
+        "`test_set_fs_isolation_preexec_performs_mount_on_linux_with_capability` "
+        "in `tests/unit/test_subprocess_runner.py` for the real "
+        "assertion run on hosts that DO have the capability. On "
+        "Windows the no-op applies (AppLocker/WDAC is the "
+        "deployment-config concern per BBF-FU-21-windows-scope). "
+        "The follow-up BBF that flips the FU-21 ledger entry to "
+        "RESOLVED on the Linux-full-enforcement surface is a "
+        "separate deliverable per the skill's one-BBF = "
+        "one-clean-change rule."
     ),
 )
 def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
@@ -451,14 +459,15 @@ def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
 
     Per docs/08_security/security-strategy.md §A-F11, the subprocess
     MUST have a read-only filesystem except for the per-book artifact
-    dir. PARTIALLY implemented as of BBF-FU-21-impl: the subprocess
-    attempts unshare(CLONE_NEWUSER|CLONE_NEWNS) on Linux and is a
-    no-op on Windows. The negative invariant (write outside the
-    artifact dir is denied via OSError EACCES on Linux or
-    WinError 5 on Windows) is still skip today because the bind-mount
-    step requires a successful unshare PLUS threading the tmpdir
-    path through the preexec_fn closure in
-    `run_pdftoppm_in_subprocess`, which is the follow-up BBF.
+    dir. PARTIALLY implemented as of BBF-FU-21-bind-mount: the
+    bind-mount step is in place on Linux (gated on
+    `unshare(CLONE_NEWUSER|CLONE_NEWNS)` + a provided tmpdir path).
+    The negative invariant (write outside the artifact dir is denied
+    via OSError EACCES on Linux or WinError 5 on Windows) is
+    skip-gated on capability -- environments with CAP_SYS_ADMIN or
+    `kernel.unprivileged_userns_clone` run the real assertion via
+    `test_set_fs_isolation_preexec_performs_mount_on_linux_with_capability`
+    in `tests/unit/test_subprocess_runner.py`.
 
     The positive invariant (pdftoppm's legitimate writes go to the
     tmpdir/artifact dir) IS exercised today by the broader
@@ -467,10 +476,13 @@ def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
     """
     # This block is intentionally a no-op. The test is skip because
     # the NEGATIVE invariant (write outside the artifact dir is
-    # denied) is not enforced today. When the bind-mount
-    # follow-up BBF lands, the @pytest.mark.skip marker above is
-    # removed and a real negative-invariant assertion is added here.
-    assert True  # placeholder; real assertion added when the bind-mount follow-up BBF lands
+    # denied) is gated on the bind-mount + remount-read-only steps,
+    # which require CAP_SYS_ADMIN or unprivileged_userns_clone in
+    # the test environment. The bind-mount step IS implemented in
+    # `subprocess_runner.py` per BBF-FU-21-bind-mount; the assertion
+    # is run in environments that have the capability (CI runners
+    # without the capability are skip-gated, which is correct).
+    assert True  # placeholder; see brief BBF-FU-21-bind-mount for the real assertion path
 
 
 def test_subprocess_respects_2gb_memory_cap() -> None:

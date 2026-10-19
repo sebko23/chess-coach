@@ -267,18 +267,22 @@ def set_network_isolation_preexec() -> Callable[[], None]:
 # A-F11 property 3: read-only filesystem (except for the
 # per-book artifact dir). Applied to the child process
 # via preexec_fn=set_fs_isolation_preexec(). The Linux
-# path uses `os.setsid()` to create a new session and
+# path uses `os.setsid()` to create a new session,
 # then attempts `unshare(CLONE_NEWUSER|CLONE_NEWNS)` to
 # enter a fresh user+mount namespace; on success, the
-# parent filesystem is remounted read-only and the tmpdir
-# is bind-mounted writable. The Windows path is a no-op
-# (A-F11 property 3 Windows path uses AppLocker or WDAC,
-# which is admin-policy and requires a separate
-# investigation BBF).
+# parent filesystem is remounted read-only (`mount("none",
+# "/", "", MS_REMOUNT|MS_BIND|MS_RDONLY, NULL)`) and
+# the per-book artifact dir (passed via `tmpdir`) is
+# bind-mounted writable (`mount("none", str(tmpdir),
+# "", MS_BIND, NULL)`). The Windows path is a no-op
+# (AppLocker/WDAC is the deployment-config concern per
+# BBF-FU-21-windows-scope).
 FS_ISOLATION_ENABLED: bool = True
 
 
-def set_fs_isolation_preexec() -> Callable[[], None]:
+def set_fs_isolation_preexec(
+    tmpdir: Path | None = None,
+) -> Callable[[], None]:
     """Build a `preexec_fn` callable that isolates the child
     process from the parent's filesystem (except for the
     per-book artifact dir).
@@ -287,6 +291,19 @@ def set_fs_isolation_preexec() -> Callable[[], None]:
     `preexec_fn=` parameter. The callable runs in the child
     process after `fork` but before `exec`, so the isolation
     is in place before pdftoppm starts.
+
+    Args:
+        tmpdir: optional path to the per-book artifact dir
+            that the subprocess may write to. When
+            provided AND a successful `unshare` is
+            achievable, the parent filesystem is remounted
+            read-only and the tmpdir is bind-mounted
+            writable. When None (or unshare fails), the
+            subprocess inherits the parent's filesystem
+            unchanged; writes are confined to whatever
+            path the caller already passes to
+            `pdftoppm` (the `output_prefix` argument;
+            typically the `tmpdir` itself).
 
     On Linux, this:
     1. Calls `os.setsid()` to create a new session (detaches
@@ -297,37 +314,46 @@ def set_fs_isolation_preexec() -> Callable[[], None]:
        `CAP_SYS_ADMIN` (or the
        `kernel.unprivileged_userns_clone` sysctl on some
        distros).
-    3. On successful unshare, remounts the parent
-       filesystem read-only via `mount(\"none\", \"/\", \"\",
-       MS_REMOUNT|MS_BIND|MS_RDONLY, NULL)` and
-       bind-mounts the per-book artifact dir writable.
+    3. On successful unshare with a `tmpdir` provided,
+       remounts the parent filesystem read-only via
+       `mount("none", "/", "", MS_REMOUNT|MS_BIND|MS_RDONLY, NULL)`
+       and bind-mounts the tmpdir writable via
+       `mount("none", "<tmpdir>", "", MS_BIND, NULL)`.
+       The bind-mount step requires the per-book artifact
+       dir path at preexec-fn invocation time, which is
+       why this factory accepts `tmpdir` as a closure
+       parameter.
     4. On failure (insufficient capabilities, no kernel
-       support), falls back to a no-op. The subprocess
-       inherits the parent's filesystem in this case; the
-       per-book artifact dir is already a tmpdir managed
-       by the caller (`tempfile.TemporaryDirectory` in
-       `run_pdftoppm_in_subprocess`) so legitimate writes
-       are confined to that tmpdir.
+       support, or no `tmpdir` provided), falls back to a
+       no-op. The subprocess inherits the parent's
+       filesystem in this case; legitimate writes
+       (pdftoppm's PNG output) are confined to whatever
+       the caller's pdftoppm invocation already passes
+       as the writable dir.
 
     On Windows, `unshare` is not available. The Windows
-    equivalent is AppLocker or Windows Defender Application
-    Control (WDAC), which is admin-policy and out of scope
-    for this BBF. The current implementation **returns a
-    no-op callable** on Windows (a `_noop_preexec` that
-    just `return None`s).
+    FS enforcement is documented as a deployment-config
+    concern per BBF-FU-21-windows-scope (AppLocker / WDAC);
+    this factory ignores the `tmpdir` arg and returns a
+    no-op callable.
 
     Returns:
         A no-arg callable for use as `preexec_fn=`.
     """
     if sys.platform == "win32":
         # Windows path: no-op (AppLocker/WDAC is the
-        # production-correct solution and requires a
-        # separate investigation-first BBF).
+        # deployment-config concern per BBF-FU-21-windows-scope).
 
         def _noop_preexec() -> None:
             return None
 
         return _noop_preexec
+
+    # Capture tmpdir in the closure for the inner
+    # _isolate_fs_preexec function. The Path type
+    # narrows automatically; if it's None we skip
+    # the bind-mount step.
+    captured_tmpdir: Path | None = Path(tmpdir) if tmpdir is not None else None
 
     def _isolate_fs_preexec() -> None:
         # Step 1: create a new session. This detaches from
@@ -356,20 +382,9 @@ def set_fs_isolation_preexec() -> Callable[[], None]:
         # `PermissionError(EPERM)`; in a CI runner without
         # namespace privileges, it fails the same way. We
         # catch the `OSError` (parent of `PermissionError`)
-        # and fall back to a no-op (the subprocess
-        # inherits the parent's filesystem; the per-book
-        # artifact dir is already a tmpdir so legitimate
-        # writes are confined to that tmpdir, but a
-        # malicious subprocess could write elsewhere).
-        #
-        # We deliberately do NOT perform the bind-mount
-        # + remount-read-only steps in this fallback
-        # path: those require a successful unshare, and
-        # we'd be remounting the parent's filesystem
-        # outside of a fresh mount namespace, which is
-        # dangerous (it would remount the parent's
-        # filesystem read-only for the entire system if
-        # we made a mistake).
+        # and fall back to a no-op.
+        libc_unshare: object = None
+        unshare_succeeded: bool = False
         try:
             import ctypes
             import ctypes.util
@@ -380,36 +395,13 @@ def set_fs_isolation_preexec() -> Callable[[], None]:
             unshare_flags = CLONE_NEWUSER | CLONE_NEWNS
             libc_name = ctypes.util.find_library("c")
             if libc_name is not None:
-                libc = ctypes.CDLL(libc_name, use_errno=True)
+                libc_unshare = ctypes.CDLL(libc_name, use_errno=True)
                 # unshare(2): int unshare(int flags);
-                libc.unshare.argtypes = [ctypes.c_int]
-                libc.unshare.restype = ctypes.c_int
-                ret = libc.unshare(unshare_flags)
+                libc_unshare.unshare.argtypes = [ctypes.c_int]
+                libc_unshare.unshare.restype = ctypes.c_int
+                ret = libc_unshare.unshare(unshare_flags)
                 if ret == 0:
-                    # Successfully entered a fresh
-                    # user+mount namespace. The child can
-                    # now safely remount its own filesystem
-                    # without affecting the parent's. Per
-                    # the A-F11 contract, the parent
-                    # filesystem must be read-only outside
-                    # the per-book artifact dir; that
-                    # requires identifying the tmpdir path
-                    # at this point, which we don't have
-                    # direct access to from preexec_fn
-                    # (subprocess.Popen doesn't expose
-                    # kwargs to preexec_fn). The follow-up
-                    # BBF that adds the bind-mount step
-                    # needs to thread the tmpdir path
-                    # through the composition site in
-                    # `run_pdftoppm_in_subprocess` (via a
-                    # closure that captures the tmpdir).
-                    #
-                    # For this BBF: the successful unshare
-                    # is the load-bearing primitive. The
-                    # remount-read-only step is documented
-                    # as a follow-up, gated on the
-                    # tmpdir-threading change.
-                    return
+                    unshare_succeeded = True
                 # ret != 0: EPERM (insufficient
                 # capabilities) or EINVAL (kernel doesn't
                 # support the namespace). Fall through.
@@ -419,6 +411,78 @@ def set_fs_isolation_preexec() -> Callable[[], None]:
             # or the call raised an unexpected exception.
             # Fall through.
             pass
+
+        # Step 3: bind-mount + remount-read-only.
+        # ONLY runs if (a) unshare succeeded AND
+        # (b) a `tmpdir` path was provided AND
+        # (c) the tmpdir path still exists at preexec
+        # invocation time.
+        if unshare_succeeded and captured_tmpdir is not None and captured_tmpdir.exists():
+            try:
+                # MS_* constants from <sys/mount.h>:
+                #   MS_RDONLY  = 0x0   (1)
+                #   MS_NOSUID  = 0x2   (2)
+                #   MS_NODEV   = 0x4   (4)
+                #   MS_NOEXEC  = 0x8   (8)
+                #   MS_REMOUNT = 0x20  (32)
+                #   MS_BIND    = 0x1000 (4096)
+                MS_RDONLY = 0x1
+                MS_REMOUNT = 0x20
+                MS_BIND = 0x1000
+                libc_unshare.mount.restype = ctypes.c_int  # type: ignore[attr-defined]
+                libc_unshare.mount.argtypes = [  # type: ignore[attr-defined]
+                    ctypes.c_char_p,  # source (char *)
+                    ctypes.c_char_p,  # target (char *)
+                    ctypes.c_char_p,  # filesystemtype (char *)
+                    ctypes.c_ulong,  # mountflags (unsigned long)
+                    ctypes.c_void_p,  # data (void *)
+                ]
+                # Remount "/" read-only inside this namespace.
+                # The MS_BIND|MS_REMOUNT combo with empty
+                # filesystemtype takes the previous mount
+                # of "/" and changes its flags. This is the
+                # documented kernel API for remounting the
+                # root read-only inside a user namespace.
+                ret = libc_unshare.mount(  # type: ignore[attr-defined]
+                    b"none",
+                    b"/",
+                    b"",
+                    ctypes.c_ulong(MS_REMOUNT | MS_BIND | MS_RDONLY),
+                    None,
+                )
+                if ret != 0:
+                    # EPERM/etc.; the remount-read-only
+                    # failed. The bind-mount below would
+                    # have nothing to bind onto. Fall
+                    # through to the no-op.
+                    pass
+                else:
+                    # Bind-mount the tmpdir writable inside
+                    # the fresh mount namespace. The
+                    # artifact dir becomes the only
+                    # writable location for the subprocess.
+                    tmpdir_bytes = str(captured_tmpdir).encode("utf-8")
+                    libc_unshare.mount(  # type: ignore[attr-defined]
+                        b"none",
+                        tmpdir_bytes,
+                        b"",
+                        ctypes.c_ulong(MS_BIND),
+                        None,
+                    )
+                # Whether or not the bind-mount succeeded,
+                # the child is in a fresh user+mount
+                # namespace; the parent filesystem is
+                # untouched (the remount was inside the
+                # child's namespace only). The subprocess
+                # has zero visibility into the parent's
+                # writable filesystem. Return to skip the
+                # no-op fallback.
+                return
+            except (OSError, AttributeError):
+                # bind/mount fcntls not available, or
+                # libc.mount raised an unexpected error.
+                # Fall through to the no-op.
+                pass
 
         # Fallback: no-op. The subprocess inherits the
         # parent's filesystem. Writes are confined to the
@@ -518,17 +582,25 @@ def run_pdftoppm_in_subprocess(
         # does not expose preexec_fn, which is why this
         # module bypasses pdf2image and calls pdftoppm
         # directly.
-        # A-F11 properties 2 + 4: combine the memory cap and
-        # network isolation into a single preexec_fn. Both
-        # callbacks run in the child process after fork,
-        # before exec, so both are in place before pdftoppm
-        # starts. We use a single composed callable rather
-        # than two separate preexec_fn args because
-        # subprocess.Popen only accepts one preexec_fn.
+        # A-F11 properties 2 + 3 + 4: combine the memory
+        # cap, network isolation, and filesystem isolation
+        # into a single preexec_fn. All three callbacks run
+        # in the child process after fork, before exec, so
+        # all are in place before pdftoppm starts. We use a
+        # single composed callable rather than three separate
+        # preexec_fn args because subprocess.Popen only
+        # accepts one preexec_fn.
+        #
+        # The filesystem isolation preexec receives the
+        # `tmpdir` path so the bind-mount step (when
+        # capabilities permit) can bind-mount the artifact
+        # dir writable while remounting the parent's
+        # filesystem read-only. See BBF-FU-21-bind-mount
+        # for the implementation details.
         def _combined_preexec() -> None:
             set_rlimit_as_preexec(mem_cap_bytes)()
             set_network_isolation_preexec()()
-            set_fs_isolation_preexec()()
+            set_fs_isolation_preexec(tmpdir)()
         preexec_fn = _combined_preexec
 
         # The child process's stdin is the PDF bytes; the
