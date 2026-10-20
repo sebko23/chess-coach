@@ -193,6 +193,16 @@ Components (A)/(B)/(C)/(E)/(F) shipped; (D2) pre-commit hook skipped per directi
 - The narration request already carries the FEN (`libs/chess_coach/protocol_types/narration.py`),
   so the conversion context is available.
 
+**Status (clarified 2026-10-20, doc-drift flip-8):** **RESOLVED
+2026-10-20 via squash `cada4ab2`** (PR #81, BBF-FU5 additive
+`pv_moves_san` field on `NarrationResponse`). The existing
+line-217 append block is accurate; flip-8 only repairs the
+headline-vs-append contradiction by promoting the append's
+RESOLVED status to the canonical Status section. Implementation
+details preserved in the line-217 append below and at
+`services/chess_coach/narration/pipeline.py:63` (helper
+`_pv_to_san`).
+
 **Status:** **IN PROGRESS 2026-08-06** by BBF-FU-5 (branch `bbf-fu5-pv-moves-san`,
 commit on `main@d6a9e1e`). Additive `pv_moves_san` field on
 `NarrationResponse`, backend helper `_pv_to_san()` in
@@ -316,6 +326,15 @@ gap that should be tracked, not just noted in a BBF report and forgotten.
 Low urgency (production always wires `engine_pool` via `create_app()`'s
 real lifespan, so this isn't a live bug, just a test-fixture blind spot),
 but real."
+
+**Status (clarified 2026-10-20, doc-drift flip-8):** **RESOLVED
+2026-10-20 via squash `e091988c`** (PR #82, BBF-FU6
+`engine_pool` mock added to `test_narrative_position_fk`
+fixtures). The existing line-341 append block is accurate;
+flip-8 only repairs the headline-vs-append contradiction by
+promoting the append's RESOLVED status to the canonical Status
+section. Implementation details preserved in the line-341
+append below.
 
 **Status:** OPEN. Low urgency. Not blocking. Pick up after FU-5 ships.
 
