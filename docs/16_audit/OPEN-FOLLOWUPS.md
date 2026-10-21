@@ -1224,8 +1224,7 @@ Fix: delete the failing rail-mode test, keep the 'default mode (no
 prop) renders the page-level h1 header' test which exercises the
 component's actual current behavior.
 
-**Status:** PARTIAL — Test 4 resolved 2026-08-09 (PR #86). Tests 1-3
-deferred as FU-16.
+**Status:** RESOLVED 2026-08-10 via PR #86 (Test 4, landed 2026-08-09) + PR #89 (Tests 1-3, deferred as FU-16, squash `77a8379`, landed 2026-08-10). See clarification below.
 
 **Status (clarified 2026-08-10, third-round doc-drift fix-up):**
 **FULLY RESOLVED 2026-08-10 via PR #86 (Test 4) + PR #89 (Tests 1-3, deferred as FU-16).**
