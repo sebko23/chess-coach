@@ -1602,8 +1602,8 @@ subprocess sandbox spec.
   read-only enforcement, memory/time limits) was not confirmed by
   the audit.
 
-**Status:** OPEN. Real contract gap, no external blocker. Logged
-for record-keeping per the directive. Investigation-first BBF would:
+**Status:** RESOLVED 2026-10-16 via PR #143 (`7d51afa0`); see the RESOLVED block above. Historical investigation plan preserved below.
+Investigation-first BBF would:
 (1) read security-strategy.md §A-F11 + module-decomposition.md
   § A-F7 in full, (2) audit pdf_ocr/adapter.py and
   pdf_ocr/protection.py to determine what isolation (if any) is
@@ -3018,8 +3018,8 @@ Tests 2-4 use `pytest.skip` with explicit reasons pointing
 at the future implementation BBFs. The CI does not fail on
 them; they are tripwires for future implementation work.
 
-**Status:** OPEN. Resolution BBF:
-`docs/16_audit/BBF-FU-19-A-F11-sandbox-tests.md`.
+**Status:** RESOLVED 2026-10-16 via PR #143 (`7d51afa0`). Resolution BBF:
+`docs/16_audit/BBF-FU-19-A-F11-sandbox-tests.md` (branch-tip commit `826b1979`).
 
 **Out of scope:**
 
