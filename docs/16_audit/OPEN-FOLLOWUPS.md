@@ -1404,11 +1404,7 @@ for a future BBF):**
 6. Verify CI's `pnpm install --frozen-lockfile` step passes without
    the config-mismatch error.
 
-**Status:** OPEN. Moderate priority. Same threshold-3-driven urgency
-as the other FU-13-promoted structural fixes. Not blocking the FU-14
-PR merge (FU-14's path-1 patch-around is the correct contained fix
-for the immediate failure), but should be addressed before the next
-JS-dep-related BBF to avoid the next patch-around.
+**Status:** RESOLVED 2026-08-09 via FU-17 PR #87 (`20792f4`); see the preserved clarification below.
 
 **Resolved 2026-08-09 via FU-17 PR #87.** Documentation drift
 corrected 2026-08-10 — the original status field above was never
