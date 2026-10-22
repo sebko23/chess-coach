@@ -279,6 +279,91 @@ def test_set_network_isolation_preexec_calls_setsid() -> None:
         assert exit_code == 0, f"setsid failed in child (exit {exit_code})"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="unshare(CLONE_NEWNET) is the Linux path; Windows is a follow-up BBF",
+)
+def test_set_network_isolation_preexec_requests_unshare(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On Linux, the preexec_fn *requests* a fresh network namespace.
+
+    This asserts that `unshare(CLONE_NEWNET)` is invoked, by
+    intercepting `ctypes.CDLL` so the real syscall never runs. We
+    deliberately do NOT assert that the call *succeeded*: the
+    syscall needs CAP_SYS_ADMIN (or
+    `kernel.unprivileged_userns_clone`), which CI containers
+    generally lack, and the implementation deliberately falls back
+    to proxy-env stripping in that case. Asserting success would
+    make this test environment-dependent and flaky.
+
+    Verifying that the namespace is genuinely entered (i.e. the
+    syscall returned 0 and the child really has no interfaces)
+    remains deferred — it is FU-20's own out-of-scope note (2).
+    """
+    import ctypes
+    import ctypes.util
+
+    CLONE_NEWNET = 0x40000000
+    observed: list[int] = []
+
+    class _FakeUnshare:
+        """Stand-in for `libc.unshare`.
+
+        The implementation assigns `.argtypes` and `.restype` on the
+        attribute before calling it, so this must be a real object
+        with settable attributes - a bare lambda would raise
+        AttributeError on the assignment.
+        """
+
+        def __init__(self) -> None:
+            self.argtypes: object = None
+            self.restype: object = None
+
+        def __call__(self, flags: int) -> int:
+            observed.append(int(flags))
+            return 0  # pretend success so the impl takes its early-return path
+
+    class _FakeLibc:
+        def __init__(self) -> None:
+            self.unshare = _FakeUnshare()
+
+    monkeypatch.setattr(ctypes.util, "find_library", lambda name: "libc.so.6")
+    monkeypatch.setattr(ctypes, "CDLL", lambda name, **kwargs: _FakeLibc())
+
+    # `os.setsid()` is called first by the helper and would detach this
+    # process from its controlling terminal, so the helper must run in a
+    # forked child. The child therefore cannot report back through the
+    # in-process `observed` list: after fork the child holds a
+    # copy-on-write copy, so its appends are invisible to the parent.
+    # The observed flags are instead carried out through the child's
+    # exit code, which is the only channel that survives the fork.
+    #
+    #   exit 0 -> exactly one unshare(CLONE_NEWNET) was requested
+    #   exit 1 -> helper raised before requesting unshare
+    #   exit 2 -> unshare was requested with unexpected flag values
+    #
+    pid = os.fork()
+    if pid == 0:  # pragma: no cover - child process
+        code = 1
+        try:
+            set_network_isolation_preexec()()
+            code = 0 if observed == [CLONE_NEWNET] else 2
+        except Exception:
+            code = 1
+        finally:
+            # os._exit (not sys.exit) so no atexit/coverage hooks run
+            # in the child and flush a partial trace into the parent's
+            # coverage data, which pytest-cov collects afterwards.
+            os._exit(code)
+    _, status = os.waitpid(pid, 0)
+    assert os.WIFEXITED(status), "child did not exit normally"
+    exit_code = os.WEXITSTATUS(status)
+    assert exit_code == 0, (
+        "the Linux network preexec did not request exactly one "
+        f"unshare(CLONE_NEWNET=0x{CLONE_NEWNET:08x}); child exit code "
+        f"{exit_code} (1 = helper raised, 2 = wrong unshare flags)"
+    )
+
+
 def test_set_fs_isolation_preexec_returns_callable() -> None:
     """`set_fs_isolation_preexec()` returns a no-arg callable
     suitable for `subprocess.Popen`'s `preexec_fn=` parameter.

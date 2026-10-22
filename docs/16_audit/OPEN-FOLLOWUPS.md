@@ -3010,13 +3010,14 @@ properties 2-4 are unimplemented.
 | # | Test name | Today |
 |---|---|---|
 | 1 | `test_pdf_parsing_runs_in_separate_subprocess` | **PASS** — real test (catches regression) |
-| 2 | `test_subprocess_cannot_initiate_outbound_network` | **SKIP** — pending FU-22 |
+| 2 | `test_subprocess_cannot_initiate_outbound_network` | **SKIP** — capability-gated; FU-20 implemented (PRs #163/#164), Windows is best-effort only |
 | 3 | `test_subprocess_filesystem_writes_restricted_to_artifact_dir` | **SKIP** — pending FU-21 |
-| 4 | `test_subprocess_respects_2gb_memory_cap` | **SKIP** — pending FU-20 |
+| 4 | `test_subprocess_respects_2gb_memory_cap` | **PASS** — FU-22-impl, PR #145 (row previously said "SKIP — pending FU-20"; both the status and the FU number were wrong — FU-20 is network isolation, and this test passes today) |
 
-Tests 2-4 use `pytest.skip` with explicit reasons pointing
-at the future implementation BBFs. The CI does not fail on
-them; they are tripwires for future implementation work.
+Tests 2 and 3 use `pytest.skip` with explicit reasons pointing
+at the remaining implementation work. Test 4 runs and passes. The
+CI does not fail on the skipped tests; they are tripwires for the
+remaining implementation work.
 
 **Status:** RESOLVED 2026-10-16 via PR #143 (`7d51afa0`). Resolution BBF:
 `docs/16_audit/BBF-FU-19-A-F11-sandbox-tests.md` (branch-tip commit `826b1979`).

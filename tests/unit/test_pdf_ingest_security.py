@@ -325,11 +325,13 @@ def test_route_is_wired_to_smoke_yml() -> None:
 # test below is a real, non-skip assertion that catches the regression
 # risk of replacing pdf2image with an in-process library (e.g. PyMuPDF).
 #
-# Properties 2, 3, 4 (no network, read-only fs, 2 GB cap) are NOT
-# enforced today. The tests below are skip with explicit reasons
-# pointing at the future implementation BBFs (FU-22, FU-21, FU-20
-# respectively). They will start passing when those implementation
-# BBFs land; until then, the CI does not fail on them.
+# Property 2 (no network) is IMPLEMENTED on Linux since BBF-FU-20-impl
+# (PRs #163/#164); its end-to-end contract test stays capability-gated
+# because unshare(CLONE_NEWNET) needs CAP_SYS_ADMIN, but the wiring and
+# the unshare request are now asserted deterministically. Property 3
+# (read-only fs) is partial pending FU-21. Property 4 (2 GB cap) is
+# IMPLEMENTED via BBF-FU-22-impl (PR #145) and its test passes. Note the
+# FU mapping: network = FU-20, filesystem = FU-21, memory cap = FU-22.
 # ===========================================================================
 
 
@@ -391,14 +393,30 @@ def test_pdf_parsing_runs_in_separate_subprocess() -> None:
 
 @pytest.mark.skip(
     reason=(
-        "A-F11 property 2 (no network access in PDF-parsing subprocess) "
-        "is NOT enforced today. The pdf2image/Popen subprocess inherits "
-        "the parent FastAPI process's full outbound network access. "
-        "Closing this gap requires either a Linux network namespace via "
-        "preexec_fn= or a Windows Job Object — both are out of scope "
-        "for this BBF. Tracked as FU-22 (A-F11 property 2 — network "
-        "isolation). When FU-22 lands, remove this @pytest.mark.skip "
-        "marker and add a real assertion that exercises the property."
+        "A-F11 property 2 (no outbound network access in the PDF-parsing "
+        "subprocess) is enforced on Linux but NOT on Windows, and the "
+        "Linux enforcement cannot be asserted deterministically here. "
+        "On Linux, BBF-FU-20-impl (PRs #163/#164) added "
+        "set_network_isolation_preexec(), which calls os.setsid() then "
+        "unshare(CLONE_NEWNET) via ctypes; that syscall requires "
+        "CAP_SYS_ADMIN (or kernel.unprivileged_userns_clone), which CI "
+        "containers generally lack, so an end-to-end 'egress is denied' "
+        "assertion would be capability-dependent and flaky. On Windows "
+        "the helper degrades to stripping proxy environment variables, "
+        "which is a defense-in-depth measure and explicitly NOT a "
+        "guarantee of isolation (pywin32 does not expose "
+        "SetInformationJobObject for JobObjectNetRateControlInformation). "
+        "Tracked as FU-20 (A-F11 property 2 - network isolation), NOT "
+        "FU-22, which is property 4 (the 2 GB memory cap, resolved by "
+        "BBF-FU-22-impl PR #145). What this BBF adds instead is "
+        "test_network_isolation_is_wired_into_the_popen_preexec, which "
+        "deterministically asserts the helper is composed into the "
+        "preexec_fn actually handed to subprocess.Popen, plus "
+        "test_set_network_isolation_preexec_requests_unshare in "
+        "tests/unit/test_subprocess_runner.py which asserts the "
+        "unshare(CLONE_NEWNET) call is requested on Linux. Verifying "
+        "that the syscall SUCCEEDED remains deferred per FU-20's own "
+        "out-of-scope note (2)."
     ),
 )
 def test_subprocess_cannot_initiate_outbound_network() -> None:
@@ -406,26 +424,28 @@ def test_subprocess_cannot_initiate_outbound_network() -> None:
     outbound network connections.
 
     Per docs/08_security/security-strategy.md §A-F11, PDF parsing MUST
-    run with no network access. The current pdf2image/Popen
-    subprocess inherits the parent's network namespace, so a malicious
-    PDF that exploits a CVE in pdftoppm (e.g. CVE-2017-18267,
-    CVE-2018-13988, CVE-2019-12293 series) could exfiltrate data
-    over the network. This test is skip pending FU-22.
+    run with no network access, so a malicious PDF that exploits a CVE
+    in pdftoppm (e.g. CVE-2017-18267, CVE-2018-13988, CVE-2019-12293
+    series) cannot exfiltrate data over the network.
 
-    The test (when un-marked skip) would attempt to bind a TCP
-    listener inside the subprocess, then assert the bind is denied
-    (e.g. via socket.error with EACCES, or via OSError from
-    setrlimit-style network namespace isolation). Marked skip today
-    because the implementation does not enforce the property; if
-    enforcement is later added, this test is the tripwire.
+    Status as of BBF-FU-20-impl (PRs #163/#164, 2026-10-18):
+    Linux enforces this via a fresh network namespace; Windows only
+    strips proxy env vars, which is best-effort and NOT isolation.
+
+    This contract test stays skipped because the only end-to-end
+    formulation ("open a socket inside the child and observe denial")
+    is capability-dependent on Linux and impossible on Windows. The
+    deterministic parts of the property are covered elsewhere:
+
+    * wiring into Popen — `test_network_isolation_is_wired_into_the_popen_preexec`
+    * the unshare request — `test_subprocess_runner.py::
+      test_set_network_isolation_preexec_requests_unshare`
+    * setsid always runs — `test_subprocess_runner.py::
+      test_set_network_isolation_preexec_calls_setsid`
     """
-    # This block is intentionally a no-op. The test is skip because
-    # the property is not enforced today. When FU-22 lands, the
-    # @pytest.mark.skip marker above is removed and a real assertion
-    # is added here (likely: invoke convert_from_bytes in a thread
-    # that tries to make a network call, and assert the call is
-    # denied).
-    assert True  # placeholder; real assertion added when FU-22 lands
+    # Intentionally unreachable while skipped. The skip reason above
+    # is the live record of what is and is not verified.
+    assert True  # placeholder; capability-gated end-to-end assertion
 
 
 @pytest.mark.skip(
@@ -483,6 +503,107 @@ def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
     # is run in environments that have the capability (CI runners
     # without the capability are skip-gated, which is correct).
     assert True  # placeholder; see brief BBF-FU-21-bind-mount for the real assertion path
+
+
+def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
+    """A-F11 property 2: network isolation is composed into the
+    `preexec_fn` that `run_pdftoppm_in_subprocess` passes to
+    `subprocess.Popen`.
+
+    BBF-FU-20-impl (PRs #163/#164) implemented
+    `set_network_isolation_preexec()` in
+    `services/chess_coach/pdf_ocr/subprocess_runner.py`:
+    on Linux it calls `os.setsid()` then
+    `unshare(CLONE_NEWNET)` via ctypes; on Windows it
+    degrades to stripping proxy environment variables.
+
+    What was NOT covered until this test: that the helper is
+    actually *wired in*. `run_pdftoppm_in_subprocess` composes
+    three pre-exec hooks into a single callable
+    (`_combined_preexec`) because `subprocess.Popen` accepts
+    only one `preexec_fn`. A regression that dropped the
+    network-isolation call from that composition would disable
+    A-F11 property 2 in production while every helper-level
+    test still passed.
+
+    This test asserts the wiring, not the kernel behaviour:
+    it is deterministic, needs no CAP_SYS_ADMIN, no network,
+    no `unshare` success, and no `pdftoppm` binary. It passes
+    identically on Linux, macOS and Windows.
+    """
+    import services.chess_coach.pdf_ocr.subprocess_runner as _runner
+
+    calls: list[str] = []
+
+    def _fake_rlimit(cap_bytes: int):
+        calls.append("rlimit")
+        return lambda: None
+
+    def _fake_network():
+        calls.append("network")
+        return lambda: None
+
+    def _fake_fs(artifact_dir):  # noqa: ARG001 - signature parity only
+        calls.append("fs")
+        return lambda: None
+
+    captured: dict[str, object] = {}
+
+    class _FakePopen:
+        def __init__(self, args, **kwargs):  # noqa: ANN001 - test double
+            captured["preexec_fn"] = kwargs.get("preexec_fn")
+            captured["args"] = args
+            self.returncode = 0
+            # The real `subprocess.Popen` invokes `preexec_fn` in the
+            # child between fork and exec. There is no fork here, so
+            # the fake runs it inline. That is what makes the
+            # composition observable: if `_combined_preexec` dropped
+            # the network-isolation call, `calls` would be short.
+            preexec = captured.get("preexec_fn")
+            if callable(preexec):
+                preexec()
+
+        def communicate(self, input=None, timeout=None):  # noqa: ANN001, A002
+            return (None, b"")
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self) -> int:
+            return 0
+
+    original = {
+        "rlimit": _runner.set_rlimit_as_preexec,
+        "network": _runner.set_network_isolation_preexec,
+        "fs": _runner.set_fs_isolation_preexec,
+        "popen": _runner.subprocess.Popen,
+    }
+    _runner.set_rlimit_as_preexec = _fake_rlimit  # type: ignore[assignment]
+    _runner.set_network_isolation_preexec = _fake_network  # type: ignore[assignment]
+    _runner.set_fs_isolation_preexec = _fake_fs  # type: ignore[assignment]
+    _runner.subprocess.Popen = _FakePopen  # type: ignore[assignment]
+    try:
+        # The runner's post-Popen behaviour is irrelevant here. On
+        # Windows the real `subprocess.Popen` refuses `preexec_fn`
+        # outright, but we replace Popen with a fake that accepts
+        # it, so the composed hook always runs. The fake produces
+        # no PNG files, so the runner then raises RuntimeError.
+        with pytest.raises(RuntimeError):
+            _runner.run_pdftoppm_in_subprocess(b"%PDF-1.4 fake")
+    finally:
+        _runner.set_rlimit_as_preexec = original["rlimit"]  # type: ignore[assignment]
+        _runner.set_network_isolation_preexec = original["network"]  # type: ignore[assignment]
+        _runner.set_fs_isolation_preexec = original["fs"]  # type: ignore[assignment]
+        _runner.subprocess.Popen = original["popen"]  # type: ignore[assignment]
+
+    assert calls == ["rlimit", "network", "fs"], (
+        "the composed pre-exec hook did not run the A-F11 "
+        f"isolation callbacks in order; observed: {calls!r}"
+    )
+    preexec_fn = captured.get("preexec_fn")
+    assert callable(preexec_fn), (
+        f"subprocess.Popen was called without a callable preexec_fn: {preexec_fn!r}"
+    )
 
 
 def test_subprocess_respects_2gb_memory_cap() -> None:
