@@ -1719,7 +1719,7 @@ no filesystem read-only enforcement on the parent" (line 128).
 - Per A-F11 the per-book artifact dir at `data/debug/books/<book_id>/`
   is the ONLY allowed write target for the parser. This is not enforced.
 
-**Status:** OPEN. Real contract gap. Investigation-first BBF would:
+**Status:** RESOLVED 2026-10-19 via PR #169 (`d3fbb35c`, BBF-FU-21-bind-mount); see the flip-7 clarification below. Historical investigation plan preserved below.
 (1) design a subprocess-wrapper that uses `chroot` (Linux), AppLocker/WDAC
   (Windows), or a sandboxed-filesystem-profile (macOS) to isolate the parser,
 (2) refactor pdf_ingest.py to use that wrapper, (3) add a test that asserts
