@@ -3043,6 +3043,76 @@ remaining implementation work.
 
 ---
 
+## FU-43 — BBF flip process rules are container-only and therefore unenforced
+
+**Status:** **RESOLVED 2026-10-24** via BBF-FU-43-rules-migration.
+
+**Identified:** 2026-10-22, during the repository-correction audit of the
+auditor-container handoffs. The verification discipline for documentation BBFs
+(`BBF-FLIP-PROCESS-RULES.md`) existed only as a container-side artifact at
+`/a0/usr/projects/claude_auditor/BBF-FLIP-PROCESS-RULES.md`. It was not
+tracked in `sebko23/chess-coach` and therefore could not gate anything.
+
+**The gap:** every doc-drift flip in this project's history ran the same
+five sweeps (self-consistency, git-topology, anchor, preservation, scope)
+as a matter of author discipline. None of it was enforced. The observable
+cost is in the record: the same defect class recurred across sessions — a
+brief claiming an adjacent entry was clean while that entry carried the same
+defect one line in; a self-referential anchor count that invalidated itself
+on every edit; a `path:line` citation that pointed at a line which existed
+but held different content. Each was caught by review, but only after the
+branch was pushed and a reviewer had to spend a round-trip on it.
+
+**The fix (3 layers):**
+
+1. `docs/16_audit/BBF-FLIP-PROCESS-RULES.md` — the rules, adapted for repo
+   ownership. Each section now names whether it is *automated* or
+   *judgement*, so a reader can tell which obligations a gate actually
+   covers.
+2. `scripts/dev/verify_bbf_flip_rules.py` — the mechanical subset, in the
+   same three-layer shape the repo already uses for
+   `scripts/dev/verify_commit_refs.py` (script + regression test + CI job).
+   It closes the gap the existing reference gate leaves open: the reference
+   gate validates `file:line` citations but does **not** validate cited SHAs,
+   so a body naming a fabricated or never-landed commit stayed green.
+3. `tests/unit/test_verify_bbf_flip_rules.py` + CI job
+   `bbf flip rules verify (SHA ancestry)` in
+   `.github/workflows/security-audit.yml` — the regression coverage and the
+   enforcement, including the positive wired-to-CI assertion.
+
+**What is automated:** SHA existence + ancestry; the changed-file set
+(exact scope); per-file numstat; semantic anchor containment (a cited line
+must hold the content its prose claims, not merely exist); byte-preservation
+ranges.
+
+**What remains judgement:** whether a brief's prose is semantically true
+about the code; whether a target-platform test was executed on that
+platform; whether a wiring test is mutation-proven; whether an open
+follow-up's classification is correct in substance. These are recorded
+explicitly in the rules document rather than given a mock gate.
+
+**Out of scope:**
+
+- Retro-applying the rules to the flips already shipped. They were reviewed
+  under the discipline; re-litigating them is not a gate's job.
+- Migrating the platform-skew / fork-verification rules into an executable
+  check. The rules are recorded; automating them would require a
+  cross-platform test-runner, which is a separate workstream.
+- `scripts/pre-push-gate.sh` and `scripts/pre-merge-gate.sh`. These are
+  referenced in the October handoff as having existed; they are **not
+  tracked** on `main` and were never adopted. This BBF does not restore
+  them — the CI-job shape already in use covers the same ground.
+
+**Cross-references:**
+
+- `docs/16_audit/BBF-FLIP-PROCESS-RULES.md` (the rules, now tracked).
+- `docs/16_audit/BBF-FU-43-rules-migration.md` (the brief).
+- `scripts/dev/verify_commit_refs.py` (the pre-existing `file:line` gate).
+- `docs/16_audit/HERMES-POLICY-AUTH-BOUNDARIES-2026-08-03.md` §7.1 (the
+  destructive-operation rule the flip rules reference).
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or

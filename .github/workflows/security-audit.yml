@@ -167,7 +167,66 @@ jobs:
             python scripts/dev/verify_commit_refs.py --commit-body "$COMMIT_BODY"
           fi
 
-  # Job 5: pnpm-audit. The audit's priority 3 #7 + the priority-3-doc
+  # Job 5: bbf-flip-rules-verify. Enforces the mechanical subset of
+  # docs/16_audit/BBF-FLIP-PROCESS-RULES.md: every SHA cited in the
+  # commit body or PR body must exist and be an ancestor of the PR base.
+  #
+  # This is complementary to the commit-refs-verify job above, which
+  # validates `file:line` references. The reference gate does NOT check
+  # SHAs: a body can name a plausible-looking 7-hex token that was never
+  # committed, or one that never landed on main, and the reference gate
+  # stays green. That is the gap this job closes.
+  #
+  # On a PR the base is the PR's base commit and the commit body is read
+  # from the PR head (see the env block below for why HEAD is not used).
+  # On a push to main the base is HEAD~1 (the parent of the pushed commit).
+  bbf-flip-rules-verify:
+    name: bbf flip rules verify (SHA ancestry)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Verify cited SHAs are ancestors of the base
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # On a pull_request event, actions/checkout checks out the
+          # synthetic merge commit (refs/pull/N/merge), whose message is
+          # "Merge <head-sha> into <base-sha>". `git log -1 HEAD` would
+          # therefore yield THAT message, not the PR head's commit body,
+          # and the head SHA embedded in it would be checked as a cited
+          # SHA against a base it is by definition not an ancestor of.
+          # So on a PR we read the head commit's body explicitly.
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_BODY=$(gh pr view "${{ github.event.pull_request.number }}" --json body --jq .body)
+            COMMIT_BODY=$(git log -1 --format="%B" "$PR_HEAD_SHA")
+            BASE="$PR_BASE_SHA"
+            python scripts/dev/verify_bbf_flip_rules.py \
+              --repo-root . \
+              --base "$BASE" \
+              --commit-body "$COMMIT_BODY" \
+              --pr-body "$PR_BODY"
+          else
+            COMMIT_BODY=$(git log -1 --format="%B" HEAD)
+            BASE=$(git rev-parse HEAD~1)
+            python scripts/dev/verify_bbf_flip_rules.py \
+              --repo-root . \
+              --base "$BASE" \
+              --commit-body "$COMMIT_BODY"
+          fi
+
+  # Job 6: pnpm-audit. The audit's priority 3 #7 + the priority-3-doc
   # update note: "`pnpm audit` is NOT yet in CI. A future hardening
   # step would add `pnpm audit --audit-level moderate` to
   # `.github/workflows/security-audit.yml`." This BBF adds the job
