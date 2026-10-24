@@ -562,7 +562,7 @@ the chess-coach source as of commit `cada4ab2` on
   `services/chess_coach/narration/sanitize.py:174-235`
   (`sanitize_user_content(text, *, source, game_id=None, max_bytes=1024)`)
 
-**Status:** OPEN. Low priority. Not blocking. Logged for
+**Status:** RESOLVED 2026-08-22 via commit `aee6038e`; see the canonical resolution above. Historical context preserved below:
 discoverability — the dead code is correctly safe today; the
 risk is that it becomes load-bearing through an incomplete
 future wiring, and the note is here to make that discoverable.
@@ -760,7 +760,7 @@ authorization.
   success state was confirmed in this session's
   cada4ab2 jobs-list delta.
 
-**Status:** OPEN. Moderate priority. Will block every PR
+**Status:** RESOLVED 2026-08-07 via commit `2a6276bd` (PR #83); see the canonical resolution above. Historical context preserved below:
 cycle until resolved (pip-audit is strict-mode).
 
 **Sebastian+Claude directive 2026-08-07:** "Log a new
@@ -891,7 +891,7 @@ requires a separate authorization for any dependency change):**
   (per-job page; requires GitHub UI to see logs since sebko23 token
   lacks admin scope).
 
-**Status:** OPEN. Moderate priority. Same shape as FU-10 (pre-existing,
+**Status:** RESOLVED 2026-08-09 via PR #123 commit `74cab77b`; see the canonical resolution above. Historical context preserved below:
 blocks every PR cycle, low exploitability in chess-coach's usage).
 Should land before the next BBF that touches JS deps to avoid drift.
 
@@ -1295,7 +1295,7 @@ a synchronous mock that returns a known fixture. Cost: more
 intrusive (touches hook implementation or test-harness), but
 doesn't add a devDep.
 
-**Status:** OPEN. Low-medium priority. Pre-existing on `main`;
+**Status:** RESOLVED 2026-08-09 via merge commit PR #89 (`77a83796`); see the canonical resolution above. Historical context preserved below:
 tracked here per Sebastian's "scope it down and report" guidance
 from FU-15.
 
@@ -1857,7 +1857,7 @@ invocation. A malicious PDF can balloon `pdftoppm` RSS without bound"
   A PDF that fattens up RSS in the first few seconds will not be caught by
   either timeout.
 
-**Status:** OPEN. Real contract gap. Investigation-first BBF would:
+**Status:** RESOLVED 2026-10-16 via merge commit PR #145 (`ae543ea8`); see the canonical resolution above. Historical investigation plan preserved below:
 (1) confirm whether `pdftoppm` has any inherent memory ceiling of its own,
 (2) design a subprocess-wrapper that applies `RLIMIT_AS` (Linux) or
   Job Object memory cap (Windows), (3) wire it into pdf_ingest.py,
@@ -2314,7 +2314,7 @@ to FU-4 (pnpm lockfile / embedder lazy-import / wrapper PATH-fallback, all defer
 (stale file-line reference in commit body, deferred to PR #87) applies here. A meta-test update
 is a one-file change with no blast radius, well-suited to its own PR.
 
-**Status:** OPEN — log only. Meta-test fix deferred to a follow-up PR (test-only change).
+**Status:** RESOLVED 2026-08-27 via commit `042f56c1`; see the canonical resolution above.
 
 ## FU-32 — `test_repertoire_recommendations_polyglot.py::test_book_path_is_directory` is CI-Linux-only failure (route bug, not test bug)
 
@@ -2369,7 +2369,7 @@ code change (added import or inline check + new exception branch) with a corresp
 update if the existing test's assertion shape changes. Merge-forward / fix-forward per the same
 rationale as FU-31. The route fix is a code + test PR, well-suited to its own scope.
 
-**Status:** OPEN — log only. Route fix deferred to a follow-up PR (code + test change).
+**Status:** RESOLVED 2026-08-27 via commit `b4a8e5f0`; see the canonical resolution above.
 
 ## FU-33 — Stale `smoke.yml:178-192` reference in PR #110 commit body (FU-17-shape, file:line needs full path)
 
@@ -2417,7 +2417,7 @@ confirmation + backup branch + tarball per rule 7.2.
 (`verify_commit_refs.py`), same shape (file:line needs full path), same resolution (amend the
 commit body with full paths).
 
-**Status:** OPEN — log only. Commit-body amend deferred to a follow-up PR (or post-merge
+**Status:** RESOLVED 2026-08-27 via commit `fd984efd`; see the canonical resolution above. Historical context preserved below:
 amend-with-rollback). Documentation entry here ensures the failure is tracked alongside
 FU-31 / FU-32 (the two boot-job failures from the same PR #110 CI run).
 
@@ -2642,7 +2642,7 @@ inputs, outputs, or behavior. The upgrade is a
 one-line change in your workflow file: v2 → v3.
 You should also update `actions/checkout` to v6."
 
-**Status:** OPEN. Resolution BBF:
+**Status:** RESOLVED 2026-10-15 via merge commit PR #138 (`47062dfa`); see the canonical resolution above.
 `docs/16_audit/BBF-FU-39-gitleaks-action-v3.md`.
 
 **Out of scope:**
@@ -2737,7 +2737,7 @@ version, `@v4` for a pnpm Node version spec) are
 preserved by the pattern — only `uses:`-style
 action pins are matched.
 
-**Status:** OPEN. Resolution BBF:
+**Status:** RESOLVED 2026-10-15 via commit `8f79469c` (PR #139); see the canonical resolution above.
 `docs/16_audit/BBF-FU-40-smoke-yml-node24.md`.
 
 **Out of scope:**
@@ -2941,7 +2941,7 @@ deprecation sweep across chess-coach CI workflows is
 pins in place. All bumps go to `@v6` (the Node-24-era
 pin), matching the pattern from FU-39 and FU-40.
 
-**Status:** OPEN. Resolution BBF:
+**Status:** RESOLVED 2026-10-16 via commit `660e1172` (PR #141); see the canonical resolution above.
 `docs/16_audit/BBF-FU-41-security-audit-yml-node20.md`.
 
 **Out of scope:**
