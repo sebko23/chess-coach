@@ -147,8 +147,11 @@ green:
 - `smoke`: unchanged.
 
 The `apps/desktop/` UTF-8 mojibake lint (BBF-17)
-runs as a pre-commit hook; the new TSX is ASCII-
-clean (no mojibake needles).
+was, at the time of this sprint, recorded as a pre-commit
+hook; the new TSX is ASCII-clean (no mojibake needles).
+(FU-45: the guard never actually ran in a pre-commit hook
+and was in no CI job until it was wired into `pnpm lint:ci`
+on 2026-10-25. See `docs/16_audit/BBF-FU-45-utf8-guard-wiring.md`.)
 
 ### Sprint progress (BBF-54..62) -- COMPLETE
 
@@ -2615,8 +2618,11 @@ times out at 30 s with HTTP 000, gateway.log is empty.
 The pre-BBF-18 history. The handoff at `docs/17_lazy_eval_graph/`
 references the original `c7220a5` commit as the BBF-18 wire-up; the
 handoff's BBF-1..BBF-15 work is in `f9574f1` and earlier commits.
-The UTF-8 mojibake pre-commit hook (BBF-17) is still in place and
-runs on every commit.
+The UTF-8 mojibake guard (BBF-17) was added to the repository. It was
+recorded at the time as a pre-commit hook, but it never ran in one and
+was in no CI job; FU-45 (2026-10-25) wired it into `pnpm lint:ci`,
+so it now runs in the `frontend lint + test` CI job. See
+`docs/16_audit/BBF-FU-45-utf8-guard-wiring.md`.
 
 ## Strategic pivot context
 
