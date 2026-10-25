@@ -33,7 +33,7 @@ import { getEnginesDir } from "../utils/directories";
 import type { Session } from "../utils/session";
 import { createAsyncZodStorage, createZodStorage } from "./utils";
 
-const zodArray = <Input, Output>(itemSchema: z.ZodType<Output, z.ZodTypeDef, Input>) => {
+const zodArray = <Input, Output>(itemSchema: z.ZodType<Output, Input>) => {
     const catchValue = {} as never;
 
     const res = z
@@ -41,7 +41,7 @@ const zodArray = <Input, Output>(itemSchema: z.ZodType<Output, z.ZodTypeDef, Inp
         .transform((a) => a.filter((o): o is Output => o !== catchValue))
         .catch([]);
 
-    return res as z.ZodType<Output[], z.ZodTypeDef, Input[]>;
+    return res as z.ZodType<Output[], Input[]>;
 };
 
 // Tabs

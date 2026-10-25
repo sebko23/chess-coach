@@ -3113,6 +3113,61 @@ explicitly in the rules document rather than given a mock gate.
 
 ---
 
+## FU-44 — `pip-audit` and `pnpm audit` red on `main`: 50 Python + 9 JS advisories
+
+**Identified:** 2026-10-25. The `pip-audit` and `pnpm audit` jobs in
+`.github/workflows/security-audit.yml` have been red on `main` since PR #163. Every PR in
+the doc-drift series (PRs #176, #177, #178) merged with that identical inherited red set,
+so the baseline was never a regression — it was simply unaddressed.
+
+**Finding:** reproduced locally with the CI's exact commands, not read from CI logs.
+
+`pip-audit --strict --requirement requirements-ci.txt` reported **50 known
+vulnerabilities in 5 packages** (exit 1):
+
+| Package | Version | Fix floor | Advisories |
+|---|---|---|---|
+| `aiohttp` | 3.14.3 | 3.14.4 | 8 |
+| `pillow` | 12.3.0 | 13.0.0 | 37 |
+| `filelock` | 3.32.2 | 4.2.1 | 3 |
+| `certifi` | 2026.7.22 | 2026.10.19 | 1 |
+| `setuptools` | 83.0.0 | 84.1.0 | 1 |
+
+`pnpm audit --audit-level moderate --prod` reported **9 advisories** (1 critical, 4 high,
+4 moderate) across 4 modules (exit 1):
+
+| Module | Version | Fix floor | Severity |
+|---|---|---|---|
+| `dompurify` | 3.4.16 | 3.4.17 | critical (`GHSA-cg2g-xh64-v4q7`), high (`GHSA-mrv2-3pqr-j5jr`) |
+| `vite` | 8.2.1 | 8.2.4 | high ×1, moderate ×4 |
+| `markdown-it` | 14.3.2 | 14.3.3 | high |
+| `zod` | 3.25.76 | 4.6.6 | high (`GHSA-mrhx-c7xc-m3w5`) |
+
+**Root cause:** stale lockfiles, not wrong version floors. `pyproject.toml` already
+permitted every fixed Python version. `apps/desktop/pnpm-workspace.yaml` already
+permitted the fixed versions of the two JS modules it actually overrides
+(`dompurify: "^3.4.16"`, `markdown-it: "^14.3.1"`); `vite` is not in that file's
+`overrides:` block — its `^8.0.16` range lived in `apps/desktop/package.json` and also
+already admitted the fixed version. Two direct declarations moved: `vite`
+(`^8.0.16` → `^8.3.5`, a routine minor bump) and `zod`, a *direct* dependency declared
+at `^3.22.4` for which every 3.x release is affected — an override would have masked a
+direct dependency, so the direct declaration was bumped and the four v3-only type sites
+were migrated (4 sites across 3 files).
+
+**Status:** RESOLVED 2026-10-25 via `docs/16_audit/BBF-dep-cve-remediation.md`.
+`uv.lock` upgraded 5 Python packages with **no** `pyproject.toml` change; the frontend
+lockfile upgraded 4 JS modules with **no** `pnpm-workspace.yaml` change; `zod` was bumped
+`^3.22.4` → `^4.6.6` with 4 type-site adaptations across
+`apps/desktop/src/state/atoms.ts`, `apps/desktop/src/state/utils.ts`, and
+`apps/desktop/src/utils/engines.ts`. Both audit gates now report "No known
+vulnerabilities found" (exit 0). No gate was weakened: no `--audit-level` threshold was
+lowered, no `--strict` flag dropped, no advisory suppressed.
+
+**Cross-references:** FU-10, FU-12, FU-14, FU-34 — same shape (pre-existing dependency
+vulnerability blocking `main` CI), all resolved by pinning the affected version.
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or

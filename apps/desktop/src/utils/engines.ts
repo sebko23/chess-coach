@@ -7,7 +7,7 @@ import { unwrap } from "./unwrap";
 
 export const requiredEngineSettings = ["MultiPV", "Threads", "Hash"];
 
-const goModeSchema: z.ZodSchema<GoMode> = z.union([
+const goModeSchema: z.ZodType<GoMode> = z.union([
     z.object({
         t: z.literal("Depth"),
         c: z.number(),
