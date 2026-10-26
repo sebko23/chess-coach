@@ -3220,6 +3220,42 @@ mechanism that exists in the repo but is not actually wired into CI).
 
 ---
 
+## FU-46 — the repository has no line-ending policy
+
+**Identified:** 2026-10-26, during a live-tree audit of the repository after
+PR #180. The repository has no `.gitattributes`, so git's line-ending
+behaviour is governed entirely by each developer's `core.autocrlf`.
+Seventeen tracked files are committed with CRLF in the object store.
+
+**Finding:** measured against `main` at `6b6eb94992e12a810a42988d2025e89a7f5bc9ad`,
+classifying blobs from git object bytes rather than working-tree bytes:
+
+- 868 tracked entries: 91 known binary assets (32 `.png`, 32 `.jpg`, 24
+  `.mp3`, 2 `.ico`, 1 `.icns`), 777 text-family paths, 0 needing review;
+- 17 files committed with CRLF, including `docs/CHANGELOG.md`, which is
+  mixed (1,052 CRLF and 1,599 LF lines);
+- a checkout on a CRLF-configured host produces hundreds of spurious
+  modifications, which have repeatedly been mistaken for real content drift.
+
+**Status:** RESOLVED 2026-10-26 via `docs/16_audit/BBF-FU-46-gitattributes.md`.
+A root `.gitattributes` adds an explicit policy: 6 binary rules protecting the
+91 binary assets from any transformation, 31 explicit `text eol=lf` rules
+covering every other tracked path, and exact-path `-text` rules freezing the
+two orphan `.bak` files. There is no broad `* text=auto eol=lf` fallback and
+no `.bat`/`.cmd` rule, because the tree contains no such paths.
+
+`git check-attr` over all 868 tracked paths reports 0 unspecified. The
+renormalization changes 16 CRLF text blobs, each differing from its
+predecessor by CRLF-to-LF only; 0 of 91 binary blobs change and neither
+`.bak` blob changes.
+
+**Out of scope (deliberately):** deleting the two orphan `.bak` files
+(`CoachPanel.tsx.bak_1780860511`, `repertoire_recommendations.py.bak`, both
+added by `cd43906c` and referenced by nothing) — a separate cleanup BBF, which
+this one only freezes the bytes of; and any change to per-developer
+`core.autocrlf` / `core.eol`, which are local settings rather than
+repository content.
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
