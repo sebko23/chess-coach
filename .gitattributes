@@ -50,21 +50,6 @@
 Dockerfile       text eol=lf
 LICENSE          text eol=lf
 
-# --- Orphan backup files: frozen, not normalised ---------------------------
-# These two are unreferenced leftovers from commit cd43906c, scheduled for
-# deletion in a separate cleanup BBF. They are pinned with -text by EXACT
-# path so that no line-ending conversion is applied to them in either
-# direction and their committed bytes stay exactly as they are.
-#
-# Exact paths, not a *.bak glob: a glob would also match any future orphan
-# backup file added to the tree, which would silently freeze a file that has
-# not been reviewed. The leading "/" anchors the rule to the repository root.
-#
-#   /apps/desktop/src/components/panels/coach/CoachPanel.tsx.bak_1780860511
-#   /services/chess_coach/gateway/routes/repertoire_recommendations.py.bak
-/apps/desktop/src/components/panels/coach/CoachPanel.tsx.bak_1780860511   -text
-/services/chess_coach/gateway/routes/repertoire_recommendations.py.bak     -text
-
 # --- Binary assets: never transformed --------------------------------------
 # Exactly the 91 tracked binary files: 32 .png, 32 .jpg, 24 .mp3, 2 .ico,
 # 1 .icns. All of them contain NUL bytes and must stay byte-identical.
