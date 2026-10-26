@@ -1,0 +1,76 @@
+# Repository line-ending policy
+#
+# Text is stored with LF line endings in the git object store and checked out
+# as LF. Binary assets are declared explicitly and are never transformed.
+#
+# Gitattributes applies each attribute independently: `text` is decided by the
+# last rule matching `text`, `binary` by the last rule matching `binary`.
+#
+# The binary rules therefore come LAST. `binary` is a shorthand for `-text
+# -diff`, so a later binary rule wins the `text` attribute and clears it. A
+# path matching both a binary and a text rule would keep `text: set` if the
+# text rule came last, and git would then rewrite its bytes -- the exact
+# outcome the binary rules exist to prevent. Verified: with `*.png binary`
+# last, a CRLF payload in a .png file is stored unchanged; with the binary
+# rule first, the same file is rewritten to LF.
+
+# --- Text: LF in the object store and LF in the working tree --------------
+*.py       text eol=lf
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.mjs      text eol=lf
+*.js       text eol=lf
+*.jsx      text eol=lf
+*.rs       text eol=lf
+*.sql      text eol=lf
+*.sh       text eol=lf
+*.css      text eol=lf
+*.html     text eol=lf
+*.spec     text eol=lf
+*.json     text eol=lf
+*.jsonl    text eol=lf
+*.toml     text eol=lf
+*.yaml     text eol=lf
+*.yml      text eol=lf
+*.lock     text eol=lf
+*.tsv      text eol=lf
+*.txt      text eol=lf
+*.svg      text eol=lf
+*.example  text eol=lf
+*.md       text eol=lf
+
+# Extensionless and dotfile text: .gitignore, .dockerignore, .editorconfig,
+# .upstream-ref, .gitkeep, Dockerfile, LICENSE.
+.gitignore        text eol=lf
+.gitattributes    text eol=lf
+.dockerignore    text eol=lf
+.editorconfig    text eol=lf
+.upstream-ref    text eol=lf
+.gitkeep          text eol=lf
+Dockerfile       text eol=lf
+LICENSE          text eol=lf
+
+# --- Orphan backup files: frozen, not normalised ---------------------------
+# These two are unreferenced leftovers from commit cd43906c, scheduled for
+# deletion in a separate cleanup BBF. They are pinned with -text by EXACT
+# path so that no line-ending conversion is applied to them in either
+# direction and their committed bytes stay exactly as they are.
+#
+# Exact paths, not a *.bak glob: a glob would also match any future orphan
+# backup file added to the tree, which would silently freeze a file that has
+# not been reviewed. The leading "/" anchors the rule to the repository root.
+#
+#   /apps/desktop/src/components/panels/coach/CoachPanel.tsx.bak_1780860511
+#   /services/chess_coach/gateway/routes/repertoire_recommendations.py.bak
+/apps/desktop/src/components/panels/coach/CoachPanel.tsx.bak_1780860511   -text
+/services/chess_coach/gateway/routes/repertoire_recommendations.py.bak     -text
+
+# --- Binary assets: never transformed --------------------------------------
+# Exactly the 91 tracked binary files: 32 .png, 32 .jpg, 24 .mp3, 2 .ico,
+# 1 .icns. All of them contain NUL bytes and must stay byte-identical.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.mp3   binary
+*.ico   binary
+*.icns  binary
