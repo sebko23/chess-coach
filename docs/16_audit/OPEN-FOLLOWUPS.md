@@ -3256,6 +3256,72 @@ this one only freezes the bytes of; and any change to per-developer
 `core.autocrlf` / `core.eol`, which are local settings rather than
 repository content.
 
+## FU-47 — two orphan tracked `.bak` files
+
+**Identified:** 2026-10-26, as the cleanup BBF that FU-46 deliberately
+deferred. FU-46 added the repository line-ending policy and, rather than
+delete the two orphan `.bak` files in the same commit, pinned them with
+exact-path `-text` rules so their bytes stayed frozen while their deletion
+was handled separately.
+
+**Finding:** the two files were unreferenced leftovers from a single commit —
+a 2026-06-13 commit titled "backup: pre-player-atom state snapshot before
+shared atom migration". (The FU-45 and FU-46 entries above attribute them
+to `cd43906c`; that is the commit that merely carried them forward, and the
+original attribution came from a shallow clone whose history boundary was
+`cd43906c`.)
+
+- `apps/desktop/src/components/panels/coach/CoachPanel.tsx.bak_1780860511`
+  (16,855 bytes) — added on 2026-06-13
+  and touched by exactly 1 commit ever. Its live sibling `CoachPanel.tsx`
+  has 3 commits and is the file the frontend actually imports.
+- `services/chess_coach/gateway/routes/repertoire_recommendations.py.bak`
+  (5,999 bytes) — same commit, also touched by exactly 1
+  commit. Its live sibling has 11 commits.
+
+No import, require, build manifest, CI workflow, or script references
+either path. Neither file was scanned by the UTF-8 mojibake guard: its
+`shouldScan()` applies `SKIP_SUFFIXES.some((s) => rel.includes(s))` first,
+and that substring test matches the `.bak` inside
+`CoachPanel.tsx.bak_1780860511`. Its extension filter would also have
+excluded the file, but that check is never reached.
+
+Their content is almost entirely preserved: scanning every blob reachable
+from a full bare clone of the upstream repository (`git rev-list --objects
+--all`: 597 commits, 1,843 reachable blobs) with the two `.bak` blobs
+themselves excluded, 485 of 486 lines of the `.tsx` file and 160 of 160 lines
+of the `.py` file are found elsewhere in history. The single exception is
+one comment line annotating the `debouncedFen!` argument, whose code is present in the live sibling. Deletion is still
+fully reversible: both blobs remain reachable at `cd43906c`, and
+`git show cd43906c:<path>` returns bytes identical to the base tree.
+
+**Status:** RESOLVED 2026-10-26 via
+`docs/16_audit/BBF-FU-47-orphan-bak-deletion.md`. Both files are deleted
+(532 and 188 lines removed), and the two exact-path `-text` rules that
+existed only to freeze them are removed with them. The `.gitattributes`
+policy shrinks from 39 active rules to 37 (6 binary / 23 glob-text / 8
+dotfile) and from 3,030 to 2,122 bytes; the binary rules remain last.
+
+The rules are removed rather than left in place because a retained
+exact-path `-text` rule would silently freeze a future file added at either
+path without review — the failure mode FU-46's own comment warned against
+when it chose exact paths over a `*.bak` glob.
+
+`git check-attr` over the 869 tracked paths of the head tree still reports
+0 unspecified: 778 `text: set` with `eol: lf`, 91 `text: unset` (exactly
+the 91 binary assets), 91 `binary: set`. No surviving file's bytes change.
+
+**Out of scope (deliberately):** the live siblings
+`CoachPanel.tsx` and `repertoire_recommendations.py`; the UTF-8 mojibake
+guard's `SKIP_SUFFIXES` list (a general safety property for future backup
+files, independent of whether any exist today); and `.gitignore`, whose
+`.a0proj/memory/*.bak` rule is unrelated to these two tracked paths.
+
+**Cross-references:** FU-46 — same workstream; FU-46 added the policy and
+named this deletion as a separate cleanup BBF.
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or

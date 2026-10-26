@@ -149,9 +149,13 @@ FU-45 ledger entry as a pure insertion.
 
 - **The two orphan `.bak` files** — `apps/desktop/src/components/panels/coach/CoachPanel.tsx.bak_1780860511`
   (16,855 bytes) and `services/chess_coach/gateway/routes/repertoire_recommendations.py.bak`
-  (5,999 bytes). Both were added by commit `cd43906c`, both are referenced by
-  nothing, and neither is identical to the live file. They are a separate
-  cleanup, not part of the wiring.
+  (5,999 bytes). Both are referenced by nothing, and neither is identical to
+  the live file. They are a separate cleanup, not part of the wiring.
+  **Correction (2026-10-26, FU-47):** both were added by a 2026-06-13
+  commit titled "backup: pre-player-atom state snapshot before shared atom
+  migration", and `cd43906c` merely carried them forward; the original
+  attribution came from a shallow clone whose history boundary was
+  `cd43906c`. That cleanup BBF has since landed.
 - **The `.gitattributes` / CRLF root cause.** 17 tracked TEXT files genuinely
   contain CRLF in their committed blobs. A further 49 binary assets contain
   CRLF byte values incidentally, and 108 tracked files contain a 0x0D byte at

@@ -82,6 +82,11 @@ tests/unit/test_profile_tilt_archetypes.py
 | Dotfile / extensionless | 8 (`.gitignore`, `.gitattributes`, `.dockerignore`, `.editorconfig`, `.upstream-ref`, `.gitkeep`, `Dockerfile`, `LICENSE`) | `text eol=lf` |
 | Frozen orphans | 2 exact paths | `-text` |
 
+> **Correction (2026-10-26, FU-47):** the two exact-path `-text`
+> freezes were removed with the files they protected. FU-47 deleted both
+> orphan `.bak` files; the policy now has 37 active rules and no
+> exact-path `-text` freeze.
+
 Design decisions:
 
 - **No broad `* text=auto eol=lf` fallback.** `text=auto` delegates the
@@ -114,10 +119,15 @@ Design decisions:
   tree and silently freeze a file that has not been reviewed. The leading `/`
   anchors the rule to the repository root.
 
-### Why the two `.bak` files are frozen rather than normalized
+### Why the two `.bak` files were frozen rather than normalized
 
-Both are unreferenced leftovers from commit `cd43906c`, scheduled for deletion
-in a separate cleanup BBF. Normalizing a file that is about to be deleted is
+Both are unreferenced leftovers, scheduled for deletion in a separate
+cleanup BBF. **Correction (2026-10-26, FU-47):** they were added by a 2026-06-13 commit titled "backup: pre-player-atom state snapshot before shared atom migration",
+not by `cd43906c` (2026-07-13) — `cd43906c` merely carried them forward, and
+the original attribution came from a shallow clone whose history boundary was
+`cd43906c`. That cleanup BBF has since landed:
+both files are deleted and the two exact-path `-text` freezes are removed
+with them. Normalizing a file that is about to be deleted is
 churn, and the `.tsx.bak` one is the only CRLF-containing file that would
 still be CRLF after this BBF. `-text` guarantees no conversion is applied in
 either direction and their committed bytes stay exactly as they are.
@@ -151,7 +161,9 @@ services/chess_coach/gateway/routes/repertoire_recommendations.py
     -> text: set, eol: lf
 ```
 
-The two orphans are frozen; their live siblings are normalised.
+At this commit the two orphans are frozen; their live siblings are
+normalised. **Correction (2026-10-26, FU-47):** both orphan files were
+subsequently deleted, so the freezes no longer exist.
 
 ### Renormalization result
 
@@ -176,9 +188,17 @@ pair are:
 | Binary assets | 49 | image/audio data where the byte pair is not a line ending; bytes unchanged |
 | Text files | **1** | the frozen orphan `CoachPanel.tsx.bak_1780860511` |
 
+> **Correction (2026-10-26, FU-47):** that orphan was deleted on
+> 2026-10-26, so the current tree has **0** tracked text files containing a
+> CRLF sequence.
+
 So **no tracked text file other than the frozen orphan contains a CRLF
-sequence**. The binary hits are byte-value coincidences inside PNG, JPG, MP3,
-ICO and ICNS payloads; their blobs are unchanged by this BBF.
+sequence**.
+
+> **Correction (2026-10-26, FU-47):** the frozen orphan was deleted, so
+> **no tracked text file at all** now contains a CRLF sequence. The binary
+> hits are byte-value coincidences inside PNG, JPG, MP3, ICO and ICNS
+> payloads; their blobs are unchanged by this BBF.
 
 ### The checkout noise this BBF eliminates, measured
 
@@ -197,6 +217,9 @@ tracked file under `core.autocrlf=true` and then switching that setting to
 | Head (with the policy) | 50 | **0** |
 
 The 50 remaining are the 49 binary assets and the frozen orphan `.bak`.
+
+> **Correction (2026-10-26, FU-47):** the orphan was deleted, so the
+> current count is **49** — all binary assets.
 
 The middle column counts files whose **on-disk bytes** differ from a pristine
 LF checkout; it is a byte-level measurement, not a `git diff` count. The
@@ -240,7 +263,9 @@ frozen by the policy and are deleted by a separate cleanup BBF.
 ## Deliberately out of scope
 
 - **The two orphan `.bak` files.** Deletion is a separate cleanup BBF; this
-  BBF only freezes their bytes.
+  BBF only freezes their bytes. **Correction (2026-10-26, FU-47):** that
+  cleanup BBF has since landed — both files are deleted and the two
+  exact-path `-text` freezes are removed with them.
 - **Any change to the CRLF content of the 16 renormalized files beyond the
   line terminators.** Each changed blob differs from its predecessor by
   CRLF-to-LF only; no other byte differs.
