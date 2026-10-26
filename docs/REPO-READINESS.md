@@ -282,10 +282,13 @@ use bare `python -c "..."` in bash examples.
 
 ### 6. Unicode in commits gets rejected
 
-The pre-commit UTF-8 lint (`lint-utf8.mjs`, BBF-17) blocks any
-non-ASCII character in `apps/desktop/src/`, `scripts/`, and a
-few top-level config files. Use `->` not `->`, `--` not `--`,
-`'single quotes'` not `'smart quotes'`. It does NOT scan
+The UTF-8 lint (`apps/desktop/scripts/lint-utf8.mjs`, BBF-17) runs in CI via
+`pnpm lint:ci` and fails the `frontend lint + test` job. It flags a fixed list
+of mojibake byte sequences — the classic "UTF-8 bytes decoded as Latin-1 and
+re-encoded as UTF-8" mistake (e.g. `â†'` for `→`, `Â·` for `·`) — in
+`apps/desktop/src/`, `apps/desktop/scripts/`, and a few top-level config files.
+It does NOT block arbitrary non-ASCII characters: real Unicode such as `—`,
+`…`, and `→` is allowed and already present in the source. It does NOT scan
 `docs/`, `libs/`, or `tests/`.
 
 ### 7. Adding a new `chess_coach.*` package requires both pyproject entries

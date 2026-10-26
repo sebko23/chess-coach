@@ -3168,6 +3168,58 @@ vulnerability blocking `main` CI), all resolved by pinning the affected version.
 
 ---
 
+## FU-45 — the UTF-8 mojibake guard has never run in CI
+
+**Identified:** 2026-10-25, during a live-tree sweep of the repository after
+PR #179. The guard `scripts/lint-utf8.mjs` had been tracked since BBF-17 but
+was in no CI job, and three tracked documents claimed otherwise.
+
+**Finding:** the guard flags the "UTF-8 bytes decoded as Latin-1 and
+re-encoded as UTF-8" mojibake that damaged `CoachPanel.tsx`,
+`GameDetailPage.tsx`, and `ProfileDashboard.tsx` during the BBF-4 / BBF-5
+sprints. It was orphaned in three ways at once:
+
+1. **Not invoked.** No `lint:utf8` script existed in
+   `apps/desktop/package.json`, and `lint:ci` did not reference it.
+2. **Not run by CI.** Neither `.github/workflows/smoke.yml` nor
+   `.github/workflows/security-audit.yml` mentioned it.
+3. **Mis-located.** `PROJECT_ROOT = process.cwd()` with
+   `SCAN_DIRS = ["src", ...]`, so from the repository root it scanned nothing
+   relevant; `pnpm lint:ci` runs from `apps/desktop`.
+
+Three tracked documents carried false claims about it: `CONTRIBUTING.md`
+("**Pre-commit hook**: every commit runs `lint-utf8.mjs`" — there is no
+pre-commit hook; the repo does not install one),
+`docs/REPO-READINESS.md` §6 ("The **pre-commit** UTF-8 lint … **blocks any
+non-ASCII character**" — wrong twice: no pre-commit hook, and the guard flags a
+fixed list of 10 mojibake sequences, not arbitrary non-ASCII), and
+`docs/CHANGELOG.md` (the BBF-62 and BBF-17 entries stated in the present tense
+that the guard ran as a pre-commit hook — it never did).
+
+**Status:** RESOLVED 2026-10-25 via `docs/16_audit/BBF-FU-45-utf8-guard-wiring.md`.
+The guard was moved to `apps/desktop/scripts/lint-utf8.mjs` (beside the
+already-wired `check-i18n-keys.mjs`), a `lint:utf8` script was added, and
+`lint:ci` was changed to invoke the guard first. The three documents were
+corrected. The detection logic is unchanged — all 10 `MOJIBAKE` needles are
+byte-identical before and after the move and the `oxfmt` reformat. No CI
+workflow file was modified; the guard is reached through the existing
+`pnpm lint:ci` invocation that the `frontend lint + test` job already runs.
+
+Regression coverage: `tests/unit/test_lint_utf8_guard.py` (7 tests), including
+two positive wired-assertions and four negative tests confirming the
+meta-test fails closed when the wiring is broken.
+
+**Out of scope (deliberately):** the two orphan tracked `.bak` files
+(`CoachPanel.tsx.bak_1780860511`, `repertoire_recommendations.py.bak`, both
+added by `cd43906c` and referenced by nothing) and the `.gitattributes` / CRLF
+root cause (17 tracked text files genuinely contain CRLF in their committed
+blobs) are separate work.
+
+**Cross-references:** FU-25, FU-43 — same shape (an enforcement
+mechanism that exists in the repo but is not actually wired into CI).
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or

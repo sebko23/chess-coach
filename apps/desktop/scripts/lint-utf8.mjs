@@ -4,8 +4,17 @@
 // mistake that produced "â†'", "â€¦", "â€"", "Â·" in CoachPanel.tsx,
 // GameDetailPage.tsx, and ProfileDashboard.tsx (BBF-4 / BBF-5 sprints).
 //
-// Run via: pnpm lint:utf8   (or: node ./scripts/lint-utf8.mjs)
+// Run via: pnpm lint:utf8   (or: node scripts/lint-utf8.mjs)
 // Wired into: pnpm lint:ci    (prepended before tsgo --noEmit)
+//
+// FU-45 (2026-10-25): this file used to live at the REPOSITORY ROOT
+// (`scripts/lint-utf8.mjs`) and was ORPHANED -- it was in no CI job and
+// no package.json script, and it could not scan what it claimed to scan
+// because `PROJECT_ROOT = process.cwd()` means it only scans `src/` when
+// the cwd is `apps/desktop`. It was moved here, beside `check-i18n-keys.mjs`,
+// so `pnpm lint:ci` (which runs from `apps/desktop`) can actually invoke
+// it. The scan scope below is UNCHANGED: `src/`, `scripts/`, and a few
+// top-level config files -- it does NOT scan `docs/`, `libs/`, or `tests/`.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -13,15 +22,21 @@ import { join, relative } from "node:path";
 const PROJECT_ROOT = process.cwd();
 const SCAN_DIRS = ["src", "scripts", "i18next.config.ts", "index.html"];
 const SKIP_DIRS = new Set([
-  "node_modules", "dist", "src-tauri", ".git", ".archive",
-  ".github", ".vscode", ".husky",
+  "node_modules",
+  "dist",
+  "src-tauri",
+  ".git",
+  ".archive",
+  ".github",
+  ".vscode",
+  ".husky",
 ]);
 const SKIP_FILES = new Set([
   "src/bindings/generated.ts",
   "src/routeTree.gen.ts",
   "scripts/lint-utf8.mjs",
 ]);
-const SKIP_SUFFIXES = [".bak", ".bak."];  // matches *.bak, *.bak.<ts>
+const SKIP_SUFFIXES = [".bak", ".bak."]; // matches *.bak, *.bak.<ts>
 
 // Moibake byte sequences (UTF-8) → real Unicode char.
 // Listed in the order discovered in BBF-4/BBF-5 + the four common Latin-script
@@ -29,10 +44,10 @@ const SKIP_SUFFIXES = [".bak", ".bak."];  // matches *.bak, *.bak.<ts>
 const MOJIBAKE = [
   { needle: "â†'", hint: "→ (U+2192)" },
   { needle: "â†‘", hint: "↑ (U+2191)" },
-  { needle: "â†\"", hint: "↓ (U+2193)" },
-  { needle: "â€\"", hint: "— (U+2014)" },
+  { needle: 'â†"', hint: "↓ (U+2193)" },
+  { needle: 'â€"', hint: "— (U+2014)" },
   { needle: "â€¦", hint: "… (U+2026)" },
-  { needle: "Â·",  hint: "· (U+00B7)" },
+  { needle: "Â·", hint: "· (U+00B7)" },
   { needle: "Ã©", hint: "é (U+00E9)" },
   { needle: "Ã¨", hint: "è (U+00E8)" },
   { needle: "Ã ", hint: "à (U+00E0)" },
@@ -59,18 +74,32 @@ const hits = [];
 for (const target of SCAN_DIRS) {
   const full = join(PROJECT_ROOT, target);
   let st;
-  try { st = statSync(full); } catch { continue; }
+  try {
+    st = statSync(full);
+  } catch {
+    continue;
+  }
   const files = st.isDirectory() ? [...walk(full)] : [full];
   for (const file of files) {
     const rel = relative(PROJECT_ROOT, file).replaceAll("\\", "/");
     if (!shouldScan(rel)) continue;
     let text;
-    try { text = readFileSync(file, "utf8"); } catch { continue; }
+    try {
+      text = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
     const lines = text.split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {
       for (const { needle, hint } of MOJIBAKE) {
         if (lines[i].includes(needle)) {
-          hits.push({ file: rel, line: i + 1, needle, hint, snippet: lines[i].trim().slice(0, 80) });
+          hits.push({
+            file: rel,
+            line: i + 1,
+            needle,
+            hint,
+            snippet: lines[i].trim().slice(0, 80),
+          });
         }
       }
     }

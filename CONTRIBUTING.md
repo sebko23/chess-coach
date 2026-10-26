@@ -142,8 +142,9 @@ apply them literally.
   type is one of `feat`, `fix`, `refactor`, `docs`, `test`, `chore`,
   and scope is the affected module (`gui`, `import`, `gateway`, etc.).
   Body explains the why and the verification.
-- **Pre-commit hook**: every commit runs `lint-utf8.mjs` to catch
-  mojibake. Don't bypass it.
+- **UTF-8 lint in CI**: `pnpm lint:ci` runs
+  `apps/desktop/scripts/lint-utf8.mjs` to catch mojibake in
+  `apps/desktop/src/`. It fails the `frontend lint + test` CI job.
 - **No `--force` push to `main`**. If you need to rewrite history,
   coordinate in the PR.
 - **No secrets in commits**. The `secrets-handling` skill and the
