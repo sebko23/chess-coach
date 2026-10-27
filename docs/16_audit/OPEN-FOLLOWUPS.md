@@ -2784,9 +2784,10 @@ action pins are matched.
 **Status:** **RESOLVED 2026-10-15 via squash-merge of PR #140**
 (commit `d78b9b9b` on `main`, merge commit `1dbf59e8`).
 The single combined `[allowlist]` block in
-`.gitleaks.toml` (with `targetRules = ["generic-api-key",
-"github-pat", "lichess-pat", "curl-auth-header"]` + 13
-path entries) suppresses 27/27 in-scope false positives
+`.gitleaks.toml` (at the time of PR #140, with `targetRules =
+["generic-api-key", "github-pat", "lichess-pat",
+"curl-auth-header"]` + 13 path entries) suppresses 27/27
+in-scope false positives
 on the local full-history scan; the 2 deleted-file
 findings remain out of scope (require git-filter-repo
 or permanent allowlist). 12/12 CI green on `cab74655`.
@@ -2813,11 +2814,17 @@ were added in `44a9a3e3` and deleted in `fa77660b` (PR #52);
 `cab74655` is the PR #141 merge commit, not a CI run of PR #140.
 The 12 green check-runs belong to `d78b9b9b` and to the PR #140
 merge commit `1dbf59e8` (12 check-runs, all successful, on each).
-The allowlist's `targetRules` list still names `lichess-pat`,
+The allowlist's `targetRules` list still named `lichess-pat`,
 a rule id that current gitleaks releases reject at config-load
 time; see the `## Resolved` entry below for the measured
-forward-compatibility finding, which is tracked as a separate
-BBF and is deliberately NOT discharged here.
+forward-compatibility finding, which was tracked as a separate
+BBF and was deliberately NOT discharged here. That separate BBF
+has since shipped: PR #184 removed only `lichess-pat` from
+`targetRules` (merge commit `a5bd6d38`), leaving the list as
+`["generic-api-key", "github-pat", "curl-auth-header"]`. The
+three retained ids are load-bearing for path allowlisting on
+gitleaks 8.30.1 and must not be removed without cross-version
+re-measurement — see the FU-48 entry below.
 
 **Identified:** 2026-10-15, during the session-close
 follow-up audit of FU-18 (the BBF-FU-18-keyring-test-impl
@@ -2863,7 +2870,9 @@ gitleaks 8.24.x honors; the v8 `[[allowlists]]` and
 named `[allowlist.name]` forms are silently ignored):
 
 - `targetRules = ["generic-api-key", "github-pat", "lichess-pat",
-  "curl-auth-header"]`
+  "curl-auth-header"]` (the list as shipped by PR #140; PR #184
+  later removed only `lichess-pat`, leaving
+  `["generic-api-key", "github-pat", "curl-auth-header"]`)
 - `paths` covers 13 entries (1 log_redaction fixture +
   11 devtoken123 + 1 keybindings)
 
@@ -3346,6 +3355,97 @@ named this deletion as a separate cleanup BBF.
 
 ---
 
+## FU-48 — gitleaks 8.30.1 scopes path allowlisting to `targetRules` (documentation/ledger finding)
+
+**Identified:** 2026-10-27, during the gitleaks forward-compatibility BBF that
+shipped PR #184 (merge commit `a5bd6d38`). PR #184 removed the obsolete
+`lichess-pat` target-rule ID and measured the finding set across gitleaks 8.24.2,
+8.24.3, and 8.30.1. That measurement surfaced a behavior the ledger did not
+record: on gitleaks 8.30.1, path allowlisting is scoped to the rules named in
+`targetRules`, so the retained target-rule IDs are load-bearing rather than merely
+defensive.
+
+**Status:** RESOLVED 2026-10-27 as a documentation/ledger finding via
+`docs/16_audit/BBF-gitleaks-stale-docs-ledger.md`. This entry changes no scanner
+behavior and no workflow configuration; the merged `.gitleaks.toml` functional
+list is unchanged and remains exactly
+`["generic-api-key", "github-pat", "curl-auth-header"]`.
+
+**Measured behavior.** Corpus: a fresh full clone of `origin/main` at
+`a5bd6d38` (449 commits reachable, 432 scanned by gitleaks), scanned with
+`--redact` on every run so no finding report ever carried a secret value.
+
+| gitleaks | `targetRules` configuration | findings |
+|---|---|---|
+| 8.24.2 | all three retained | 2 |
+| 8.24.2 | minus `generic-api-key` | 2 |
+| 8.24.2 | minus `github-pat` | 2 |
+| 8.24.2 | minus `curl-auth-header` | 2 |
+| 8.24.2 | empty (`[]`) | 2 |
+| 8.24.3 | all three retained | 2 |
+| 8.24.3 | minus `generic-api-key` | 2 |
+| 8.24.3 | minus `github-pat` | 2 |
+| 8.24.3 | minus `curl-auth-header` | 2 |
+| 8.24.3 | empty (`[]`) | 2 |
+| 8.30.1 | all three retained | 2 |
+| 8.30.1 | minus `generic-api-key` | 6 |
+| 8.30.1 | minus `github-pat` | 2 |
+| 8.30.1 | minus `curl-auth-header` | 27 |
+| 8.30.1 | empty (`[]`) | 2 |
+
+A control with the `[allowlist]` table removed but `[extend] useDefault = true`
+kept reports 31 findings on all three versions, confirming the allowlist remains
+effective and that the 2-finding rows are not an artifact of a config that stopped
+suppressing anything.
+
+**What the table establishes.**
+
+1. **On 8.30.1, path allowlisting is scoped to `targetRules`.** Dropping
+   `generic-api-key` raises the finding count from 2 to 6 (the 4 extra are the
+   log-redaction fixtures and the 2 keybinding strings); dropping
+   `curl-auth-header` raises it to 27 (25 `curl-auth-header` dev-fixture matches
+   plus the 2 `generic-api-key` residual). The same two removals leave 8.24.x at 2.
+2. **The three retained IDs are load-bearing on 8.30.1.** `generic-api-key` and
+   `curl-auth-header` are load-bearing directly, per the measured counts above.
+   `github-pat` is load-bearing in principle rather than in this corpus: it matches
+   zero findings against the current corpus, so removing it changes no count here.
+   It was separately proven load-bearing on 8.30.1 by inserting a high-entropy
+   synthetic `ghp_` token into an allowlisted path in a scratch clone: with
+   `github-pat` in `targetRules` the finding count stayed at 2; with it removed the
+   count rose to 3 with a `github-pat` finding. The same probe on 8.24.2 and
+   8.24.3 stayed at 2 either way. The probe commit was discarded and the scratch
+   clone reset to the pristine landed tree before this entry was written.
+3. **An empty `targetRules` is NOT equivalent to a partial list.** An empty list
+   yields 2 findings on all three versions — the same count as the full three-ID
+   list — while a PARTIAL list can yield 6 or 27 on 8.30.1. So emptiness is
+   indistinguishable from the full list by count alone, but a partial list is
+   strictly worse than either. This is the opposite of the intuitive reading: the
+   safe state is the full list or the empty list, never a subset.
+4. **Future rule-list changes require cross-version re-measurement.** A count
+   measured on 8.24.x does not transfer to 8.30.1, because the scoping behavior
+   differs. Any future edit to `targetRules` must be re-measured against the same
+   corpus on gitleaks 8.24.2, 8.24.3, and 8.30.1, and the three finding manifests
+   must be compared as byte-identical before the change is accepted.
+
+**This correction does not alter merged scanner behavior.** The functional
+`targetRules` value, the 13 `paths` entries, the `[extend]` block, and the
+allowlist `description` are unchanged by this BBF. `.gitleaks.toml`'s functional
+lines are byte-identical to the merged tree at `a5bd6d38`; only the explanatory
+comment above the `[allowlist]` table was corrected. No CI workflow file, action
+version, detector, allowlist path, or scanner configuration was touched.
+
+**Out of scope (deliberately):** the two `generic-api-key` residual findings in the
+deleted `CHESS COACH _*.md` files (accepted residual risk under FU-38); the
+`shift+arrow*` keybinding matches in `keybinds.ts` (a refactor, not a security
+fix); and any change to the functional rule list, which would require the
+cross-version re-measurement this entry requires and is a separate decision.
+
+**Cross-references:** FU-38 — the allowlist fix and the accepted 2-finding residual
+risk; PR #184 — the merged one-line config BBF that removed `lichess-pat`; the
+`## Resolved` FU-38 entry below — the pre-PR-#184 state this entry supersedes.
+
+---
+
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
@@ -3443,7 +3543,7 @@ No governance questions, no upstream-inheritance concerns. Leaf reviewer verdict
 
 ### FU-38 — RESOLVED, accepted as-is, not rewritten
 
-**Original entry:** lines 2782-2911 (above).
+**Original entry:** lines 2782-2919 (above).
 **Resolution:** ACCEPTED as-is, NOT rewritten. Closed 2026-10-27 by product-owner scope decision.
 
 The allowlist fix itself shipped in PR #140 (commit `d78b9b9b`, squash-merged as
@@ -3490,12 +3590,19 @@ rewrites every descendant SHA); no permanent allowlist entry for the two blob SH
 security fix. The `security-audit.yml` Node-20 pins listed as out of scope in this
 entry were resolved separately by FU-41 (merge `cab74655`).
 
-**Separate BBF, deliberately not discharged here.** The merged `.gitleaks.toml`
-names `lichess-pat` in `targetRules`. gitleaks 8.30.1 rejects that config at
-load time with `[[allowlists]] target rule ID 'lichess-pat' does not exist`. CI is
-green only because `gitleaks-action@v3` bundles gitleaks 8.24.3, where the config
-loads. Dropping `lichess-pat` from `targetRules` was measured to restore the same
-2-finding result on gitleaks 8.30.1 (the rule id is defensive — the fixtures match
-`generic-api-key`, not `lichess-pat`), so the fix is one line. It is tracked as a
-separate config BBF because it changes a live CI-adjacent config file rather than
-the ledger, and this flip is doc-only.
+**Separate BBF, deliberately not discharged here (as of 2026-10-27).** This
+paragraph records the pre-PR-#184 state, which was still true when this entry was
+written: the merged `.gitleaks.toml` named `lichess-pat` in `targetRules`, and
+gitleaks 8.30.1 rejected that config at load time with `[[allowlists]] target rule
+ID 'lichess-pat' does not exist`. CI was green only because `gitleaks-action@v3`
+bundles gitleaks 8.24.3, where the config loads. Dropping `lichess-pat` from
+`targetRules` was measured to restore the same 2-finding result on gitleaks 8.30.1,
+so the fix was one line. It was tracked as a separate config BBF because it changed
+a live CI-adjacent config file rather than the ledger, and this flip was doc-only.
+
+**That separate config BBF has since shipped.** PR #184 removed only `lichess-pat`
+from `targetRules` and nothing else; the landed list is
+`["generic-api-key", "github-pat", "curl-auth-header"]` (merge commit `a5bd6d38`,
+the sole parent of which is `c5b2f729`). The three retained ids were then measured
+to be load-bearing for path allowlisting on gitleaks 8.30.1, so they are not
+removable without cross-version re-measurement — see the FU-48 entry below.

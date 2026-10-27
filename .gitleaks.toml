@@ -40,10 +40,19 @@ useDefault = true
 # regex (which looks for ~20+ chars of high-entropy
 # alphanumerics, which the keybinding strings accidentally match).
 #
-# The `lichess-pat` and `github-pat` rules are listed defensively
-# (per the original log_redaction-test-fixtures rationale) in
-# case upstream ever extends its `lip_...` / `ghp_...` regex to
-# overlap the log_redaction fixtures.
+# The target rules are `generic-api-key`, `github-pat`, and
+# `curl-auth-header`. `lichess-pat` was removed by PR #184 because
+# gitleaks 8.30.1 rejects the configuration at load time with
+# "[[allowlists]] target rule ID 'lichess-pat' does not exist"; that
+# rule id is absent from 8.30.1 while present in 8.24.x.
+#
+# The three retained ids are LOAD-BEARING on gitleaks 8.30.1: there,
+# path allowlisting is scoped to the rules named in `targetRules`.
+# Removing `generic-api-key` raises the measured finding count from
+# 2 to 6 and removing `curl-auth-header` raises it to 27; the same
+# removals leave 8.24.x at 2. Do NOT remove a retained id without
+# re-measuring the finding set across gitleaks 8.24.2, 8.24.3, and
+# 8.30.1 against the same corpus.
 #
 # The single v1 `[allowlist]` block is the supported form on
 # gitleaks 8.24.x; the v8 `[[allowlists]]` and named
