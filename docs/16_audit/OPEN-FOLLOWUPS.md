@@ -2795,6 +2795,30 @@ or permanent allowlist). 12/12 CI green on `cab74655`.
 "154" vs "164" line count, etc.). Documented by this
 BBF-doc-drift-flip.
 
+**Status (clarified 2026-10-27, doc-drift flip-13):** **RESOLVED
+2026-10-27 via product-owner scope decision — accepted as-is, not
+rewritten.** The allowlist fix shipped in PR #140 and is the
+canonical resolution for this entry; the 2 residual
+deleted-file findings are accepted as residual risk rather than
+discharged by a history rewrite. See the `## Resolved` entry
+below for the measured basis and the reasoning.
+
+**Correction (2026-10-27, doc-drift flip-13) to the lead block
+above:** the 2 deleted-file findings were introduced by commit
+`44a9a3e3` (2026-05-18), not `cd43906c` — `cd43906c` is a
+later commit that merely still contained the files. Both files
+were added in `44a9a3e3` and deleted in `fa77660b` (PR #52);
+`44a9a3e3` is an ancestor of `cd43906c` and of `main`. The
+"12/12 CI green on `cab74655`" attribution is also wrong:
+`cab74655` is the PR #141 merge commit, not a CI run of PR #140.
+The 12 green check-runs belong to `d78b9b9b` and to the PR #140
+merge commit `1dbf59e8` (12 check-runs, all successful, on each).
+The allowlist's `targetRules` list still names `lichess-pat`,
+a rule id that current gitleaks releases reject at config-load
+time; see the `## Resolved` entry below for the measured
+forward-compatibility finding, which is tracked as a separate
+BBF and is deliberately NOT discharged here.
+
 **Identified:** 2026-10-15, during the session-close
 follow-up audit of FU-18 (the BBF-FU-18-keyring-test-impl
 merge commit). A local full-history `gitleaks 8.24.2` scan
@@ -2852,7 +2876,7 @@ a new context) would still be flagged. The combined
 the over-allowlist is benign), but it's the only form
 gitleaks 8.24.x honors.
 
-**Status:** OPEN. Resolution BBF:
+**Status:** RESOLVED 2026-10-27 via product-owner scope decision (accepted as-is, not rewritten); see the canonical resolution above and the `## Resolved` entry below. Historical resolution-BBF pointer preserved below:
 `docs/16_audit/BBF-FU-38-pre-existing-leaks.md`.
 
 **Out of scope:**
@@ -2862,15 +2886,15 @@ gitleaks 8.24.x honors.
   The 2 findings require either git-filter-repo history
   rewrite (destructive) or a permanent allowlist entry
   for the deleted-file SHAs. Both are heavy; out of scope
-  for a config-only fix. Tracked as a future BBF.
+  for a config-only fix. Accepted as-is, not rewritten.
 - The 2 `shift+arrow*` matches in `keybinds.ts` could be
   removed entirely (the strings are inside a TypeScript
   object literal, not user input) but that's a refactor
   not a security fix; out of scope.
 - The remaining `security-audit.yml` Node-20 pins
   (`actions/checkout@v5` x 4 + `astral-sh/setup-uv@v3` x 1)
-  surfaced by the FU-40 leaf review. Tracked as a future
-  BBF (FU-41 candidate); out of scope for FU-38.
+  surfaced by the FU-40 leaf review. Resolved by FU-41
+  (merge `cab74655`); out of scope for FU-38.
 
 **Cross-references:**
 
@@ -3416,3 +3440,62 @@ No governance questions, no upstream-inheritance concerns. Leaf reviewer verdict
 *Session-closed: 2026-08-31. Closed per Sebastian's session directive for the FU-33 disposition + co-close of FU-28/31/32.*
 
 *Reopened 2026-09-04: FU-34 resolved per PR #117 squash-merge. Entry added under `## Resolved` and FU-34 upper-section status flipped from OPEN to RESOLVED.*
+
+### FU-38 — RESOLVED, accepted as-is, not rewritten
+
+**Original entry:** lines 2782-2911 (above).
+**Resolution:** ACCEPTED as-is, NOT rewritten. Closed 2026-10-27 by product-owner scope decision.
+
+The allowlist fix itself shipped in PR #140 (commit `d78b9b9b`, squash-merged as
+`1dbf59e8`) and is the canonical resolution for this entry. What was open was the
+entry's own residual scope: the 2 full-history `generic-api-key` findings whose
+content lives in two deleted `CHESS COACH _*.md` files. Those 2 findings are
+accepted as residual risk rather than discharged by a destructive history rewrite.
+
+**Measured basis.** A full-history gitleaks scan was re-run against a fresh clone of
+`origin/main` (476 commits reachable; 430 scanned by gitleaks), using the
+`.gitleaks.toml` from the merged tree:
+
+| Config | Findings |
+|---|---|
+| as it stood at `3f056c6f` (the PR #140 parent), gitleaks 8.24.2 | 29 |
+| with the `[allowlist]` block removed, same corpus and binary | 31 |
+| with the merged `[allowlist]` block, same corpus and binary | 2 |
+
+So the allowlist suppresses 29 findings, and the 2 that remain are the same 2 in
+every configuration. The 31-vs-29 difference is the `tests/unit/test_log_redaction.py`
+fixtures, which the pre-existing allowlist (present at `3f056c6f`) already covered
+and which were added by commit `d15bb306` (2026-10-15).
+
+**What the 2 residual findings actually are.** Both are in files added by commit
+`44a9a3e3` (2026-05-18) and deleted by commit `fa77660b` (PR #52, 2026-07-31).
+`44a9a3e3` is an ancestor of `main`. Each file is a captured gateway diagnostic
+report containing a literal `session_token` value from that era's running gateway.
+Both values are 43-character urlsafe-base64 strings, matching the format of
+`generate_token()` (`secrets.token_urlsafe`), which mints a fresh token at every
+gateway restart when no static token is configured.
+
+**Why accepting them is safe.** The token is per-process and rotated on restart; the
+current gateway mints a fresh one on every start unless `CHESS_COACH_BACKEND_TOKEN`
+is set, and the committed values appear nowhere in the current tree — only in
+history. The gateway they authenticated to is gone. The values are therefore
+historical artifacts of a local development host, not live credentials of any
+running service, and no allowlist entry was added for them: the allowlist remains
+path-based and rule-scoped, so a real secret at a new path would still be flagged.
+
+**What was deliberately NOT done.** No `git-filter-repo` history rewrite (destructive;
+rewrites every descendant SHA); no permanent allowlist entry for the two blob SHAs
+(that would suppress the finding class rather than the instance). The two
+`shift+arrow*` matches in `keybinds.ts` were left in place — a refactor, not a
+security fix. The `security-audit.yml` Node-20 pins listed as out of scope in this
+entry were resolved separately by FU-41 (merge `cab74655`).
+
+**Separate BBF, deliberately not discharged here.** The merged `.gitleaks.toml`
+names `lichess-pat` in `targetRules`. gitleaks 8.30.1 rejects that config at
+load time with `[[allowlists]] target rule ID 'lichess-pat' does not exist`. CI is
+green only because `gitleaks-action@v3` bundles gitleaks 8.24.3, where the config
+loads. Dropping `lichess-pat` from `targetRules` was measured to restore the same
+2-finding result on gitleaks 8.30.1 (the rule id is defensive — the fixtures match
+`generic-api-key`, not `lichess-pat`), so the fix is one line. It is tracked as a
+separate config BBF because it changes a live CI-adjacent config file rather than
+the ledger, and this flip is doc-only.
