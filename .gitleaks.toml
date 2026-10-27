@@ -53,7 +53,7 @@ useDefault = true
 # is benign), but it's the only form gitleaks 8.24.x honors.
 [allowlist]
 description = "log_redaction test fixtures + devtoken123 dev fixture + keybinding strings (single v1 block is the supported form on gitleaks 8.24.x)"
-targetRules = ["generic-api-key", "github-pat", "lichess-pat", "curl-auth-header"]
+targetRules = ["generic-api-key", "github-pat", "curl-auth-header"]
 paths = [
   # log_redaction test fixtures (PR #136 amend #2)
   '''tests/unit/test_log_redaction\.py''',
