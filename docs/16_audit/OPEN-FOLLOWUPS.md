@@ -3463,22 +3463,22 @@ unchanged in the upper section, but change the `**Status:**` line and add a brie
 
 ### FU-28 — RESOLVED, fixed by PR #110
 
-**Original entry:** lines 1902-1942 (above).
+**Original entry:** lines 2136-2183 (above).
 **Resolution:** Addressed by PR #110 (`feat(ci): enforce-by-default for backend tests; log FU-30 conftest path defect`), squash-merged as `f0b07dac` (2026-08-27). The 14-path explicit enumeration in `smoke.yml:178-192` was replaced by the directory-level invocation `pytest tests/unit tests/integration --ignore=...`. Post-merge state: 53 of 58 test files enforced by the glob (vs. 16 under the explicit list).
 
 ### FU-31 — RESOLVED, fixed by PR #111
 
-**Original entry:** lines 1989-2031 (above).
+**Original entry:** lines 2270-2320 (above).
 **Resolution:** Addressed by PR #111 (`fix(tests): rewrite test_route_is_wired_to_smoke_yml for FU-28 glob convention`), squash-merged as `042f56c1` (2026-08-29). The meta-test's literal `"test_pdf_ingest_security.py" in smoke_text` assertion was rewritten to assert the post-FU-28 structural convention: `tests/unit` appears as a positional pytest arg AND the file basename does NOT appear in any `--ignore=` clause. Post-merge gateway-boot pytest: 567 passed, 4 skipped, 0 failed on Linux CI.
 
 ### FU-32 — RESOLVED, fixed by PR #112
 
-**Original entry:** lines 2032-2078 (above).
+**Original entry:** lines 2322-2375 (above).
 **Resolution:** Addressed by PR #112 (`fix(route): add os.path.isdir() pre-check for polyglot_book_path (FU-32)`), squash-merged as `b4a8e5f0` (2026-08-31). The route's `_book_moves_for_fen` gained an explicit `os.path.isdir(book_path)` pre-check that raises `HTTPException(400)` before the library call. This bypasses the `chess.polyglot.MemoryMappedReader._EmptyMmap` workaround (which silently returns an empty reader on Linux for directory paths, defeating the route's existing `OSError` catch on Windows). Post-merge gateway-boot pytest: 567 passed, 4 skipped, 0 failed on Linux CI.
 
 ### FU-33 — RESOLVED, accepted as-is, not amended
 
-**Original entry:** lines 2079-2117 (above).
+**Original entry:** lines 2377-2425 (above).
 **Resolution:** ACCEPTED as-is, NOT amended. Rationale:
 
 - (a) The stale references are in commit-body prose (specifically `smoke.yml:178-192` in the bodies of merges `f0b07dac` / `042f56c1` / `b4a8e5f0`), not in code or test assertions. They do not affect runtime behavior or test pass/fail.
@@ -3490,7 +3490,7 @@ The `verify_commit_refs.py` failure on `f0b07dac` / `042f56c1` / `b4a8e5f0` is n
 
 ### FU-24 — RESOLVED, fixed by PR #114
 
-**Original entry:** lines 1790-1819 (above).
+**Original entry:** lines 2021-2051 (above).
 **Resolution:** Addressed by PR #114 (`docs: fix two doc-drift pointers surfaced by FU-24`), squash-merged as `e74528a6` (2026-09-03). Two single-line doc-drift fixes in tracked docs:
 
 - `docs/11_repo_structure/repository-structure.md:154` — was `apps/desktop/README.md`, now `apps/desktop/UPSTREAM.md` §Rebase history. The rebase ritual does not live in the 17-line `apps/desktop/README.md`; it lives in `apps/desktop/UPSTREAM.md` at the `## Rebase history` section (verified: 3 rebase mentions including a v0.15.0 initial-fork row at L107; `README.md` has zero rebase mentions).
@@ -3500,7 +3500,7 @@ No governance questions, no upstream-inheritance concerns, no side-effects. Leaf
 
 ### FU-34 — RESOLVED, fixed by PR #117
 
-**Original entry:** lines 2123-2167 (above).
+**Original entry:** lines 2428-2480 (above).
 **Resolution:** Addressed by PR #117 (`fix(pnpm): FU-34 GHSA-cp6q-959q-f8rh @tiptap/core override`), squash-merged as `2c92fda4` (2026-09-04). One-line `pnpm.overrides` entry in `apps/desktop/pnpm-workspace.yaml` (the canonical pnpm v11 override location per FU-17, NOT `apps/desktop/package.json` whose `pnpm.overrides` block is dead code under pnpm v11+):
 
 ```yaml
