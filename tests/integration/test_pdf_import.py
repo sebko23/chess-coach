@@ -8,7 +8,8 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import UploadFile
-from services.chess_coach.gateway.routes.pdf_ingest import import_pdf
+
+from chess_coach.gateway.routes.pdf_ingest import import_pdf
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 MOCK_FEN = "8/8/8/4k3/8/8/8/4K2R w K - 0 1"
@@ -78,11 +79,11 @@ class TestPdfImport:
         assert r.status_code == 422
 
     @patch(
-        "services.chess_coach.gateway.routes.pdf_ingest.convert_from_bytes",
+        "chess_coach.gateway.routes.pdf_ingest.convert_from_bytes",
         return_value=[MagicMock()],
     )
     @patch(
-        "services.chess_coach.gateway.routes.pdf_ingest._predict_fen",
+        "chess_coach.gateway.routes.pdf_ingest._predict_fen",
         new_callable=AsyncMock,
         return_value=(MOCK_FEN, 0.9, None),
     )
