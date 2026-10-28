@@ -5,13 +5,48 @@
 # first BBF. See docs/16_audit/PHASE-8-MINIMUM-VIABLE-SCOPING-2026-08-20.md
 # for the full scoping brief.
 #
+# BBF-FU-35-pyi-cleanup (2026-10-27): collect the physical `chess_coach`
+# package instead of bundling the source tree and patching sys.path at
+# runtime. See docs/16_audit/BBF-FU-35-pyinstaller-collect-all.md.
+#
 # Build:    pyinstaller services/chess_coach/gateway/chess-coach-gateway.spec
-# Entry:    chess_coach.gateway.__main__:main (per pyproject.toml:68)
+# Entry:    chess_coach.gateway.__main__:main (the canonical entry point —
+#           the same target as the `chess-coach-gateway` console script in
+#           pyproject.toml's [project.scripts]).
 # Target:   dist/chess-coach-gateway  (single-file --onefile binary)
 # Platform: Linux x86_64 (the smoke-test platform; Windows artifact
 #          will be produced separately on a Windows runner or via
 #          Wine; the spec is platform-portable — same source, different
 #          binary output).
+#
+# Package layout (FU-35): `chess_coach` is an EXPLICIT package — the repo
+# root carries a physical `chess_coach/__init__.py` marker (added by
+# BBF-FU-35-explicit-namespace, PR #161). Its subpackages are regular
+# packages spread across three source roots, wired by
+# `[tool.setuptools.package-dir]` in pyproject.toml:
+#
+#   chess_coach/            -> repo root (the __init__.py marker)
+#   chess_coach.*           -> libs/chess_coach/*, services/chess_coach/*,
+#                              apps/cli/chess_coach/*
+#
+# Collection: `collect_all("chess_coach")` CANNOT enumerate this layout on
+# its own. PyInstaller resolves `chess_coach` through the install's import
+# finder, and the setuptools editable finder exposes the root marker package
+# while hiding the per-subpackage source directories from the finder — so a
+# bare `collect_all("chess_coach")` returns 0 datas, 0 binaries, and 0 hidden
+# imports. Collecting each declared SUBPACKAGE individually does work: each
+# one resolves to its real source directory and lands in the bundle under the
+# correct `chess_coach/<name>` target. (Measured: 104 datas across 22
+# targets, 27 hidden imports.)
+#
+# The previous approach bundled the `services/chess_coach/` and
+# `libs/chess_coach/` SOURCE TREES verbatim via `datas=`, then had a runtime
+# hook (`pyinstaller_rthook.py`) prepend `_MEIPASS/services` and `_MEIPASS/libs`
+# to `sys.path` so the implicit-namespace resolution worked at startup. That
+# workaround is retired: it bundled `__pycache__/` and `.pyc` artifacts, swept
+# in any future file added to those directories, and made the "services before
+# libs" sys.path ordering load-bearing. The runtime hook file has been
+# deleted; this spec collects the package instead of synthesizing it.
 #
 # Pre-implementation investigation (commit body of the BBF PR documents
 # each finding; this header is the executable summary):
@@ -25,12 +60,12 @@
 #     static analysis often misses these. Adding "chess" to
 #     hiddenimports catches them all in one shot.
 #
-#   - Data files: 9 .sql migration files at
+#   - Data files: the 9 .sql migration files at
 #     libs/chess_coach/storage/migrations/ are loaded via
-#     importlib.resources.files() in storage/migrate.py:70. The
-#     pyproject.toml:119-120 setuptools.package-data declaration
-#     already declares this; PyInstaller needs the matching
-#     --add-data / datas entry to bundle them.
+#     importlib.resources.files() in storage/migrate.py. The
+#     pyproject.toml setuptools.package-data declaration already
+#     declares them; collect_all("chess_coach.storage.migrations")
+#     bundles them into the binary's data dir.
 #
 #   - FU-4 win: sentence_transformers / torch are LAZY-IMPORTED
 #     inside kb/embedder.py:_get_model() — never at module load.
@@ -61,35 +96,89 @@
 #
 # Smoke test: tests/integration/test_pyinstaller_binary.py
 #   - Builds the binary via PyInstaller CLI in CI
-#   - Spawns the binary as a subprocess with --host 127.0.0.1
-#     --port 18080 (configurable via env) and a writable CHESS_COACH_DATA_DIR
+#   - Spawns the binary as a subprocess with a writable CHESS_COACH_DATA_DIR
 #   - Polls /v1/system/health until 200 (with timeout)
 #   - Asserts response shape (status: ok) and tears down the process
-#
-# Verification on origin/main@4c30a7b7 (the SHA at the time of this BBF):
-#   - origin/main HEAD: 4c30a7b7feb4a2c3cf77ebd8c058092f5e3b5511
-#   - PR #100..#104 (rebrand + ADR-0007..0009): all merged
-#   - apps/desktop/src-tauri/tauri.conf.json: identity fields rebranded
-#   - apps/desktop/src-tauri/tauri.conf.json: externalBin NOT yet
-#     declared (deferred to BBF-Tauri-sidecar; this BBF does NOT
-#     touch tauri.conf.json)
+#   - Asserts the frozen artifact resolves `chess_coach` from the COLLECTED
+#     package (not the source tree) — see the test's frozen-artifact checks.
 
 import os
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 # Repo root: this spec file is at services/chess_coach/gateway/.
 # Repo root is the grandparent-of-parent directory.
 SPEC_DIR = Path(SPECPATH).resolve()  # type: ignore[name-defined]  # noqa: F821
 REPO_ROOT = SPEC_DIR.parents[2]  # services/chess_coach/gateway -> repo root
 
-# Path to the runtime hook (the file that runs at binary startup,
-# before __main__.py's imports are resolved). Created in this same
-# directory; the spec passes it via the runtime_hooks= argument to
-# Analysis() so PyInstaller bundles it into the binary and executes
-# it at startup.
-PYI_RTHOOK_PATH = str(SPEC_DIR / "pyinstaller_rthook.py")
+# The canonical entry point's physical file. PyInstaller's Analysis() takes
+# FILE NAMES only — the "module:function" form is not supported (verified
+# against PyInstaller 6.22.3: "ERROR: script '<...>:main' not found"). The
+# file below IS the canonical entry point's module
+# (`chess_coach.gateway.__main__`), and it is the same module the
+# `chess-coach-gateway` console script in pyproject.toml targets. There is no
+# parallel entry point and no source-tree path manipulation.
+ENTRY_SCRIPT = str(SPEC_DIR / "__main__.py")
+
+# The three source roots that hold the `chess_coach.*` subpackages. They go on
+# `pathex` so PyInstaller's static analysis can resolve `import chess_coach.X`
+# at build time (the root marker alone does not make the subpackages
+# importable). This is ANALYSIS-TIME resolution only — it does not affect the
+# frozen binary's runtime import path, which uses the collected package.
+PACKAGE_ROOTS = [
+    str(REPO_ROOT / "libs"),
+    str(REPO_ROOT / "services"),
+    str(REPO_ROOT / "apps" / "cli"),
+]
+
+# Every `chess_coach` subpackage declared in pyproject.toml's
+# [tool.setuptools.packages]. Collected one by one because the split-package
+# layout defeats a bare collect_all("chess_coach") (see the header).
+CHESS_COACH_SUBPACKAGES = [
+    "chess_coach.errors",
+    "chess_coach.storage",
+    "chess_coach.storage.migrations",
+    "chess_coach.protocol_types",
+    "chess_coach.uci",
+    "chess_coach.testkit",
+    "chess_coach.datasets",
+    "chess_coach.gateway",
+    "chess_coach.gateway.routes",
+    "chess_coach.engine_orch",
+    "chess_coach.analysis",
+    "chess_coach.narration",
+    "chess_coach.llm_router",
+    "chess_coach.kb",
+    "chess_coach.pdf_ocr",
+    "chess_coach.profile",
+    "chess_coach.debug",
+    "chess_coach.jobs",
+    "chess_coach.repertoire",
+    "chess_coach.keychain",
+    "chess_coach.log_redaction",
+    "chess_coach.cli",
+]
+
+# Collect the physical package: data files (the .sql migrations and any other
+# package data) plus the submodules of each declared subpackage.
+_C_DATAS, _C_BINARIES, _C_HIDDEN = [], [], []
+for _pkg in CHESS_COACH_SUBPACKAGES:
+    _d, _b, _h = collect_all(_pkg)
+    _C_DATAS += _d
+    _C_BINARIES += _b
+    _C_HIDDEN += _h
+
+# The root marker package itself: its __init__.py must be in the bundle so the
+# frozen binary has a physical `chess_coach` package (the smoke test asserts
+# this). collect_all on the root returns nothing under an editable install, so
+# the marker file is added as an explicit data entry.
+_C_DATAS.append(
+    (
+        str(REPO_ROOT / "chess_coach" / "__init__.py"),
+        "chess_coach",
+    ),
+)
 
 
 _TP = [
@@ -108,42 +197,10 @@ block_cipher = None
 
 
 a = Analysis(
-    ['__main__.py'],
-    pathex=[str(SPEC_DIR), str(REPO_ROOT)],
-    binaries=[],
-    datas=[
-        # chess_coach is a PEP 420 implicit namespace package
-        # (declared via [tool.setuptools.package-dir] in pyproject.toml;
-        # no physical chess_coach/__init__.py). PyInstaller's
-        # collect_all() does not enumerate implicit namespace packages,
-        # so we cannot rely on its enumeration. Instead, bundle the
-        # source-tree directories of the namespace package verbatim
-        # via datas=; the runtime hook then adds _MEIPASS/services and
-        # _MEIPASS/libs to sys.path so the implicit-namespace
-        # resolution works at binary startup. Future Phase 8 BBFs may
-        # add a chess_coach/__init__.py to make the namespace package
-        # explicit (the structural fix documented as FU-ChessCoach-
-        # NamespacePackage-Explicit in OPEN-FOLLOWUPS), which would let
-        # us drop these tree-level datas entries in favor of
-        # collect_all.
-        (
-            str(REPO_ROOT / 'services/chess_coach/'),
-            'services/chess_coach',
-        ),
-        (
-            str(REPO_ROOT / 'libs/chess_coach/'),
-            'libs/chess_coach',
-        ),
-        # The 9 SQL migration files at libs/chess_coach/storage/migrations/
-        # are loaded at runtime via importlib.resources.files()
-        # (storage/migrate.py:70). setuptools.package-data in
-        # pyproject.toml:119-120 declares them; PyInstaller needs
-        # this --add-data to bundle them into the binary's data dir.
-        (
-            str(REPO_ROOT / 'libs/chess_coach/storage/migrations/*.sql'),
-            'chess_coach/storage/migrations',
-        ),
-    ],
+    [ENTRY_SCRIPT],
+    pathex=[str(REPO_ROOT), *PACKAGE_ROOTS],
+    binaries=_C_BINARIES,
+    datas=_C_DATAS,
     hiddenimports=[
         # python-chess (the 'chess' module) is lazily imported at
         # top level inside try/except ImportError in 4 sites:
@@ -157,52 +214,42 @@ a = Analysis(
         # One entry covers all five call sites.
         'chess',
         # aiosqlite is imported at top level in 10 gateway route
-        # modules (backfill_analyses.py:33, blunder_routes.py:4,
-        # eval_graph.py:20, game_routes.py:4, lichess_import.py:18,
-        # narration.py:15, pdf_ingest.py:27, pgn_import.py:32,
-        # players.py:4, profile.py:7). PyInstaller's static analysis
-        # normally catches these because they're unguarded top-level
-        # imports -- but aiosqlite is a known PyInstaller pain point
-        # because it depends on the system sqlite3 shared library and
-        # a Python C-extension, both of which PyInstaller's hook
-        # system can mis-detect on some platforms. Adding it
-        # defensively costs nothing and preempts the next iteration's
-        # likely 'ModuleNotFoundError: aiosqlite' failure.
+        # modules. PyInstaller's static analysis normally catches these
+        # because they're unguarded top-level imports -- but aiosqlite
+        # is a known PyInstaller pain point because it depends on the
+        # system sqlite3 shared library and a Python C-extension, both of
+        # which PyInstaller's hook system can mis-detect on some
+        # platforms. Adding it defensively costs nothing and preempts
+        # the next iteration's likely 'ModuleNotFoundError: aiosqlite'
+        # failure.
         'aiosqlite',
-        # FU-34 iteration 5: with the source-tree bundling approach
-        # (services/ and libs/ in datas=), the bundled .py files load
-        # via the standard filesystem-path-based finder, which does
-        # NOT have visibility into PyInstaller's frozen-module
-        # finder (the PYZ archive). The third-party packages that
-        # chess_coach.gateway imports at the top of app.py (fastapi,
-        # uvicorn) need to be added to hiddenimports so PyInstaller's
-        # static analysis includes them in the PYZ, and the runtime
-        # can resolve them from PYZ via the same frozen-module
-        # finder that the bundled .py files use. Without these
-        # entries, app.py:38's `from fastapi import FastAPI, ...`
-        # fails at runtime with `ModuleNotFoundError: No module
-        # named 'fastapi'`.
+        # The third-party packages that chess_coach.gateway imports at the
+        # top of app.py (fastapi, uvicorn) need to be added to
+        # hiddenimports so PyInstaller's static analysis includes them in
+        # the PYZ and the runtime can resolve them via the frozen-module
+        # finder. Without these entries, app.py's
+        # `from fastapi import FastAPI, ...` fails at runtime with
+        # `ModuleNotFoundError: No module named 'fastapi'`.
         #
         # Per Sebastian's 2026-09-05 directive: "Don't add everything
-        # speculatively -- add what the error names, let CI run, add
-        # the next thing if it fails again." So this iteration
-        # adds only the five packages the prior CI log + the
-        # app.py:38 import line + uvicorn's known module
-        # decomposition imply:
+        # speculatively -- add what the error names, let CI run, add the
+        # next thing if it fails again." So this iteration adds only the
+        # five packages the prior CI log + the app.py import line +
+        # uvicorn's known module decomposition imply:
         'fastapi',
         'uvicorn',
         'uvicorn.logging',
         'uvicorn.loops',
         'uvicorn.loops.auto',
-    ] + _TP,
+    ] + _TP + _C_HIDDEN,
     hookspath=[],
     hooksconfig={},
-    # The runtime hook runs at binary startup, BEFORE __main__.py's
-    # imports are resolved. It adjusts sys.path to expose the
-    # synthesized chess_coach namespace package so that
-    # `import chess_coach.gateway.app` works in the binary.
-    # See pyinstaller_rthook.py for the mechanism.
-    runtime_hooks=[PYI_RTHOOK_PATH],
+    # No runtime hooks. The retired `pyinstaller_rthook.py` used to prepend
+    # _MEIPASS/services and _MEIPASS/libs to sys.path so the implicit
+    # namespace package resolved at startup. The package is now COLLECTED,
+    # so the frozen binary imports it from the collected package tree and
+    # needs no sys.path surgery.
+    runtime_hooks=[],
     excludes=[
         # FU-4 architectural decision: sentence_transformers / torch
         # are LAZY-IMPORTED inside kb/embedder.py:_get_model(). They
