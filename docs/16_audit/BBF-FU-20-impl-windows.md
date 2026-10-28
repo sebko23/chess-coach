@@ -19,7 +19,7 @@ The `pywin32` module (`win32job`) exposes:
 - `CreateJobObject`
 - `AssignProcessToJobObject`
 - `SetInformationJobObject` (limited info classes)
-- `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (memory cap, already used by FU-22-impl)
+- `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (memory cap — **NOT used by FU-22-impl**; see the 2026-10-28 correction below)
 
 It does **not** expose:
 - `SetInformationJobObject` with `JobObjectNetRateControlInformation`
@@ -108,6 +108,15 @@ test_set_network_isolation_preexec_strips_env_on_windows PASSED
    is still not implemented. The FU-22-impl BBF documented
    this as a follow-up. This BBF does not address it.
 
+   > **Correction (2026-10-28, `BBF-FU-22-windows-contract-correction`).**
+   > §1 of this brief previously listed `JOB_OBJECT_LIMIT_PROCESS_MEMORY`
+   > as *"already used by FU-22-impl"*, contradicting §5 of this same
+   > brief. **§5 was correct and §1 was false.** `win32job` is never
+   > imported in the repository, and `pywin32` is not a declared
+   > dependency; FU-22-impl implemented the 2 GB cap on Linux only, via
+   > `resource.setrlimit(RLIMIT_AS)`. The original wording is preserved
+   > above as the superseded state.
+
 ## §6. Cross-references
 
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-20 entry (will be
@@ -120,3 +129,19 @@ test_set_network_isolation_preexec_strips_env_on_windows PASSED
   (the module modified by this BBF).
 - `tests/unit/test_subprocess_runner.py`
   (the test file extended by this BBF).
+
+## §7. Correction (2026-10-28) — the internal contradiction resolved
+
+This brief contradicted itself: §1 listed `JOB_OBJECT_LIMIT_PROCESS_MEMORY`
+as *"already used by FU-22-impl"*, while §5 stated the Windows memory cap
+*"is still not implemented"*.
+
+**§5 was correct.** The tree at `bcb70d884fed8397e3e640b25695c017cc5f029f`
+contains no `win32job` import anywhere, and `pywin32` is not a declared
+dependency. FU-22-impl implemented the A-F11 property-4 cap on **Linux
+only**; the Windows half was never implemented and was recorded as a
+follow-up.
+
+Both statements are preserved above with the false one labelled as
+superseded. The correction is of record in
+`docs/16_audit/BBF-FU-22-windows-contract-correction.md`.

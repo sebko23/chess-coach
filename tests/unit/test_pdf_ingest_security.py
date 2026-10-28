@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import shutil
+import sys
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -99,6 +100,28 @@ async def prod_client():
         transport=transport, base_url="http://test"
     ) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def prod_client_and_app():
+    """Like `prod_client`, but also yields the app object.
+
+    BBF-FU-22 needs the app instance to resolve which `subprocess_runner`
+    module the LIVE route uses (see `_app_runner_module`).
+    """
+    import httpx
+
+    from chess_coach.gateway import create_app
+    from chess_coach.gateway.config import GatewaySettings
+
+    settings = GatewaySettings()
+    app = create_app(settings)
+    app.state.gateway.settings = settings
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test"
+    ) as client:
+        yield client, app
 
 
 async def test_oversized_pdf_returns_413(prod_client) -> None:
@@ -577,11 +600,18 @@ def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
         "network": _runner.set_network_isolation_preexec,
         "fs": _runner.set_fs_isolation_preexec,
         "popen": _runner.subprocess.Popen,
+        "supported": _runner.MEMORY_CAP_SUPPORTED,
     }
     _runner.set_rlimit_as_preexec = _fake_rlimit  # type: ignore[assignment]
     _runner.set_network_isolation_preexec = _fake_network  # type: ignore[assignment]
     _runner.set_fs_isolation_preexec = _fake_fs  # type: ignore[assignment]
     _runner.subprocess.Popen = _FakePopen  # type: ignore[assignment]
+    # BBF-FU-22-windows-contract-correction: on an uncappable platform the
+    # runner now refuses BEFORE spawning anything, so this wiring test must
+    # simulate a SUPPORTED platform to reach the Popen call it is asserting.
+    # The Windows refusal is covered separately by
+    # `test_windows_unsupported_path_never_spawns_a_parser`.
+    _runner.MEMORY_CAP_SUPPORTED = True  # type: ignore[assignment]
     try:
         # The runner's post-Popen behaviour is irrelevant here. On
         # Windows the real `subprocess.Popen` refuses `preexec_fn`
@@ -595,6 +625,7 @@ def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
         _runner.set_network_isolation_preexec = original["network"]  # type: ignore[assignment]
         _runner.set_fs_isolation_preexec = original["fs"]  # type: ignore[assignment]
         _runner.subprocess.Popen = original["popen"]  # type: ignore[assignment]
+        _runner.MEMORY_CAP_SUPPORTED = original["supported"]  # type: ignore[assignment]
 
     assert calls == ["rlimit", "network", "fs"], (
         "the composed pre-exec hook did not run the A-F11 "
@@ -646,3 +677,244 @@ def test_subprocess_respects_2gb_memory_cap() -> None:
     # 2 GB value without error
     preexec = set_rlimit_as_preexec(MEM_CAP_BYTES)
     assert callable(preexec)
+
+
+# ===========================================================================
+# J. BBF-FU-22-windows-contract-correction: the deliberate unsupported-platform
+#    result, and the corrected Linux contract.
+# ===========================================================================
+
+
+def _route_runner_module():
+    """Return the exact `subprocess_runner` module instance the route uses.
+
+    The repository's package tree is importable under more than one dotted
+    path (`chess_coach.pdf_ocr.subprocess_runner` and
+    `services.chess_coach.pdf_ocr.subprocess_runner`), and BOTH can be loaded
+    in the same process as two distinct module objects with two distinct
+    global namespaces. Whichever instance the route module imported is the
+    one whose globals `run_pdftoppm_in_subprocess` reads, so a test that
+    simulates the unsupported platform must patch THAT instance.
+
+    The lookup is driven by the route's own bound function, so it is correct
+    regardless of which dotted path the interpreter loaded.
+    """
+    module_name = pdf_ingest.run_pdftoppm_in_subprocess.__globals__["__name__"]
+    module = sys.modules[module_name]
+    assert module.__dict__ is pdf_ingest.run_pdftoppm_in_subprocess.__globals__, (
+        f"resolved runner module {module_name!r} is not the one the route's "
+        f"function reads its globals from"
+    )
+    return module
+
+
+def _app_runner_module(app) -> object:
+    """Return the runner module instance the RUNNING APP's route uses.
+
+    `create_app()` imports the route under the top-level `chess_coach.*`
+    path, while this test module imports it under `services.chess_coach.*`.
+    Those are two separate module objects, so patching the one this file
+    imported would leave the app's route untouched -- and the test would
+    silently assert nothing.
+
+    Resolution is driven by the app's own route table. The app registers
+    routers (whose members carry no `.path`), so the route is located via
+    the router's declared prefix and the route's own path.
+
+    The route's endpoint is wrapped by `@route_guard`, so the endpoint
+    function's own `__globals__` belong to the decorator, not the route
+    module. `__module__` (copied by `functools.wraps`) still names the route
+    module, so we resolve through that.
+    """
+    from chess_coach.gateway.routes import pdf_ingest_router
+
+    wanted = f"{pdf_ingest_router.prefix}/pdf"
+    for route in pdf_ingest_router.routes:
+        if getattr(route, "path", "") != wanted:
+            continue
+        module = sys.modules[route.endpoint.__module__]
+        runner = module.__dict__["run_pdftoppm_in_subprocess"]
+        return sys.modules[runner.__globals__["__name__"]]
+    raise AssertionError(
+        f"could not locate the {wanted!r} route on the app's pdf_ingest_router"
+    )
+
+
+async def test_unsupported_platform_returns_501_not_422(
+    prod_client_and_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A platform that cannot enforce the cap yields 501 / not_implemented.
+
+    Pre-BB1, `run_pdftoppm_in_subprocess` reached
+    `subprocess.Popen(preexec_fn=...)`, CPython raised
+    `ValueError: preexec_fn is not supported on Windows platforms`, and the
+    route's catch-all turned that internal configuration failure into an
+    incidental 422 - the SAME status as a malformed PDF or a generic parser
+    failure, so a client could not tell "your file is bad" from "this
+    platform cannot run the parser at all".
+
+    This test fails against that behavior: it requires 501 AND the ADR-0002
+    error code `internal.not_implemented`. It also proves no parser process
+    is spawned on this path.
+    """
+    prod_client, app = prod_client_and_app
+    subprocess_runner = _app_runner_module(app)
+
+    # Patch the module's own platform constant, NOT the process-wide
+    # `sys.platform`: mutating the shared stdlib module would corrupt
+    # unrelated runtime behaviour (asyncio / anyio) and make this test
+    # measure the wrong thing.
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
+
+    spawn_calls: list[object] = []
+
+    def _tripwire(*args: object, **kwargs: object) -> None:
+        spawn_calls.append((args, kwargs))
+        raise AssertionError(
+            "subprocess.Popen was called on the unsupported-platform path; "
+            "an uncapped parser process was spawned."
+        )
+
+    monkeypatch.setattr(subprocess_runner.subprocess, "Popen", _tripwire)
+
+    r = await prod_client.post(
+        "/v1/import/pdf",
+        headers=AUTH,
+        files={"file": ("test.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
+    )
+
+    assert r.status_code == 501, (
+        f"an unsupported platform must return 501, got {r.status_code}; "
+        f"body={r.text[:300]}"
+    )
+    body = r.json()
+    assert body["error"]["code"] == "internal.not_implemented", (
+        f"the error code must be `internal.not_implemented`, got {body}"
+    )
+    assert body["error"]["retriable"] is False
+    assert not spawn_calls, (
+        f"no parser process may be spawned on the unsupported path, but Popen "
+        f"was called {len(spawn_calls)} time(s)"
+    )
+
+
+async def test_unsupported_platform_is_distinct_from_other_pdf_outcomes(
+    prod_client_and_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 501 is separable from the 400 (malformed) and 422 (parser failure).
+
+    The directive requires the deliberate unsupported-platform result to be
+    distinguishable from malformed input, a missing tool, a timeout, and a
+    generic parser failure.
+    """
+    prod_client, app = prod_client_and_app
+    subprocess_runner = _app_runner_module(app)
+
+    # Baseline: malformed input (no %PDF- header) is a 400.
+    bad = await prod_client.post(
+        "/v1/import/pdf",
+        headers=AUTH,
+        files={"file": ("bad.pdf", io.BytesIO(b"not a pdf"), "application/pdf")},
+    )
+    assert bad.status_code == 400, (
+        f"malformed input must be 400, got {bad.status_code}"
+    )
+
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
+    unsupported = await prod_client.post(
+        "/v1/import/pdf",
+        headers=AUTH,
+        files={"file": ("test.pdf", io.BytesIO(MINIMAL_PDF), "application/pdf")},
+    )
+
+    assert unsupported.status_code == 501
+    assert unsupported.json()["error"]["code"] == "internal.not_implemented"
+    assert unsupported.status_code != bad.status_code
+    assert unsupported.status_code not in (400, 404, 413, 422, 504)
+
+
+def test_windows_unsupported_path_never_spawns_a_parser(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard fires BEFORE `subprocess.Popen`, so nothing is started.
+
+    This is the subprocess-level counterpart of the route-level test: it
+    asserts the refusal happens at the runner boundary, independent of the
+    gateway.
+    """
+    subprocess_runner = _route_runner_module()
+
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
+
+    spawn_calls: list[object] = []
+
+    def _tripwire(*args: object, **kwargs: object) -> None:
+        spawn_calls.append((args, kwargs))
+        raise AssertionError(
+            "subprocess.Popen was called on the unsupported-platform path; "
+            "an uncapped parser process was spawned."
+        )
+
+    monkeypatch.setattr(subprocess_runner.subprocess, "Popen", _tripwire)
+
+    with pytest.raises(subprocess_runner.UnsupportedParserPlatformError):
+        subprocess_runner.run_pdftoppm_in_subprocess(MINIMAL_PDF)
+
+    assert not spawn_calls, (
+        f"no parser process may be spawned on the unsupported path, but Popen "
+        f"was called {len(spawn_calls)} time(s)"
+    )
+
+
+def test_windows_unsupported_result_carries_the_established_contract() -> None:
+    """The deliberate result uses the repository's established error contract.
+
+    `NotImplementedYetError` -> HTTP 501, ADR-0002 code
+    `internal.not_implemented`, `retriable=False`. It must be distinct from
+    the 400 (malformed), 404 (missing), 413 (too large), 422 (generic parser
+    failure) and 504 (timeout) outcomes.
+    """
+    from chess_coach.errors import ErrorCode
+
+    subprocess_runner = _route_runner_module()
+    exc = subprocess_runner.UnsupportedParserPlatformError("unsupported")
+    assert exc.http_status == 501
+    assert exc.code == ErrorCode.NOT_IMPLEMENTED
+    assert str(exc.code) == "internal.not_implemented"
+    assert exc.retriable is False
+    assert exc.http_status not in (400, 404, 413, 422, 504)
+
+
+def test_linux_cap_contract_is_per_process_not_an_aggregate_tree_budget() -> None:
+    """The corrected contract, pinned in code and prose.
+
+    The Linux cap is a 2 GiB `RLIMIT_AS` address-space limit applied PER
+    PROCESS. Descendants inherit it independently; each descendant gets its
+    OWN allowance. There is NO aggregate process-tree memory budget.
+    """
+    subprocess_runner = _route_runner_module()
+
+    assert subprocess_runner.MEM_CAP_BYTES == 2 * 1024**3
+    assert subprocess_runner.MEMORY_CAP_MECHANISM == "RLIMIT_AS via preexec_fn"
+
+    src = Path(subprocess_runner.__file__).read_text(encoding="utf-8")
+    # The contract is stated in the module's own docstring.
+    assert "aggregate process-tree memory budget" in src
+    assert "per-process" in src
+
+    # And the A-F11 prose states it too.
+    strategy = (
+        Path(__file__).resolve().parents[2]
+        / "docs"
+        / "08_security"
+        / "security-strategy.md"
+    )
+    if strategy.exists():
+        text = strategy.read_text(encoding="utf-8")
+        assert "aggregate process-tree memory budget" in text, (
+            "the A-F11 property-4 prose must explicitly deny an aggregate "
+            "process-tree memory budget"
+        )

@@ -15,6 +15,25 @@ The other 3 properties (network isolation, read-only FS,
 timeout) are out of scope here; the timeout is already
 enforced by the route's `asyncio.wait_for` wrapper.
 
+**Platform support (BBF-FU-22-windows-contract-correction).**
+The cap mechanism is Unix-only: `resource` is a Unix stdlib module and
+CPython rejects `preexec_fn` on Windows
+(`ValueError: preexec_fn is not supported on Windows platforms`).
+Windows PDF parsing is therefore UNSUPPORTED. `ensure_memory_cap_supported()`
+raises a typed `UnsupportedParserPlatformError` (HTTP 501, error code
+`internal.not_implemented`) BEFORE any parser process is spawned, so an
+uncapped `pdftoppm` is never launched and the refusal is distinguishable
+from a malformed PDF, a missing tool, a timeout, or a generic parser
+failure. Real Windows enforcement (a Job Object with
+`JOB_OBJECT_LIMIT_PROCESS_MEMORY`) is separately approved B2 work and is
+NOT implemented here.
+
+**The Linux cap is per-process, not an aggregate process-tree budget.**
+`RLIMIT_AS` caps the virtual address space of the process it is applied
+to. Descendants inherit the limit, but each descendant gets its OWN
+independent 2 GiB allowance. There is no aggregate memory budget across
+the process tree: the limit is NOT an aggregate process-tree memory budget.
+
 The architectural pattern established here (bypass
 pdf2image, call pdftoppm directly via `subprocess.Popen`
 with the right sandbox primitives) is the foundation for
@@ -36,6 +55,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from chess_coach.errors import NotImplementedYetError
+
 # `resource` is a Unix-only stdlib module. On Windows, it's
 # not available; the cap mechanism is a no-op (Windows
 # support is a future follow-up BBF).
@@ -48,6 +69,29 @@ if sys.platform != "win32":
 # matches the A-F11 contract: "2 GB memory cap" is a
 # ceiling, not a soft warning.
 MEM_CAP_BYTES: int = 2 * 1024 * 1024 * 1024  # 2 GiB
+
+#: True when this platform can enforce the A-F11 property-4 memory cap.
+#:
+#: The cap is enforced with ``resource.setrlimit(RLIMIT_AS, ...)`` via
+#: ``preexec_fn``. ``resource`` is a Unix-only stdlib module, and CPython
+#: rejects ``preexec_fn`` outright on Windows
+#: (``ValueError: preexec_fn is not supported on Windows platforms``),
+#: so there is no mechanism by which the cap could be applied there.
+#:
+#: Windows PDF parsing is therefore UNSUPPORTED: this BBF refuses to launch
+#: an uncapped parser rather than pretending the cap is in force. Real
+#: Windows enforcement (a Job Object with
+#: ``JOB_OBJECT_LIMIT_PROCESS_MEMORY``) is separately approved B2 work.
+#: The platform identifier used for the capability decision. A module-level
+#: name (rather than a bare `sys.platform` read) so that tests can simulate
+#: an uncappable platform without mutating the process-wide `sys.platform`,
+#: which would corrupt unrelated runtime behaviour (asyncio, anyio, ...).
+HOST_PLATFORM: str = sys.platform
+
+MEMORY_CAP_SUPPORTED: bool = HOST_PLATFORM != "win32"
+
+#: The capability that is missing on Windows, named for the error details.
+MEMORY_CAP_MECHANISM: str = "RLIMIT_AS via preexec_fn"
 
 # pdftoppm invocation defaults. These match the previous
 # pdf2image.convert_from_bytes defaults (DPI=200, fmt=ppm)
@@ -75,14 +119,16 @@ def set_rlimit_as_preexec(mem_cap_bytes: int) -> Callable[[], None]:
     address space (heap + stack + mmap + shared libraries),
     so the cap is a hard ceiling, not just a heap cap.
 
-    On Windows, `resource.setrlimit` is not available. The
-    Windows equivalent is a Job Object with
-    `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (see follow-up BBFs
-    FU-20-impl / FU-21-impl). The current implementation
-    **returns a no-op callable** on Windows (a
-    `_noop_preexec` that just `return None`s); the test
-    `test_set_rlimit_as_preexec_no_cap_means_no_cap`
-    covers the no-cap code path on Windows.
+    On Windows, `resource.setrlimit` is not available, and CPython
+    rejects `preexec_fn` outright. The Windows equivalent is a Job Object
+    with `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (separately approved B2 work).
+    This implementation **returns a no-op callable** on Windows (a
+    `_noop_preexec` that just `return None`s).
+
+    NOTE: the no-op callable is never actually reached on Windows, because
+    `subprocess.Popen` refuses `preexec_fn` on that platform. The
+    unsupported path is gated earlier by `ensure_memory_cap_supported()`,
+    which raises before a process is spawned.
 
     Args:
         mem_cap_bytes: the cap, in bytes. Both soft and hard
@@ -92,14 +138,17 @@ def set_rlimit_as_preexec(mem_cap_bytes: int) -> Callable[[], None]:
         A no-arg callable for use as `preexec_fn=`.
     """
     if sys.platform == "win32":
-        # The Windows path uses a Job Object with
+        # The Windows path would use a Job Object with
         # `JOB_OBJECT_LIMIT_PROCESS_MEMORY`. That requires
         # `pywin32` and the `win32job` module, which is
-        # not currently a project dependency. The follow-up
-        # BBF (Windows FU-22 path) can add this. For now,
-        # the cap is a no-op on Windows; the test
-        # `test_set_rlimit_as_preexec_no_cap_means_no_cap`
-        # covers the no-cap code path on Windows.
+        # NOT currently a project dependency. Real Windows
+        # enforcement is separately approved B2 work.
+        #
+        # Until then the cap cannot be enforced on Windows, so
+        # `ensure_memory_cap_supported()` refuses to run the
+        # parser at all on this platform. The callable below is
+        # unreachable in practice: `subprocess.Popen` rejects
+        # `preexec_fn` on Windows before this would be used.
         def _noop_preexec() -> None:
             return None
         return _noop_preexec
@@ -498,6 +547,52 @@ def set_fs_isolation_preexec(
     return _isolate_fs_preexec
 
 
+class UnsupportedParserPlatformError(NotImplementedYetError):
+    """Raised when the host platform cannot enforce the A-F11 memory cap.
+
+    A distinct subclass of :class:`NotImplementedYetError` so the gateway
+    can distinguish "this platform cannot run the PDF parser at all"
+    from a malformed upload, a missing tool, a timeout, or a generic
+    parser failure. It carries the ADR-0002 error code
+    ``internal.not_implemented`` and HTTP status 501.
+
+    This is raised BEFORE any parser process is spawned, so an uncapped
+    ``pdftoppm`` is never launched.
+    """
+
+
+def ensure_memory_cap_supported() -> None:
+    """Raise if this platform cannot enforce the A-F11 memory cap.
+
+    The A-F11 contract requires the PDF parser to run with a 2 GB memory
+    cap. That cap is applied with ``RLIMIT_AS`` through ``preexec_fn``,
+    which is a Unix-only mechanism: CPython raises
+    ``ValueError: preexec_fn is not supported on Windows platforms``
+    before the child process is created.
+
+    Rather than letting that incidental ``ValueError`` surface as a
+    generic 422 (which would be indistinguishable from a malformed PDF
+    or a parser failure), this guard raises a deliberate, typed
+    unsupported-platform result.
+
+    Raises:
+        UnsupportedParserPlatformError: if the cap cannot be enforced.
+    """
+    if not MEMORY_CAP_SUPPORTED:
+        raise UnsupportedParserPlatformError(
+            "PDF parsing is not supported on this platform: the A-F11 2 GB "
+            "memory cap cannot be enforced here, so no parser process is "
+            "started. Windows enforcement requires the separately approved "
+            "Job Object implementation.",
+            details={
+                "platform": HOST_PLATFORM,
+                "required_mechanism": MEMORY_CAP_MECHANISM,
+                "cap_bytes": MEM_CAP_BYTES,
+                "resource": "pdf_import",
+            },
+        )
+
+
 def _build_pdftoppm_args(
     dpi: int,
     first_page: int,
@@ -559,6 +654,9 @@ def run_pdftoppm_in_subprocess(
         list[PIL.Image.Image], one per rendered page
 
     Raises:
+        UnsupportedParserPlatformError: if this platform cannot enforce
+            the A-F11 memory cap. Raised BEFORE any parser process is
+            spawned, so an uncapped parser is never launched.
         subprocess.TimeoutExpired: if the subprocess exceeds
             `timeout_seconds`
         OSError: if pdftoppm is not on PATH (e.g. on Windows
@@ -568,6 +666,11 @@ def run_pdftoppm_in_subprocess(
             2 GB-cap hit (a malicious PDF is a security
             event, surfaced to the user as 422)
     """
+    # A-F11 property 4 gate: refuse to run a parser we cannot cap.
+    # This MUST come before `subprocess.Popen`, so the unsupported
+    # path never starts a process.
+    ensure_memory_cap_supported()
+
     last_page_arg = last_page if last_page is not None else 0  # 0 = "all"
 
     with tempfile.TemporaryDirectory(prefix="chess_coach_pdftoppm_") as tmpdir_str:

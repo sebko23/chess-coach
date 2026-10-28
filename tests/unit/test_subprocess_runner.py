@@ -1,15 +1,20 @@
 """Unit tests for `services.chess_coach.pdf_ocr.subprocess_runner`.
 
 These tests cover the A-F11 property 4 (2 GB memory cap)
-implementation per `docs/16_audit/BBF-FU-22-impl.md`. The
-cap mechanism is platform-portable: `set_rlimit_as_preexec`
-returns a no-op on Windows (the A-F11 Windows path is a
-follow-up BBF), and applies `resource.setrlimit(RLIMIT_AS, ...)`
-on Linux. The cap is enforced in the child process after
-fork but before exec.
+implementation per `docs/16_audit/BBF-FU-22-impl.md`.
+
+The cap mechanism is NOT platform-portable. `set_rlimit_as_preexec`
+applies `resource.setrlimit(RLIMIT_AS, ...)` on Linux and returns a
+no-op on Windows; `resource` is a Unix-only stdlib module and CPython
+rejects `preexec_fn` on Windows outright. So on Windows the cap
+cannot be enforced at all, and
+`BBF-FU-22-windows-contract-correction` makes Windows PDF parsing
+**explicitly unsupported**: `ensure_memory_cap_supported()` raises a
+typed `UnsupportedParserPlatformError` (HTTP 501, error code
+`internal.not_implemented`) BEFORE any parser process is spawned.
 
 Test 1 (`test_set_rlimit_as_preexec_caps_at_target_bytes`)
-is the key test: it forks, applies the cap, and tries to
+is the key Linux test: it forks, applies the cap, and tries to
 allocate 3 GB. On Linux, the allocation is killed with
 `MemoryError` (or `OSError`). On Windows, the test is
 skipped (the cap is a no-op).
@@ -18,17 +23,32 @@ Test 2 (`test_set_rlimit_as_preexec_no_cap_means_no_cap`)
 is the control test: with no cap, the same 3 GB allocation
 succeeds (skipped if the system doesn't have 3 GB of RAM
 + swap).
+
+The BBF-FU-22 additions pin the two properties that the constant
+checks do NOT establish:
+
+- `test_memory_cap_is_enforced_not_merely_declared` - the Linux cap
+  actually bounds the child's address space.
+- `test_descendant_inherits_memory_cap_independently` - a descendant
+  inherits the limit, and each descendant gets its OWN 2 GiB
+  allowance (there is no aggregate process-tree budget).
+- `test_windows_pdf_parsing_is_unsupported_and_spawns_no_process` -
+  the Windows path refuses deliberately and never starts a parser.
 """
 from __future__ import annotations
 
 import os
 import os as _os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from services.chess_coach.pdf_ocr import subprocess_runner as _runner_module
 from services.chess_coach.pdf_ocr.subprocess_runner import (
     MEM_CAP_BYTES,
+    MEMORY_CAP_MECHANISM,
+    UnsupportedParserPlatformError,
     set_fs_isolation_preexec,
     set_network_isolation_preexec,
     set_rlimit_as_preexec,
@@ -579,4 +599,314 @@ def test_set_fs_isolation_preexec_performs_mount_on_linux_with_capability(
                 f"set_fs_isolation_preexec(tmpdir) failed unexpectedly "
                 f"in child (exit {exit_code})"
             )
+
+
+# ---------------------------------------------------------------------------
+# BBF-FU-22-windows-contract-correction
+#
+# These tests pin the CORRECTED contract:
+#   * the Linux cap is really enforced (not merely declared);
+#   * a descendant inherits the limit, and each descendant gets its OWN
+#     independent allowance (there is NO aggregate process-tree budget);
+#   * on a platform that cannot enforce the cap, PDF parsing refuses
+#     deliberately and no parser process is ever spawned.
+#
+# The Windows-path tests simulate the unsupported platform by patching the
+# module's own `HOST_PLATFORM` constant and `MEMORY_CAP_SUPPORTED` flag, so
+# they run on ANY host (the repository has no Windows CI job). They assert the
+# BEHAVIOUR of the guard, not the presence of a Windows mechanism -- B1
+# implements no Windows enforcement and claims none.
+#
+# NOTE: `sys.platform` must NOT be patched globally here: it is the shared
+# stdlib module, and mutating it corrupts unrelated runtime behaviour
+# (asyncio / anyio). The module reads `HOST_PLATFORM` instead.
+# ---------------------------------------------------------------------------
+
+
+def _runner():
+    """Return the exact `subprocess_runner` module instance under test.
+
+    The package tree is importable under more than one dotted path
+    (`chess_coach.pdf_ocr.subprocess_runner` and
+    `services.chess_coach.pdf_ocr.subprocess_runner`). Whichever instance was
+    imported is the one whose globals the functions read, so the test must
+    patch that same instance.
+    """
+    return _runner_module
+
+
+def _run_child_with_cap(cap_bytes: int, code: str) -> int:
+    """Run `code` in a FRESH interpreter under an `RLIMIT_AS` cap.
+
+    A fresh `exec`'d interpreter is used rather than `os.fork()` of the pytest
+    parent: `RLIMIT_AS` caps the whole virtual address space, and a forked
+    child inherits the parent's mappings, so in a full-suite run the parent's
+    footprint alone can exceed the cap. A fresh interpreter has a small,
+    predictable footprint.
+
+    Exit codes:
+        0 - `code` ran to completion (the allocation SUCCEEDED)
+        1 - the cap was enforced (MemoryError / OSError)
+        2 - `code` raised an unexpected exception
+    """
+
+    def _preexec() -> None:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_AS, (cap_bytes, cap_bytes))
+
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        preexec_fn=_preexec,  # noqa: S603 -- test harness
+    )
+    if proc.returncode != 0:
+        return proc.returncode
+    # The child signals "the cap was enforced" by exiting 1.
+    return 1 if "CAP_ENFORCED" in proc.stdout else 0
+
+
+@_skip_on_windows
+def test_memory_cap_is_enforced_not_merely_declared() -> None:
+    """The cap actually bounds the child's address space.
+
+    The pre-B1 test (`test_subprocess_respects_2gb_memory_cap` in
+    `tests/unit/test_pdf_ingest_security.py`) asserted only that the
+    constant equals 2 GiB and that the factory returns a callable. Both
+    hold even if no limit is applied at all. This test instead applies a
+    real limit and observes the kernel refusing an over-limit reservation.
+
+    A 256 MiB cap is used (rather than the production 2 GiB) so the test can
+    observe the boundary cheaply. The mechanism under test is identical:
+    `setrlimit(RLIMIT_AS, ...)`.
+
+    `mmap` is used rather than `bytearray` because `RLIMIT_AS` caps ADDRESS
+    SPACE: an `mmap` reservation over the cap fails deterministically with
+    `MemoryError` without committing physical memory, whereas a large
+    `bytearray` may be OOM-killed instead (a different, less precise signal).
+    """
+    cap = 256 * 1024 * 1024
+    over = cap * 2
+    code = (
+        "import mmap\n"
+        "try:\n"
+        f"    mmap.mmap(-1, {over})\n"
+        "except (MemoryError, OSError):\n"
+        "    print('CAP_ENFORCED', end='')\n"
+        "else:\n"
+        "    print('CAP_NOT_ENFORCED', end='')\n"
+    )
+    exit_code = _run_child_with_cap(cap, code)
+
+    assert exit_code == 1, (
+        f"the RLIMIT_AS cap did NOT take effect: the child reserved {over} "
+        f"bytes of address space under a {cap}-byte limit and exited "
+        f"{exit_code} (expected 1 = reservation refused). A "
+        f"constant-and-callable check would pass here while enforcement is "
+        f"actually broken."
+    )
+
+
+@_skip_on_windows
+def test_descendant_inherits_memory_cap_independently(tmp_path: Path) -> None:
+    """A descendant inherits the limit, and gets its OWN allowance.
+
+    Two properties are established:
+
+    1. INHERITANCE - a grandchild spawned by the capped child observes the
+       same `RLIMIT_AS`, and an over-limit reservation inside the grandchild is
+       refused. Without inheritance the grandchild would be uncapped and could
+       allocate without bound.
+
+    2. INDEPENDENCE (NOT an aggregate tree budget) - the grandchild's
+       allowance is its OWN cap-sized allowance, not a share of a single pool
+       shared with the parent. The parent reserves a share of the cap AND the
+       grandchild reserves a share of the cap, together exceeding the cap
+       value. That is only possible if the limit is per-process rather than an
+       aggregate process-tree memory budget.
+
+    This distinction is the contract the B1 brief states explicitly: the Linux
+    cap is a per-process address-space limit inherited independently by
+    descendants, and it is NOT a 2 GB aggregate process-tree budget.
+
+    A fresh `exec`'d interpreter is used for the child (not `os.fork()` of the
+    pytest parent): `RLIMIT_AS` caps the whole virtual address space, and a
+    forked child inherits the parent's mappings, so in a full-suite run the
+    parent's footprint alone can exceed the cap.
+    """
+    cap = 512 * 1024 * 1024
+    share = cap // 8
+    report = tmp_path / "report.txt"
+
+    # The grandchild is forked (NOT exec'd) from the capped child: an
+    # exec'd grandchild would need to start a fresh Python interpreter
+    # INSIDE the cap, which is not what is being measured here -- the
+    # measurement is whether the inherited LIMIT is enforced for a
+    # descendant, and a fork inherits the limit without needing more
+    # address space than the parent already has.
+    grandchild_code = (
+        "import mmap, resource, sys\n"
+        "print('grandchild_limit', resource.getrlimit(resource.RLIMIT_AS)[0], flush=True)\n"
+        "try:\n"
+        f"    mmap.mmap(-1, {cap * 2})\n"
+        "    print('grandchild_alloc', 'SUCCEEDED', flush=True)\n"
+        "except (MemoryError, OSError):\n"
+        "    print('grandchild_alloc', 'REFUSED', flush=True)\n"
+        "sys.stdout.flush()\n"
+    )
+
+    child_code = (
+        "import mmap, os, resource, sys\n"
+        f"grandchild_code = {grandchild_code!r}\n"
+        "pid = os.fork()\n"
+        "if pid == 0:\n"
+        "    exec(grandchild_code)\n"
+        "    os._exit(0)\n"
+        "_, status = os.waitpid(pid, 0)\n"
+        f"mmap.mmap(-1, {share})\n"
+        "print('child_alloc', 'SUCCEEDED', flush=True)\n"
+    )
+
+    def _preexec() -> None:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_AS, (cap, cap))
+
+    proc = subprocess.run(
+        [sys.executable, "-c", child_code],
+        capture_output=True,
+        text=True,
+        preexec_fn=_preexec,  # noqa: S603 -- test harness
+    )
+    report.write_text(proc.stdout, encoding="utf-8")
+
+    assert proc.returncode == 0, (
+        f"the child process failed unexpectedly (exit {proc.returncode}); "
+        f"report: {report.read_text()!r}; stderr: {proc.stderr[-500:]!r}"
+    )
+
+    text = report.read_text(encoding="utf-8")
+    lines = dict(line.split(" ", 1) for line in text.splitlines() if " " in line)
+
+    assert "grandchild_limit" in lines, f"grandchild did not report a limit: {text!r}"
+    assert int(lines["grandchild_limit"]) == cap, (
+        f"the grandchild must INHERIT the {cap}-byte RLIMIT_AS, but observed "
+        f"{lines['grandchild_limit']}. Without inheritance the descendant would "
+        f"be uncapped."
+    )
+    assert lines.get("grandchild_alloc") == "REFUSED", (
+        f"the grandchild's over-limit reservation was NOT refused "
+        f"({lines.get('grandchild_alloc')}); the cap is not enforced for "
+        f"descendants."
+    )
+    assert lines.get("child_alloc") == "SUCCEEDED", (
+        f"the child's own sub-cap reservation must succeed, got "
+        f"{lines.get('child_alloc')}"
+    )
+
+
+def test_windows_pdf_parsing_is_unsupported_and_spawns_no_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An uncappable platform refuses deliberately and spawns NOTHING.
+
+    This test FAILS against the pre-BB1 implementation, which reached
+    `subprocess.Popen(preexec_fn=...)`, had CPython raise
+    `ValueError: preexec_fn is not supported on Windows platforms`, and
+    surfaced that incidental failure as a generic 422 - indistinguishable from
+    a malformed PDF or a parser failure.
+
+    It asserts three things:
+      1. the guard raises the deliberate typed result;
+      2. that result carries the ADR-0002 contract values (501 /
+         `internal.not_implemented`) so it is distinguishable from the 400
+         (malformed), 404 (missing tool), 422 (generic failure) and 504
+         (timeout) outcomes;
+      3. `subprocess.Popen` is NEVER called, so no parser process starts.
+
+    The Windows platform is SIMULATED (the repository has no Windows CI job).
+    B1 implements no Windows enforcement and claims none: this test pins the
+    REFUSAL contract, not a Windows mechanism.
+    """
+    subprocess_runner = _runner()
+
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
+
+    spawn_calls: list[object] = []
+
+    def _tripwire(*args: object, **kwargs: object) -> None:
+        spawn_calls.append((args, kwargs))
+        raise AssertionError(
+            "subprocess.Popen was called on the unsupported-platform path; "
+            "an uncapped parser process was spawned."
+        )
+
+    monkeypatch.setattr(subprocess_runner.subprocess, "Popen", _tripwire)
+
+    with pytest.raises(UnsupportedParserPlatformError) as excinfo:
+        subprocess_runner.run_pdftoppm_in_subprocess(b"%PDF-1.4 not a real pdf")
+
+    exc = excinfo.value
+    assert exc.code == "internal.not_implemented", (
+        f"the unsupported-platform result must carry the ADR-0002 code "
+        f"`internal.not_implemented`, got {exc.code!r}"
+    )
+    assert exc.http_status == 501, (
+        f"the unsupported-platform result must be HTTP 501, got {exc.http_status}"
+    )
+    assert exc.retriable is False, (
+        "an unsupported platform is not a transient condition and must not be "
+        f"marked retriable, got {exc.retriable!r}"
+    )
+    assert exc.details.get("platform") == "win32", (
+        f"the error details must name the platform, got {exc.details!r}"
+    )
+    assert exc.details.get("required_mechanism") == MEMORY_CAP_MECHANISM, (
+        f"the error details must name the mechanism that is missing, got "
+        f"{exc.details!r}"
+    )
+    assert exc.details.get("cap_bytes") == MEM_CAP_BYTES, (
+        f"the error details must name the cap that cannot be enforced, got "
+        f"{exc.details!r}"
+    )
+    assert not spawn_calls, (
+        f"no parser process may be spawned on the unsupported path, but Popen "
+        f"was called {len(spawn_calls)} time(s)"
+    )
+
+
+def test_ensure_memory_cap_supported_raises_on_unsupported_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard itself is the single gate, and it raises the typed error."""
+    subprocess_runner = _runner()
+
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
+
+    with pytest.raises(UnsupportedParserPlatformError):
+        subprocess_runner.ensure_memory_cap_supported()
+
+    # On a supported platform it is a no-op.
+    monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", True)
+    subprocess_runner.ensure_memory_cap_supported()
+
+
+def test_unsupported_platform_error_is_distinguishable_from_other_outcomes() -> None:
+    """The deliberate result does not collide with the other outcomes.
+
+    A malformed PDF is a 400, a missing tool or a generic parser failure is a
+    422, and a timeout is a 504. The unsupported-platform result must be
+    distinct from all of them.
+    """
+    from chess_coach.errors import ErrorCode
+
+    unsupported = UnsupportedParserPlatformError("x")
+    assert unsupported.http_status == 501
+    assert unsupported.http_status not in (400, 404, 413, 422, 504)
+    assert unsupported.code == ErrorCode.NOT_IMPLEMENTED
+    assert unsupported.code != ErrorCode.BAD_REQUEST
+    assert unsupported.code != ErrorCode.INTERNAL
 

@@ -1819,21 +1819,24 @@ squash-merge SHA IS the feature SHA in this case.
 
 ## FU-22 — A-F11 property 4 (2GB memory cap) has no implementation or test
 
-**Status:** **RESOLVED 2026-10-16 via squash-merge of PR #145**
-(commit `ae543ea8` on `main`, BBF-FU-22-impl). The new
-`services/chess_coach/pdf_ocr/subprocess_runner.py`
-module implements `set_rlimit_as_preexec(mem_cap_bytes)`
-which calls `resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))`
-in a `preexec_fn=` callback applied to the pdftoppm
-subprocess. The route's `pdf_ingest.py` was refactored
-to use `run_pdftoppm_in_subprocess` (the new A-F11-aware
-wrapper) instead of `convert_from_bytes`. The 2 GiB cap
-hit surfaces as 422 Unprocessable Entity. 12/12 CI green
-on `ae543ea8`. The `test_subprocess_respects_2gb_memory_cap`
-test in `tests/unit/test_pdf_ingest_security.py` (added
-by PR #143) is now a real (non-skip) test that asserts
-the new module is wired. Documented by this
-BBF-doc-drift-flip.
+**Status:** **PARTIALLY RESOLVED** — Linux enforced; **Windows not implemented** (reopened 2026-10-28 by `BBF-FU-22-windows-contract-correction`).
+
+**Original claim (preserved as history, 2026-10-16, PR #145 / `ae543ea8`, BBF-FU-22-impl):** *"RESOLVED 2026-10-16 via squash-merge of PR #145 (commit `ae543ea8` on `main`, BBF-FU-22-impl). The new `services/chess_coach/pdf_ocr/subprocess_runner.py` module implements `set_rlimit_as_preexec(mem_cap_bytes)` which calls `resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))` in a `preexec_fn=` callback applied to the pdftoppm subprocess. The route's `pdf_ingest.py` was refactored to use `run_pdftoppm_in_subprocess` (the new A-F11-aware wrapper) instead of `convert_from_bytes`. The 2 GiB cap hit surfaces as 422 Unprocessable Entity. 12/12 CI green on `ae543ea8`. The `test_subprocess_respects_2gb_memory_cap` test in `tests/unit/test_pdf_ingest_security.py` (added by PR #143) is now a real (non-skip) test that asserts the new module is wired."*
+
+**Correction (2026-10-28, `BBF-FU-22-windows-contract-correction`).** That RESOLVED status was accurate for **Linux** but overstated the property as a whole, for three reasons:
+
+1. **The Windows half was never implemented.** `resource` is a Unix-only stdlib module and CPython rejects `preexec_fn` on Windows (`ValueError: preexec_fn is not supported on Windows platforms`), so `set_rlimit_as_preexec` returns a no-op there. `win32job` is **not imported anywhere** in the repository (its only Python occurrences are comments) and `pywin32` is **not a declared dependency** — contrary to the claims in `docs/16_audit/BBF-FU-21-windows-scope.md` §1.1/§4 and `docs/16_audit/BBF-FU-20-impl-windows.md` §1, both of which are corrected by that BBF.
+2. **Windows PDF parsing was broken, not merely uncapped.** Because `preexec_fn` is passed unconditionally, `run_pdftoppm_in_subprocess` raised `ValueError` on Windows before `pdftoppm` was ever started, and the route's catch-all converted that internal configuration failure into an incidental 422 — indistinguishable from a malformed PDF or a generic parser failure.
+3. **The "2 GB cap" test asserted a constant and a callable, not enforcement.** `test_subprocess_respects_2gb_memory_cap` checked `MEM_CAP_BYTES == 2 GiB` and `callable(preexec)`. Both hold even if no limit is applied at all; the test's own docstring says the end-to-end enforcement test was *"intentionally NOT included here"*.
+
+**What is true now (after `BBF-FU-22-windows-contract-correction`):**
+
+- **Linux enforcement exists and is now directly tested.** `resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))` in a `preexec_fn` callback bounds the parser's virtual address space before it executes. `tests/unit/test_subprocess_runner.py::test_memory_cap_is_enforced_not_merely_declared` applies a real limit and observes the kernel refusing an over-limit allocation.
+- **The Linux limit is per-process, not an aggregate process-tree budget.** Descendants inherit the limit, but each descendant gets its OWN independent allowance. `test_descendant_inherits_memory_cap_independently` proves both the inheritance and the independence.
+- **Windows PDF parsing is deliberately UNSUPPORTED.** `ensure_memory_cap_supported()` raises a typed `UnsupportedParserPlatformError` (HTTP 501, ADR-0002 error code `internal.not_implemented`) **before** any parser process is spawned, so an uncapped `pdftoppm` is never launched. The result is distinguishable from malformed input (400), a missing tool or generic parser failure (422), and a timeout (504).
+- **The A-F11 §Implementation prose in `docs/08_security/security-strategy.md` now states this platform split explicitly**, and denies an aggregate process-tree memory budget.
+
+**Still outstanding — B2 (not authorized by this entry):** real Windows Job Object enforcement (`JOB_OBJECT_LIMIT_PROCESS_MEMORY`), an explicitly declared `pywin32` dependency if one is used, a Windows CI job, and executable Windows enforcement tests. Until B2 lands, Windows PDF parsing remains unsupported by design. FU-22 is therefore **not** fully resolved.
 
 **Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
 Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
@@ -3645,3 +3648,26 @@ No checkout path appears in the frozen `sys.path`, and no `_MEI.../services` or 
 **Two corrections to this entry's own historical text.** "There is no physical `chess_coach/__init__.py` at the repo root" was false from PR #161 onward (the file exists, 850 bytes). The stated reason for the workaround — that `collect_all()` cannot enumerate implicit namespace packages — no longer applies either, because every `chess_coach` subpackage is a regular package with its own `__init__.py`. The workaround was nonetheless still needed for a different reason: the package is split across three source roots, and `collect_all("chess_coach")` cannot enumerate it under the editable install CI uses (measured: 0 datas, 0 binaries, 0 hidden imports). Collecting each declared subpackage individually works under both editable and non-editable installs. The original finding text is preserved above as the historical record; this entry supersedes it.
 
 **Out of scope (deliberately).** The `chess_coach.gold` packaging discrepancy — `services/chess_coach/gold/` exists on disk but is absent from `pyproject.toml`'s `packages` and `package-dir` lists — is left unchanged; nothing imports it as `chess_coach.gold`, so the gateway and the binary are unaffected, and adding it would change the package's install surface beyond this BBF. `pyproject.toml` and the CI workflow files are unchanged. The `/v1/profiles/explain` methodology-doc limitation and the FU-4 torch exclusion remain pre-existing.
+
+### FU-22 — PARTIALLY RESOLVED (Linux enforced; Windows unsupported by design), contract corrected by BBF-FU-22-windows-contract-correction
+
+**Original entry:** lines 1820-1918 (above).
+**Resolution:** Partially resolved. The Linux half of A-F11 property 4 (the 2 GB memory cap) is implemented and enforced; the Windows half was never implemented and is now explicitly **unsupported by design** rather than silently broken. FU-22 is **not** fully resolved — the B2 obligations below remain outstanding.
+
+**What B1 changed.** `services/chess_coach/pdf_ocr/subprocess_runner.py` gained `MEMORY_CAP_SUPPORTED` (true iff `sys.platform != "win32"`), `ensure_memory_cap_supported()`, and the typed `UnsupportedParserPlatformError` (a subclass of `NotImplementedYetError` → HTTP 501, ADR-0002 code `internal.not_implemented`). `run_pdftoppm_in_subprocess` calls the guard **before** `subprocess.Popen`, so on an uncappable platform no parser process is ever started. `services/chess_coach/gateway/routes/pdf_ingest.py` re-raises the typed error through the gateway's central handler instead of letting the catch-all flatten it into a 422.
+
+**Why the previous 422 was wrong.** On Windows, `subprocess.Popen(preexec_fn=...)` raises `ValueError: preexec_fn is not supported on Windows platforms`. The route's `except Exception` turned that internal configuration failure into a 422 — the same status as a malformed PDF or a generic parser failure, so clients could not tell "your file is bad" from "this platform cannot run the parser". The new 501 is distinguishable from malformed input (400), a missing tool or generic parser failure (422), and a timeout (504).
+
+**The corrected contract.** Linux enforcement is a **2 GiB `RLIMIT_AS` address-space limit applied per process and inherited independently by descendants**. It is **not** an aggregate process-tree memory budget: each descendant receives its own 2 GiB allowance rather than sharing a single pool. `docs/08_security/security-strategy.md` §A-F11 now states this explicitly and states that Windows PDF parsing is unsupported.
+
+**Test evidence.** `tests/unit/test_subprocess_runner.py` gains `test_memory_cap_is_enforced_not_merely_declared` (applies a real limit and observes the kernel refuse an over-limit allocation — a constant-and-callable check would pass while enforcement was broken), `test_descendant_inherits_memory_cap_independently` (proves inheritance AND independence), `test_windows_pdf_parsing_is_unsupported_and_spawns_no_process` (proves the deliberate typed result and that `subprocess.Popen` is never called), and `test_ensure_memory_cap_supported_raises_on_unsupported_platform`. `tests/integration/test_pdf_import.py` gains route-level coverage asserting the client receives 501 / `internal.not_implemented` and that no parser process starts.
+
+**Documentation truthfulness corrections.** `docs/16_audit/BBF-FU-21-windows-scope.md` §1.1 and §4, and `docs/16_audit/BBF-FU-20-impl-windows.md` §1, claimed `win32job` was already used. That was false: `win32job` is never imported and `pywin32` is not a declared dependency. Each original claim is preserved in place, explicitly labelled as the superseded state. `BBF-FU-20-impl-windows.md` contradicted itself (§1 said "already used by FU-22-impl", §5 said "still not implemented"); §5 was correct and the contradiction is now labelled and resolved.
+
+**Outstanding — B2 (separately approved, not implemented here).**
+- Real Windows Job Object enforcement (`JOB_OBJECT_LIMIT_PROCESS_MEMORY`), with the job lifecycle, descendant inclusion, and limit-violation semantics defined.
+- An explicitly declared dependency (`pywin32`) if that mechanism is used.
+- A Windows CI job capable of exercising process-tree memory enforcement.
+- Executable Windows enforcement tests — including a negative control that distinguishes a real enforced limit from a constant.
+
+**Explicitly not claimed by B1:** Windows resource-limit enforcement, Windows PDF parsing without enforceable resource control, a `win32job` implementation, a `pywin32` dependency, a Windows CI matrix, or the separate uncapped engine-subprocess path (which needs its own finding and threat model).
