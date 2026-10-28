@@ -57,7 +57,7 @@ analogous to Linux's `mount()` or `unshare(CLONE_NEWNS)` +
 |---|---|---|---|
 | 1 | AppLocker policy (system-wide) | **No** — requires admin and `Set-AppLockerPolicy` | Process execution allowlist |
 | 2 | WDAC (system-wide kernel-mode) | **No** — requires `CiTool.exe` + signed policy binary | Process execution + driver-loading allowlist |
-| 3 | Job Object (per-process) | **Yes — via `pywin32` `win32job`** (already used in `subprocess_runner.py` for `JOB_OBJECT_LIMIT_PROCESS_MEMORY` per FU-22-impl) | Process tree, memory cap, CPU rate, scheduling class — **NOT filesystem** |
+| 3 | Job Object (per-process) | **Yes — via `pywin32` `win32job`** (NOT currently imported anywhere in this repository; `pywin32` is not a declared dependency — see the 2026-10-28 correction below) | Process tree, memory cap, CPU rate, scheduling class — **NOT filesystem** |
 | 4 | Process Token Groups + Restricted Token (`CreateRestrictedToken`) | **No** — must be set BEFORE `CreateProcess`, not via post-fork `preexec_fn` | Privilege removal (drop SIDs) — partial FS protection via removing `SeBackupPrivilege` etc. |
 | 5 | `SetTokenInformation` + `TokenIntegrityLevel` | **No** — pre-`CreateProcess` | Integrity level (Medium/Low/System) — restricts write access from integrity-rated processes |
 | 6 | `SetTokenInformation` + `TokenMandatoryPolicy` | **No** — pre-`CreateProcess` | No-Write-Up + read-only-Integrity levels |
@@ -302,12 +302,19 @@ This BBF does NOT ship:
   a separate deployment-config repo, not this repo.
 - **A FU-21-windows-impl BBF**. This brief formally
   closes that path as not applicable.
-- **A `pywin32` dependency addition**. The current
-  `subprocess_runner.py` does use `pywin32`'s
-  `win32job` for FU-22-impl's memory cap. This brief
-  does not extend that surface; it notes that
-  adding `pywin32`-based filesystem isolation would
-  not change the verdict (§1.3).
+- **A `pywin32` dependency addition**. This brief does
+  not add one; it notes that adding `pywin32`-based
+  filesystem isolation would not change the verdict
+  (§1.3).
+
+  > **Correction (2026-10-28, `BBF-FU-22-windows-contract-correction`).**
+  > This paragraph previously read: *"The current `subprocess_runner.py`
+  > does use `pywin32`'s `win32job` for FU-22-impl's memory cap."*
+  > **That was false.** `win32job` is never imported anywhere in the
+  > repository — its only Python occurrences are comments — and `pywin32`
+  > is not a declared dependency. FU-22-impl implemented the 2 GB cap on
+  > Linux only, via `resource.setrlimit(RLIMIT_AS)`. The original claim is
+  > preserved here as the superseded state.
 - **A change to the BBF-FU-21-impl brief** or its
   "Windows path is a no-op (AppLocker/WDAC)"
   framing. That brief is accurate; this brief
@@ -417,3 +424,41 @@ This BBF does NOT ship:
   cannot do filesystem isolation.
 - Microsoft `AppLocker` (system-wide, admin-policy).
 - Microsoft WDAC (system-wide kernel-mode, admin-policy).
+
+## §N. Correction (2026-10-28) — the `win32job` claim was false
+
+`BBF-FU-22-windows-contract-correction` audited this brief against the
+landed tree and found two statements that overstated the implementation:
+
+1. **§1.1 table row 3** claimed Job Objects were *"already used in
+   `subprocess_runner.py` for `JOB_OBJECT_LIMIT_PROCESS_MEMORY` per
+   FU-22-impl"*. They were not. Verified against the tree:
+
+   ```
+   $ git grep -n -E '^\s*(import|from)\s+win32job' -- '*.py'
+   (no matches — exit 1)
+   $ git grep -n 'win32job' -- '*.py'
+   services/chess_coach/pdf_ocr/subprocess_runner.py:97:  # `pywin32` and the `win32job` module, which is
+   services/chess_coach/pdf_ocr/subprocess_runner.py:169: # The `win32job` module exposes:
+   ```
+
+   Both occurrences are comments. `pywin32` is not a declared dependency
+   either (`git grep -n pywin32 -- pyproject.toml` → exit 1); it appears in
+   `uv.lock` only as a transitive entry.
+
+2. **§4** claimed *"The current `subprocess_runner.py` does use `pywin32`'s
+   `win32job` for FU-22-impl's memory cap"*. Same correction; the original
+   wording is quoted in place above, labelled as superseded.
+
+**What the implementation actually did.** FU-22-impl implemented the A-F11
+property-4 cap on **Linux only**, via
+`resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))` in a `preexec_fn` callback.
+`resource` is a Unix-only stdlib module, and CPython rejects `preexec_fn`
+outright on Windows
+(`ValueError: preexec_fn is not supported on Windows platforms`), so the
+Windows half was never implemented. The brief's §1.3 **verdict is
+unaffected**: Job Objects still do not provide filesystem isolation, and
+adding `pywin32` would not change that conclusion.
+
+**Correction of record:** `BBF-FU-22-windows-contract-correction` (see
+`docs/16_audit/BBF-FU-22-windows-contract-correction.md`).

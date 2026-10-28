@@ -38,6 +38,7 @@ from ...pdf_ocr import predict_fen
 # `chess_coach.pdf_ocr` is installed as a top-level package via
 # the editable install (`uv pip install --system -e .`).
 from ...pdf_ocr.subprocess_runner import (
+    UnsupportedParserPlatformError,
     run_pdftoppm_in_subprocess,
 )
 from ..auth import require_bearer
@@ -219,6 +220,15 @@ async def import_pdf(
         # Bypasses pdf2image because pdf2image's
         # `convert_from_bytes` API does not expose `preexec_fn` or
         # any other `subprocess.Popen` parameter.
+        #
+        # BBF-FU-22-windows-contract-correction: on a platform that
+        # cannot enforce the cap, the runner raises
+        # `UnsupportedParserPlatformError` BEFORE spawning any parser
+        # process. It is caught by the dedicated `except` clause below
+        # and surfaced as a distinct 501 (error code
+        # `internal.not_implemented`), so an unsupported platform is
+        # distinguishable from a malformed PDF (400), a missing tool
+        # (422), a timeout (504), and a generic parser failure (422).
         pages = await asyncio.wait_for(
             # Run the synchronous pdftoppm call in the default thread
             # pool so the FastAPI event loop is not blocked during the
@@ -239,6 +249,13 @@ async def import_pdf(
             detail=f"PDF parsing exceeded the {PARSER_TIMEOUT_SECONDS}s budget; "
             "the file may be malicious or pathological. Rejected per A-F11.",
         ) from None
+    except UnsupportedParserPlatformError:
+        # BBF-FU-22-windows-contract-correction: the host platform
+        # cannot enforce the A-F11 memory cap, so the parser was never
+        # started. Re-raise the typed error so the gateway's central
+        # handler (ADR-0002) renders it as 501 / `internal.not_implemented`
+        # instead of the incidental 422 this used to produce.
+        raise
     except (MemoryError, OSError) as exc:
         # FU-22-impl: A-F11 property 4 hit. The subprocess
         # hit the 2 GB memory cap (set by setrlimit) and
