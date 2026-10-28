@@ -2478,9 +2478,11 @@ entry under `## Resolved` below for the full disposition.
 
 ## FU-35 — `chess_coach` implicit namespace package blocks clean PyInstaller packaging
 
-**Status:** **PARTIALLY RESOLVED 2026-10-17 via squash-merge of PR #161** (commit `99a355df`, BBF-FU-35-explicit-namespace). The structural fix is complete: `chess_coach/__init__.py` was added at the repo root (option (b) from the FU-35 resolution shape), and `[tool.setuptools.package-dir]` in `pyproject.toml` was updated with the self-mapping `"chess_coach" = "chess_coach"`. The per-package mappings (`chess_coach.errors` → `libs/chess_coach/errors`, etc.) are preserved, so the editable install continues to work. CI: 15/15 green on main (`92aa7dfc`).
+**Status:** **RESOLVED 2026-10-27 via `docs/16_audit/BBF-FU-35-pyinstaller-collect-all.md`** (the `BBF-FU-35-pyi-cleanup` follow-up). FU-35 is closed in two parts. The structural fix landed first, 2026-10-17 via squash-merge of PR #161 (commit `99a355df`, BBF-FU-35-explicit-namespace): `chess_coach/__init__.py` was added at the repo root (option (b) from the FU-35 resolution shape), and `[tool.setuptools.package-dir]` in `pyproject.toml` was updated with the self-mapping `"chess_coach" = "chess_coach"`. The per-package mappings (`chess_coach.errors` → `libs/chess_coach/errors`, etc.) are preserved, so the editable install continues to work. CI: 15/15 green on main (`92aa7dfc`).
 
-**Out of scope for the structural fix (follow-up BBF `BBF-FU-35-pyi-cleanup`):** the PyInstaller spec update (use `collect_all('chess_coach')` instead of tree-level `datas=` entries), removal of the runtime hook (`services/chess_coach/gateway/pyinstaller_rthook.py`), and verification of the PyInstaller binary smoke test without the runtime hook. These are the remaining work for the FU-35 resolution.
+The packaging half landed with this BBF. The PyInstaller spec now COLLECTS the physical `chess_coach` package instead of bundling the source tree; the runtime hook (`services/chess_coach/gateway/pyinstaller_rthook.py`) is deleted, not renamed and not retained as a fallback; and the binary smoke test proves the frozen artifact imports the collected package. See the `## Resolved` entry below for the measured basis.
+
+**Two claims in this entry were stale when the packaging work started, and are corrected here.** First, "There is no physical `chess_coach/__init__.py` at the repo root" has been false since PR #161 — the file exists (850 bytes, a documented namespace marker) — and the PyInstaller spec's `datas=` comment repeated the claim. Second, the entry's reason for the workaround ("PyInstaller's `collect_all()` does not enumerate implicit namespace packages") no longer applies: every `chess_coach` subpackage is a regular package with its own `__init__.py`. The workaround was still needed for a different reason — the package is SPLIT across three source roots, and `collect_all("chess_coach")` cannot enumerate it under the editable install that CI uses (measured: 0 datas, 0 binaries, 0 hidden imports). Collecting each declared subpackage individually works under both install modes. The original finding text below is preserved as the historical record; this status block supersedes it.
 
 **Identified:** 2026-09-05, surfaced during BBF-Phase8-1 (PR #119) iteration 3
 on the PyInstaller spec. See the BBF audit doc at
@@ -3606,3 +3608,40 @@ from `targetRules` and nothing else; the landed list is
 the sole parent of which is `c5b2f729`). The three retained ids were then measured
 to be load-bearing for path allowlisting on gitleaks 8.30.1, so they are not
 removable without cross-version re-measurement — see the FU-48 entry below.
+
+### FU-35 — RESOLVED, packaging half completed by BBF-FU-35-pyinstaller-collect-all
+
+**Original entry:** lines 2479-2582 (above).
+**Resolution:** Closed in two parts. The structural half landed 2026-10-17 via squash-merge of PR #161 (commit `99a355df`, merge `92aa7dfc`): the repo-root `chess_coach/__init__.py` marker (option (b) of the resolution shape) plus the `[tool.setuptools.package-dir]` self-mapping. The packaging half landed 2026-10-27 via `docs/16_audit/BBF-FU-35-pyinstaller-collect-all.md`.
+
+**What the packaging BBF changed.** The PyInstaller spec now COLLECTS the physical `chess_coach` package instead of bundling the source tree; the runtime hook `services/chess_coach/gateway/pyinstaller_rthook.py` is deleted (not renamed, not retained as a fallback, not replaced by a source-tree monkeypatch); and the binary smoke test gains a regression test that proves the frozen artifact imports the collected package.
+
+**Measured basis.** Linux x86_64, Python 3.11.18, PyInstaller 6.22.3, corpus = the repo at `4af7e7e2`. Build command: `pyinstaller --clean --noconfirm --distpath /tmp/out --workpath /tmp/work services/chess_coach/gateway/chess-coach-gateway.spec` (exit 0, 58,378,392-byte ELF).
+
+A second binary built with the identical collection logic but a probe entry script reported the frozen binary's own import resolution:
+
+```
+chess_coach.__file__ : /tmp/_MEI0000097bJRMmbs/chess_coach/__init__.py
+chess_coach.gateway  : /tmp/_MEI0000097bJRMmbs/chess_coach/gateway/__init__.py
+chess_coach.storage  : /tmp/_MEI0000097bJRMmbs/chess_coach/storage/__init__.py
+```
+
+No checkout path appears in the frozen `sys.path`, and no `_MEI.../services` or `_MEI.../libs` entry exists. The built binary served `GET /v1/system/health` with HTTP 200 and `{"status": "degraded", ...}` (`gateway` and `storage` components `ok`; the `degraded` status is the pre-existing empty narration-grounding-corpus state for this smoke).
+
+**Bundle-content comparison.** Both specs were built against the same corpus and their `Analysis-00.toc` datas manifests compared. The TOC's datas element holds `(target, source, 'DATA')` triples; the target is the path a file occupies inside the bundle.
+
+| bundle target | pre-BBF | after |
+|---|---|---|
+| starts `services/chess_coach` | 266 | **0** |
+| starts `libs/chess_coach` | 94 | **0** |
+| starts `chess_coach/` | 18 | **188** |
+| contains `__pycache__` | 170 | **0** |
+| ends `.pyc` | 170 | **0** |
+| is `chess_coach/__init__.py` | 0 | **2** |
+| `pyinstaller_rthook` in the TOC | 7 | **0** |
+
+**Size reduction is approximately 0.6%, reported as a secondary result.** 58,713,632 bytes pre-BBF against 58,378,664 bytes after — a delta of −334,968 bytes. The entry's original prediction that "the binary size drops" is directionally right but the magnitude is small: the artifact is dominated by third-party dependencies (~58 MB), so removing the source tree saves only ~335 KB. The real wins are correctness and hygiene — no `__pycache__`/`.pyc` in the bundle, no future file added to those directories swept in automatically, and no load-bearing `sys.path` ordering.
+
+**Two corrections to this entry's own historical text.** "There is no physical `chess_coach/__init__.py` at the repo root" was false from PR #161 onward (the file exists, 850 bytes). The stated reason for the workaround — that `collect_all()` cannot enumerate implicit namespace packages — no longer applies either, because every `chess_coach` subpackage is a regular package with its own `__init__.py`. The workaround was nonetheless still needed for a different reason: the package is split across three source roots, and `collect_all("chess_coach")` cannot enumerate it under the editable install CI uses (measured: 0 datas, 0 binaries, 0 hidden imports). Collecting each declared subpackage individually works under both editable and non-editable installs. The original finding text is preserved above as the historical record; this entry supersedes it.
+
+**Out of scope (deliberately).** The `chess_coach.gold` packaging discrepancy — `services/chess_coach/gold/` exists on disk but is absent from `pyproject.toml`'s `packages` and `package-dir` lists — is left unchanged; nothing imports it as `chess_coach.gold`, so the gateway and the binary are unaffected, and adding it would change the package's install surface beyond this BBF. `pyproject.toml` and the CI workflow files are unchanged. The `/v1/profiles/explain` methodology-doc limitation and the FU-4 torch exclusion remain pre-existing.

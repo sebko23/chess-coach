@@ -26,11 +26,27 @@ Per the BBF's investigation, the smoke does NOT exercise:
   - /v1/profiles/explain (profile-metrics-v1.md not bundled)
   - Stockfish/Maia paths (agent-Zero-specific absolute paths; PATH
     fallback only; the binary should still start regardless)
+
+BBF-FU-35-pyi-cleanup (2026-10-27) adds a second test that proves the
+FROZEN ARTIFACT itself uses the COLLECTED physical `chess_coach` package
+rather than falling back to the source tree:
+
+  - The bundle contains a physical `chess_coach/__init__.py`.
+  - The bundle contains the collected `chess_coach.gateway` and
+    `chess_coach.storage` subpackages.
+  - The bundle does NOT contain the retired runtime hook's
+    `_MEIPASS/services` / `_MEIPASS/libs` sys.path entries.
+
+The proof runs against the PyInstaller build's own TOC (the manifest
+PyInstaller writes describing exactly what went into the bundle), so it
+is a static check of the artifact's contents rather than a runtime
+observation that could be satisfied by a source-tree fallback.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import signal
 import socket
@@ -281,3 +297,126 @@ def test_pyinstaller_binary_serves_health_endpoint(tmp_path: Path) -> None:
             stderr = proc.stderr.read() if proc.stderr else ""
             if stderr:
                 print(f"\n[gateway stderr]:\n{stderr[-2000:]}", file=sys.stderr)
+
+
+def _find_build_toc(binary: Path) -> Path | None:
+    """Locate the PyInstaller Analysis TOC for a built binary.
+
+    The CI job builds with --distpath /tmp/pyinstaller_dist/dist and
+    --workpath /tmp/pyinstaller_dist/build, and PyInstaller names the
+    workdir subdirectory after the spec's basename. The Analysis TOC is
+    the build manifest that records exactly what went into the bundle.
+    """
+    candidates = [
+        binary.parent.parent / "build",
+        binary.parent / "build",
+    ]
+    for root in candidates:
+        if not root.exists():
+            continue
+        for toc in sorted(root.rglob("Analysis-*.toc")):
+            return toc
+    return None
+
+
+# A datas entry in the Analysis TOC is a (target, source, type) triple.
+# Only the DATA-typed ones are bundle-relative file placements.
+_TOC_DATA_ENTRY = re.compile(
+    r"\('([^']*)',\s*\n?\s*'([^']*)',\s*\n?\s*'DATA'\)"
+)
+
+
+def _datas_targets(toc_blob: str) -> list[str]:
+    """Bundle-relative target paths of every DATA entry in the TOC.
+
+    The Analysis TOC is a positional tuple; its datas element holds
+    (target, source, 'DATA') triples. The TARGET is the path the file
+    occupies inside the bundle; the SOURCE is where it came from on disk.
+    Only the target side describes the bundle's contents, so it is the
+    only side these assertions inspect.
+    """
+    return [m.group(1) for m in _TOC_DATA_ENTRY.finditer(toc_blob)]
+
+
+@pytest.mark.integration
+def test_pyinstaller_binary_uses_collected_package(tmp_path: Path) -> None:
+    """Prove the frozen bundle carries the COLLECTED physical package.
+
+    BBF-FU-35-pyi-cleanup. This test fails if:
+      - the physical `chess_coach` package is absent from the bundle;
+      - the collected subpackages are missing (collection regressed);
+      - the bundle carries the source tree instead of the collected
+        package (a source-tree fallback);
+      - the retired runtime hook is still bundled.
+
+    The assertions were derived by building BOTH the pre-BBF spec and this
+    BBF's spec against the same corpus and diffing their datas targets:
+
+      | bundle target                     | pre-BBF | this BBF |
+      |-----------------------------------|---------|----------|
+      | starts 'services/chess_coach'      |     266 |        0 |
+      | starts 'libs/chess_coach'          |      94 |        0 |
+      | starts 'chess_coach/'              |      18 |      188 |
+      | contains '__pycache__'             |     170 |        0 |
+      | ends '.pyc'                        |     170 |        0 |
+      | is 'chess_coach/__init__.py'       |       0 |        2 |
+      | 'pyinstaller_rthook' in the TOC    |       7 |        0 |
+    """
+    pre_built = os.environ.get("CHESS_COACH_GATEWAY_BINARY")
+    if pre_built:
+        binary = Path(pre_built)
+        if not binary.exists():
+            pytest.fail(f"CHESS_COACH_GATEWAY_BINARY={pre_built} does not exist")
+    else:
+        dist_dir = tmp_path / "pyinstaller_dist"
+        binary = _build_binary(dist_dir)
+
+    toc = _find_build_toc(binary)
+    assert toc is not None, (
+        "PyInstaller Analysis TOC not found next to the binary "
+        f"({binary}); cannot verify the collected package"
+    )
+    blob = toc.read_text(errors="replace")
+    targets = _datas_targets(blob)
+
+    assert targets, (
+        f"no DATA entries found in {toc.name}; the bundle manifest could "
+        "not be inspected"
+    )
+
+    # 1. The physical package marker must be in the bundle.
+    assert "chess_coach/__init__.py" in targets, (
+        "the physical chess_coach package marker is not in the bundle; "
+        "the artifact would fall back to the source tree"
+    )
+
+    # 2. The collected subpackages must be present.
+    for subpkg in ("chess_coach/gateway", "chess_coach/storage"):
+        assert any(t.startswith(subpkg) for t in targets), (
+            f"collected subpackage {subpkg} is missing from the bundle; "
+            "the collect_all collection regressed"
+        )
+
+    # 3. The bundle must NOT carry the source tree. The retired approach
+    #    placed the whole checkout under 'services/chess_coach' and
+    #    'libs/chess_coach' inside the bundle; the collected package does
+    #    not.
+    for source_root in ("services/chess_coach", "libs/chess_coach"):
+        offenders = [t for t in targets if t.startswith(source_root)]
+        assert not offenders, (
+            f"the bundle still carries the source tree at {source_root} "
+            f"({len(offenders)} entries, e.g. {offenders[:3]}); the "
+            "artifact is bundling the checkout, not the collected package"
+        )
+
+    # 4. The source tree's build artifacts must not be bundled.
+    pycache = [t for t in targets if "__pycache__" in t or t.endswith(".pyc")]
+    assert not pycache, (
+        f"the bundle carries {len(pycache)} __pycache__/.pyc artifacts; "
+        "the source tree is being bundled verbatim"
+    )
+
+    # 5. The retired runtime hook must not be bundled.
+    assert "pyinstaller_rthook" not in blob, (
+        "the retired runtime hook is still bundled"
+    )
