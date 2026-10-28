@@ -1,4 +1,4 @@
-"""Unit tests for `services.chess_coach.pdf_ocr.subprocess_runner`.
+"""Unit tests for `chess_coach.pdf_ocr.subprocess_runner`.
 
 These tests cover the A-F11 property 4 (2 GB memory cap)
 implementation per `docs/16_audit/BBF-FU-22-impl.md`.
@@ -44,8 +44,9 @@ import sys
 from pathlib import Path
 
 import pytest
-from services.chess_coach.pdf_ocr import subprocess_runner as _runner_module
-from services.chess_coach.pdf_ocr.subprocess_runner import (
+
+from chess_coach.pdf_ocr import subprocess_runner as _runner_module
+from chess_coach.pdf_ocr.subprocess_runner import (
     MEM_CAP_BYTES,
     MEMORY_CAP_MECHANISM,
     UnsupportedParserPlatformError,
@@ -190,7 +191,7 @@ def test_module_exposes_run_pdftoppm_in_subprocess() -> None:
     pdftoppm on PATH, which is the CI Linux test
     environment, not the Windows host).
     """
-    from services.chess_coach.pdf_ocr.subprocess_runner import (
+    from chess_coach.pdf_ocr.subprocess_runner import (
         run_pdftoppm_in_subprocess,
     )
     assert callable(run_pdftoppm_in_subprocess)
@@ -200,7 +201,7 @@ def test_module_exposes_pdftoppm_available() -> None:
     """`pdftoppm_available` is exposed for the route layer
     to gracefully degrade on Windows hosts.
     """
-    from services.chess_coach.pdf_ocr.subprocess_runner import (
+    from chess_coach.pdf_ocr.subprocess_runner import (
         pdftoppm_available,
     )
     assert callable(pdftoppm_available)
@@ -628,7 +629,7 @@ def _runner():
 
     The package tree is importable under more than one dotted path
     (`chess_coach.pdf_ocr.subprocess_runner` and
-    `services.chess_coach.pdf_ocr.subprocess_runner`). Whichever instance was
+    `chess_coach.pdf_ocr.subprocess_runner`). Whichever instance was
     imported is the one whose globals the functions read, so the test must
     patch that same instance.
     """

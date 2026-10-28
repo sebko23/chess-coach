@@ -34,7 +34,7 @@ MOCK_FEN = "8/8/8/4k3/8/8/8/4K2R w K - 0 1"
 
 def test_diagram_result_exposes_diagram_index_field() -> None:
     """The DiagramResult Pydantic model now carries a 0-based diagram_index."""
-    from services.chess_coach.gateway.routes.pdf_ingest import DiagramResult
+    from chess_coach.gateway.routes.pdf_ingest import DiagramResult
 
     fields = DiagramResult.model_fields
     assert "diagram_index" in fields, (
@@ -58,7 +58,8 @@ def test_diagram_result_exposes_diagram_index_field() -> None:
 def test_diagram_result_rejects_negative_index() -> None:
     """diagram_index is ge=0; negative values are a contract violation."""
     from pydantic import ValidationError
-    from services.chess_coach.gateway.routes.pdf_ingest import DiagramResult
+
+    from chess_coach.gateway.routes.pdf_ingest import DiagramResult
 
     with pytest.raises(ValidationError):
         DiagramResult(
@@ -68,7 +69,7 @@ def test_diagram_result_rejects_negative_index() -> None:
 
 def test_pdf_response_includes_diagrams_field_with_diagram_index() -> None:
     """OpenAPI / contract check: PdfImportResponse.diagrams surfaces diagram_index."""
-    from services.chess_coach.gateway.routes.pdf_ingest import (
+    from chess_coach.gateway.routes.pdf_ingest import (
         DiagramResult,
         PdfImportResponse,
     )
@@ -98,7 +99,7 @@ def test_module_docstring_documents_multi_board_contract() -> None:
     """The route's module docstring must declare the single-FEN-per-page
     contract so future readers don't assume multi-board support exists.
     """
-    from services.chess_coach.gateway.routes import pdf_ingest
+    from chess_coach.gateway.routes import pdf_ingest
 
     doc = pdf_ingest.__doc__ or ""
     assert (
@@ -119,7 +120,7 @@ def test_pdf_import_response_serializes_diagram_index_field() -> None:
     refactor that drops the model field (e.g. swapping the model out
     for a TypedDict) cannot silently regress the contract.
     """
-    from services.chess_coach.gateway.routes.pdf_ingest import (
+    from chess_coach.gateway.routes.pdf_ingest import (
         DiagramResult,
         PdfImportResponse,
     )
@@ -148,7 +149,7 @@ def test_module_re_exports_diagram_index_constant() -> None:
     Pinning the constant at the module level ensures a future change
     to the Pydantic Field default cannot silently flip the wire shape.
     """
-    from services.chess_coach.gateway.routes.pdf_ingest import DiagramResult
+    from chess_coach.gateway.routes.pdf_ingest import DiagramResult
 
     assert DiagramResult(page=1, fen=MOCK_FEN, valid=True, confidence=0.9).diagram_index == 0
 
@@ -162,7 +163,7 @@ def test_pdf_import_response_exposes_max_diagrams_per_page_field() -> None:
     verify the contract. A future multi-board backend would either
     drop this field or raise the bound.
     """
-    from services.chess_coach.gateway.routes.pdf_ingest import (
+    from chess_coach.gateway.routes.pdf_ingest import (
         DiagramResult,
         PdfImportResponse,
     )
@@ -188,7 +189,8 @@ def test_pdf_import_response_exposes_max_diagrams_per_page_field() -> None:
 def test_max_diagrams_per_page_field_has_correct_constraints() -> None:
     """max_diagrams_per_page must be an int, default 1, and ge=1."""
     from pydantic import ValidationError
-    from services.chess_coach.gateway.routes.pdf_ingest import (
+
+    from chess_coach.gateway.routes.pdf_ingest import (
         DiagramResult,
         PdfImportResponse,
     )

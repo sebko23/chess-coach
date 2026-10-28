@@ -12,7 +12,8 @@ from __future__ import annotations
 import chess
 import pytest
 from chess.polyglot import open_reader
-from services.chess_coach.repertoire.polyglot_writer import (
+
+from chess_coach.repertoire.polyglot_writer import (
     BookEntry,
     write_polyglot_book,
 )

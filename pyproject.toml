@@ -87,6 +87,7 @@ packages = [
     "chess_coach.uci",
     "chess_coach.testkit",
     "chess_coach.datasets",
+    "chess_coach.gold",  # BBF-chess-coach-gold-packaging: canonical installed namespace
     "chess_coach.gateway",
     "chess_coach.gateway.routes",
     "chess_coach.engine_orch",
@@ -118,6 +119,7 @@ packages = [
 "chess_coach.uci"                = "libs/chess_coach/uci"
 "chess_coach.testkit"            = "libs/chess_coach/testkit"
 "chess_coach.datasets"            = "libs/chess_coach/datasets"
+"chess_coach.gold"                = "services/chess_coach/gold"  # BBF-chess-coach-gold-packaging
 "chess_coach.gateway"            = "services/chess_coach/gateway"
 "chess_coach.gateway.routes"     = "services/chess_coach/gateway/routes"
 "chess_coach.engine_orch"        = "services/chess_coach/engine_orch"

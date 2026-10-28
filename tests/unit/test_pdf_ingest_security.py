@@ -23,7 +23,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from services.chess_coach.gateway.routes import pdf_ingest
+
+from chess_coach.gateway.routes import pdf_ingest
 
 AUTH = {"Authorization": "Bearer devtoken123"}
 
@@ -175,10 +176,10 @@ async def test_minimal_pdf_passes_magic_check(prod_client) -> None:
     function the route calls.
     """
     with patch(
-        "services.chess_coach.gateway.routes.pdf_ingest.run_pdftoppm_in_subprocess",
+        "chess_coach.gateway.routes.pdf_ingest.run_pdftoppm_in_subprocess",
         return_value=[MagicMock()],
     ), patch(
-        "services.chess_coach.gateway.routes.pdf_ingest._predict_fen",
+        "chess_coach.gateway.routes.pdf_ingest._predict_fen",
         new_callable=AsyncMock,
         return_value=("8/8/8/4k3/8/8/8/4K2R w K - 0 1", 0.9, None),
     ):
@@ -364,7 +365,7 @@ def test_pdf_parsing_runs_in_separate_subprocess() -> None:
     Per FU-22-impl (2026-10-16): the implementation changed
     from `pdf2image.convert_from_bytes` (which used
     `subprocess.Popen` internally) to
-    `services.chess_coach.pdf_ocr.subprocess_runner.run_pdftoppm_in_subprocess`
+    `chess_coach.pdf_ocr.subprocess_runner.run_pdftoppm_in_subprocess`
     (which uses `subprocess.Popen` directly with a
     `preexec_fn=` argument for the A-F11 2 GB memory cap).
     The architectural property (separate OS process) is
@@ -383,12 +384,12 @@ def test_pdf_parsing_runs_in_separate_subprocess() -> None:
     Verification: assert the new module is imported and
     used by the route.
     """
-    import services.chess_coach.gateway.routes.pdf_ingest as _pdf_ingest
-    from services.chess_coach.pdf_ocr import subprocess_runner as _runner
+    import chess_coach.gateway.routes.pdf_ingest as _pdf_ingest
+    from chess_coach.pdf_ocr import subprocess_runner as _runner
     # The new A-F11-aware path: the route must import
     # `run_pdftoppm_in_subprocess` from the new module.
     assert hasattr(_pdf_ingest, "run_pdftoppm_in_subprocess"), (
-        "services.chess_coach.gateway.routes.pdf_ingest no longer "
+        "chess_coach.gateway.routes.pdf_ingest no longer "
         "imports run_pdftoppm_in_subprocess from the A-F11-aware "
         "subprocess_runner module; A-F11 property 1 (subprocess "
         "isolation via Popen) is no longer guaranteed. Reverting to "
@@ -554,7 +555,7 @@ def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
     no `unshare` success, and no `pdftoppm` binary. It passes
     identically on Linux, macOS and Windows.
     """
-    import services.chess_coach.pdf_ocr.subprocess_runner as _runner
+    import chess_coach.pdf_ocr.subprocess_runner as _runner
 
     calls: list[str] = []
 
@@ -663,7 +664,7 @@ def test_subprocess_respects_2gb_memory_cap() -> None:
     via apt) exercises the full route path on every PR.
     """
     # 1. The module exposes set_rlimit_as_preexec
-    from services.chess_coach.pdf_ocr.subprocess_runner import (
+    from chess_coach.pdf_ocr.subprocess_runner import (
         MEM_CAP_BYTES,
         set_rlimit_as_preexec,
     )
@@ -690,7 +691,7 @@ def _route_runner_module():
 
     The repository's package tree is importable under more than one dotted
     path (`chess_coach.pdf_ocr.subprocess_runner` and
-    `services.chess_coach.pdf_ocr.subprocess_runner`), and BOTH can be loaded
+    `chess_coach.pdf_ocr.subprocess_runner`), and BOTH can be loaded
     in the same process as two distinct module objects with two distinct
     global namespaces. Whichever instance the route module imported is the
     one whose globals `run_pdftoppm_in_subprocess` reads, so a test that
@@ -712,7 +713,7 @@ def _app_runner_module(app) -> object:
     """Return the runner module instance the RUNNING APP's route uses.
 
     `create_app()` imports the route under the top-level `chess_coach.*`
-    path, while this test module imports it under `services.chess_coach.*`.
+    path, while this test module imports it under `chess_coach.*`.
     Those are two separate module objects, so patching the one this file
     imported would leave the app's route untouched -- and the test would
     silently assert nothing.

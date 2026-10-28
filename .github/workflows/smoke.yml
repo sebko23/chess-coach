@@ -561,6 +561,40 @@ jobs:
         # ASYNC rules are silenced for tests/.
         run: ruff check libs services apps/cli tests scripts
 
+  gold-package-artifacts:
+    name: gold package clean-install gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run the gold package artifact gate
+        # BBF-chess-coach-gold-packaging. This gate is deliberately NOT a
+        # checkout-based test: it builds a wheel and an sdist, inspects each
+        # archive independently, installs each into its own isolated venv, and
+        # probes the imports from a temporary directory OUTSIDE the repository
+        # with the checkout and every editable path removed from PYTHONPATH.
+        #
+        # It fails if either artifact omits chess_coach.gold, leaks unrelated
+        # `services/` content, permits the legacy `services.chess_coach.gold`
+        # import, or cannot import and exercise chess_coach.gold.eval_delta
+        # outside the checkout. A checkout import cannot satisfy it — which is
+        # the whole point: the pre-BBF defect was invisible precisely because
+        # checkout-based pytest resolved the `services.` path.
+        #
+        # The gate installs the artifacts with --no-deps and installs the
+        # runtime deps the gold import chain actually needs (pydantic) itself;
+        # the full dependency tree (torch, sentence-transformers, qdrant) is
+        # irrelevant to the PACKAGE SURFACE and would dominate the job's
+        # runtime. See scripts/dev/verify_gold_package_artifacts.py.
+        run: python scripts/dev/verify_gold_package_artifacts.py --repo-root .
+
   mypy:
     name: mypy strict
     runs-on: ubuntu-latest
