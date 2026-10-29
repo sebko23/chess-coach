@@ -8,7 +8,7 @@ overrides:
   nanoid: ^3.3.17
   dompurify: ^3.4.16
   js-yaml: 4.3.1
-  seroval: ^1.6.3
+  seroval: 1.6.11
   source-map-js: ^1.2.2
   prosemirror-view: ^1.42.3
   markdown-it: ^14.3.1
@@ -3132,10 +3132,10 @@ packages:
     resolution: {integrity: sha512-TfxuUjlbBESzUOWdTkTKqvSmav0ABym+itetDXLK6mDz8SmrpdI30aF8RTXE8Bvq+tH/1yIDkvy3W0lfQb1ipQ==}
     engines: {node: '>=10'}
     peerDependencies:
-      seroval: ^1.6.3
+      seroval: 1.6.11
 
-  seroval@1.6.9:
-    resolution: {integrity: sha512-UeEzHwAK+yl0YLbsvROV1t5yMYEwZZ0CfKYxDvUgS2fO9Vxdf8djqVIB+OuVpuawRNPqw68LE1Du/GMsW2ZPqA==}
+  seroval@1.6.11:
+    resolution: {integrity: sha512-hpb6XnMCGN/A+79Uf8V7/iTGkyyyazNn5X0CoCAp7Uy9vT3RT8jZ9GLcnxGoVjg3P8AArbe4ZVHq6C8oT2a0kA==}
     engines: {node: '>=10'}
 
   shebang-command@2.0.0:
@@ -4309,8 +4309,8 @@ snapshots:
     dependencies:
       '@tanstack/history': 1.162.1
       cookie-es: 3.1.1
-      seroval: 1.6.9
-      seroval-plugins: 1.6.2(seroval@1.6.9)
+      seroval: 1.6.11
+      seroval-plugins: 1.6.2(seroval@1.6.11)
 
   '@tanstack/router-generator@1.167.25(supports-color@10.2.2)':
     dependencies:
@@ -6532,11 +6532,11 @@ snapshots:
 
   semver@6.3.1: {}
 
-  seroval-plugins@1.6.2(seroval@1.6.9):
+  seroval-plugins@1.6.2(seroval@1.6.11):
     dependencies:
-      seroval: 1.6.9
+      seroval: 1.6.11
 
-  seroval@1.6.9: {}
+  seroval@1.6.11: {}
 
   shebang-command@2.0.0:
     dependencies:

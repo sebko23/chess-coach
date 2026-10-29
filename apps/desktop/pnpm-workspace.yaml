@@ -55,7 +55,18 @@ overrides:
   # overrides, matching the project's existing FU-12 / FU-14 / FU-17 /
   # FU-34 pattern. See PR #123 (the bbf-phase-8-bbf-2-pnpm-dep-bump
   # follow-up) for the full scope and the "2 low" mystery disclosure.
-  seroval: "^1.6.3"
+  # FU-34 / seroval-advisory-remediation: the `seroval` override floor was
+  # raised from ^1.6.3 to 1.6.11 to clear the two published seroval
+  # advisories:
+  #   - GHSA-9wx9-5pv9-3349 / CVE-2026-116582 (script injection through
+  #     RegExp sources in serialized output; vulnerable >=1.5.5 <1.6.10)
+  #   - GHSA-f86p-h4j2-7qgj (code injection through a typed array's own
+  #     constructor property; vulnerable >=1.6.0 <1.6.11)
+  # 1.6.11 is the lowest release that clears BOTH, and it is pinned
+  # exactly (not a caret) so the resolved version is deterministic and
+  # cannot drift into a future advisory range the way ^1.6.10 resolved
+  # to 1.7.2.
+  seroval: "1.6.11"
   source-map-js: "^1.2.2"
   prosemirror-view: "^1.42.3"
   markdown-it: "^14.3.1"
