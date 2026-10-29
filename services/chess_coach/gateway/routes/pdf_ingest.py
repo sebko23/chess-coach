@@ -41,6 +41,11 @@ from ...pdf_ocr.subprocess_runner import (
     UnsupportedParserPlatformError,
     run_pdftoppm_in_subprocess,
 )
+from ...pdf_ocr.windows_job import (
+    WindowsJobLimitExceededError,
+    WindowsJobSetupError,
+    WindowsJobTimeoutError,
+)
 from ..auth import require_bearer
 from ..config import GatewaySettings
 from ..route_guard import route_guard
@@ -256,6 +261,41 @@ async def import_pdf(
         # handler (ADR-0002) renders it as 501 / `internal.not_implemented`
         # instead of the incidental 422 this used to produce.
         raise
+    except WindowsJobLimitExceededError as exc:
+        # BBF-FU-22-B2-windows-job-object: the Windows Job Object
+        # backend reports an attributable per-process memory-limit
+        # violation. This is the A-F11 property-4 hit on Windows, so it
+        # gets the same 422 as the Linux `RLIMIT_AS` hit -- but it is a
+        # distinct exception type, so it is never confused with a
+        # malformed PDF (400) or a generic parser failure (422 with a
+        # different message).
+        raise HTTPException(
+            status_code=422,
+            detail="PDF parsing exceeded the 2 GB memory cap; "
+            "the file may be malicious or pathological. Rejected per A-F11.",
+        ) from exc
+    except WindowsJobTimeoutError as exc:
+        # BBF-FU-22-B2-windows-job-object: the contained parser exceeded
+        # the budget. The backend already terminated and drained the Job
+        # before raising, so this is a clean, scoped timeout.
+        raise HTTPException(
+            status_code=504,
+            detail=f"PDF parsing exceeded the {PARSER_TIMEOUT_SECONDS}s budget; "
+            "the file may be malicious or pathological. Rejected per A-F11.",
+        ) from exc
+    except WindowsJobSetupError as exc:
+        # BBF-FU-22-B2-windows-job-object: the containment setup failed
+        # (Job creation, limit configuration, process creation,
+        # assignment, or resume). The target was NEVER resumed, so no
+        # uncapped parser ran. This is an internal containment failure,
+        # NOT a client error and NOT a malformed PDF: 500 makes it
+        # distinguishable from every 4xx outcome above.
+        logger.error("pdf_import %s: containment setup failed: %s", import_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail="PDF parsing could not be started: the containment "
+            "mechanism failed to initialise. No parser process was run.",
+        ) from exc
     except (MemoryError, OSError) as exc:
         # FU-22-impl: A-F11 property 4 hit. The subprocess
         # hit the 2 GB memory cap (set by setrlimit) and
