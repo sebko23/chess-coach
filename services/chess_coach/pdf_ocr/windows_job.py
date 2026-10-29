@@ -438,9 +438,53 @@ class _PROCESS_INFORMATION(ctypes.Structure):
 # ---------------------------------------------------------------------------
 
 
-def _load_kernel32() -> ctypes.WinDLL:  # type: ignore[name-defined]
-    """Load ``kernel32`` and install exact prototypes for every call used."""
-    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+#: ``ctypes.WinDLL`` and ``ctypes.get_last_error`` exist only on Windows.
+#: They are reached through these module-level accessors rather than being
+#: named directly, so this module stays importable **and** type-checkable on
+#: Linux, where the shared runner still needs to branch on
+#: :data:`WINDOWS_JOB_SUPPORTED`. Using ``getattr`` rather than a direct
+#: attribute access also keeps the module free of platform-specific
+#: ``type: ignore`` comments, which ``warn_unused_ignores`` would flag on
+#: the platform where the attribute *does* exist.
+_WINDLL_LOADER = getattr(ctypes, "WinDLL", None)
+_LAST_ERROR_GETTER = getattr(ctypes, "get_last_error", None)
+
+
+def _windll(name: str, **kwargs: object) -> ctypes.CDLL:
+    """Load a Windows DLL (``ctypes.WinDLL``).
+
+    Raises:
+        WindowsJobSetupError: if called on a platform with no ``WinDLL``.
+    """
+    loader = _WINDLL_LOADER
+    if loader is None:
+        raise WindowsJobSetupError(
+            "the Windows Job Object backend is only available on Windows",
+            details={"platform": sys.platform, "stage": "platform_gate"},
+        )
+    library: ctypes.CDLL = loader(name, **kwargs)
+    return library
+
+
+def _last_error() -> int:
+    """Return the last Win32 error code (``ctypes.get_last_error``)."""
+    getter = _LAST_ERROR_GETTER
+    if getter is None:
+        return 0
+    code: int = getter()
+    return code
+
+
+def _load_kernel32() -> ctypes.CDLL:
+    """Load ``kernel32`` and install exact prototypes for every call used.
+
+    ``ctypes.WinDLL`` and ``ctypes.get_last_error`` exist only on
+    Windows. They are reached through the module-level accessors
+    :func:`_windll` and :func:`_last_error` so that this module stays
+    importable (and type-checkable) on Linux, where the shared runner
+    still needs to branch on :data:`WINDOWS_JOB_SUPPORTED`.
+    """
+    k32 = _windll("kernel32", use_last_error=True)
 
     k32.CreateProcessW.restype = _BOOL
     k32.CreateProcessW.argtypes = [
@@ -549,7 +593,7 @@ class _Handles:
     stdout_file: int | None = None
     stderr_file: int | None = None
 
-    def close_all(self, k32: ctypes.WinDLL) -> list[str]:
+    def close_all(self, k32: ctypes.CDLL) -> list[str]:
         """Close every still-open handle; return non-fatal close errors."""
         errors: list[str] = []
         for name in (
@@ -566,7 +610,7 @@ class _Handles:
                 continue
             setattr(self, name, None)
             if not k32.CloseHandle(handle):
-                errors.append(f"CloseHandle({name}) failed: win32={ctypes.get_last_error()}")
+                errors.append(f"CloseHandle({name}) failed: win32={_last_error()}")
         return errors
 
 
@@ -590,15 +634,19 @@ def _handle_to_int(handle: object) -> int:
     value = getattr(handle, "value", None)
     if isinstance(value, int):
         return value
-    # A c_void_p field read back as an int-like object.
+    # A c_void_p field read back as an int-like object. The explicit
+    # annotation keeps the result typed as ``int`` (the ``int()`` call on an
+    # ``object`` is unavoidably ``Any`` to mypy).
+    converted: int
     try:
-        return int(handle)  # type: ignore[call-overload]
+        converted = int(handle)  # type: ignore[call-overload]
     except (TypeError, ValueError):
         return 0
+    return converted
 
 
 def _open_inheritable(
-    k32: ctypes.WinDLL,
+    k32: ctypes.CDLL,
     path: Path,
     *,
     access: int,
@@ -625,7 +673,7 @@ def _open_inheritable(
             f"could not open stdio file {path}",
             details={
                 "path": str(path),
-                "win32_error": ctypes.get_last_error(),
+                "win32_error": _last_error(),
                 "stage": "stdio_open",
             },
         )
@@ -636,7 +684,7 @@ def _open_inheritable(
 
 
 def _configure_job(
-    k32: ctypes.WinDLL,
+    k32: ctypes.CDLL,
     job: int,
     *,
     limit_bytes: int,
@@ -664,7 +712,7 @@ def _configure_job(
         raise WindowsJobSetupError(
             "could not configure the Job Object memory limit",
             details={
-                "win32_error": ctypes.get_last_error(),
+                "win32_error": _last_error(),
                 "stage": "limit_configuration",
                 "limit_bytes": limit_bytes,
                 "limit_field": "ProcessMemoryLimit",
@@ -673,7 +721,7 @@ def _configure_job(
         )
 
 
-def _associate_completion_port(k32: ctypes.WinDLL, job: int, port: int) -> None:
+def _associate_completion_port(k32: ctypes.CDLL, job: int, port: int) -> None:
     """Associate the Job with an I/O completion port.
 
     Done **before** assignment so job notifications are delivered for the
@@ -691,14 +739,14 @@ def _associate_completion_port(k32: ctypes.WinDLL, job: int, port: int) -> None:
         raise WindowsJobSetupError(
             "could not associate the I/O completion port with the Job Object",
             details={
-                "win32_error": ctypes.get_last_error(),
+                "win32_error": _last_error(),
                 "stage": "completion_port_association",
             },
         )
 
 
 def _drain_job_notifications(
-    k32: ctypes.WinDLL,
+    k32: ctypes.CDLL,
     port: int,
     *,
     timeout_ms: int,
@@ -730,7 +778,7 @@ def _drain_job_notifications(
     return notifications
 
 
-def _query_limit_violation(k32: ctypes.WinDLL, job: int) -> dict[str, object]:
+def _query_limit_violation(k32: ctypes.CDLL, job: int) -> dict[str, object]:
     """Read the Job's limit-violation information (secondary evidence)."""
     buffer = ctypes.create_string_buffer(_JOB_OBJECT_LIMIT_VIOLATION_BUFFER_BYTES)
     ctypes.memset(buffer, 0, _JOB_OBJECT_LIMIT_VIOLATION_BUFFER_BYTES)
@@ -743,12 +791,12 @@ def _query_limit_violation(k32: ctypes.WinDLL, job: int) -> dict[str, object]:
         ctypes.byref(returned),
     )
     if not ok:
-        return {"available": False, "win32_error": ctypes.get_last_error()}
+        return {"available": False, "win32_error": _last_error()}
     raw = bytes(buffer.raw)
     return {"available": True, "raw": raw.hex()}
 
 
-def _terminate_job(k32: ctypes.WinDLL, job: int, exit_code: int = 1) -> None:
+def _terminate_job(k32: ctypes.CDLL, job: int, exit_code: int = 1) -> None:
     """Terminate every process in the Job.
 
     This is the **only** scoped cleanup mechanism: it reaches exactly the
@@ -758,7 +806,7 @@ def _terminate_job(k32: ctypes.WinDLL, job: int, exit_code: int = 1) -> None:
     k32.TerminateJobObject(job, exit_code)
 
 
-def _terminate_process(k32: ctypes.WinDLL, process: int, exit_code: int = 1) -> None:
+def _terminate_process(k32: ctypes.CDLL, process: int, exit_code: int = 1) -> None:
     """Terminate a single still-suspended, unassigned process.
 
     Used only on the fail-closed assignment-failure path, where the
@@ -864,7 +912,7 @@ def run_in_windows_job(
             raise WindowsJobSetupError(
                 "could not create the Job Object",
                 details={
-                    "win32_error": ctypes.get_last_error(),
+                    "win32_error": _last_error(),
                     "stage": "job_creation",
                 },
             )
@@ -880,7 +928,7 @@ def run_in_windows_job(
             raise WindowsJobSetupError(
                 "could not create the I/O completion port",
                 details={
-                    "win32_error": ctypes.get_last_error(),
+                    "win32_error": _last_error(),
                     "stage": "completion_port_creation",
                 },
             )
@@ -923,7 +971,7 @@ def run_in_windows_job(
             raise WindowsJobSetupError(
                 "could not create the target process",
                 details={
-                    "win32_error": ctypes.get_last_error(),
+                    "win32_error": _last_error(),
                     "stage": "process_creation",
                     "argv": list(argv),
                 },
@@ -933,7 +981,7 @@ def run_in_windows_job(
 
         # --- 6. assign the STILL-SUSPENDED target to the Job -------------
         if not k32.AssignProcessToJobObject(job, handles.process):
-            assign_error = ctypes.get_last_error()
+            assign_error = _last_error()
             # FAIL CLOSED: the target is suspended and in no Job, so
             # TerminateJobObject cannot reach it. Terminate it directly.
             # Because it never resumed it cannot have created descendants.
@@ -953,7 +1001,7 @@ def run_in_windows_job(
         # --- 7. resume ONLY now ------------------------------------------
         previous_count = k32.ResumeThread(handles.thread)
         if previous_count == 0xFFFFFFFF:
-            resume_error = ctypes.get_last_error()
+            resume_error = _last_error()
             # The target IS in the Job: terminate the Job so no contained
             # process survives a failed resume.
             _terminate_job(k32, job)
@@ -1082,7 +1130,11 @@ def _attach_cleanup_errors(errors: list[str]) -> None:
     logger = logging.getLogger(__name__)
     exc = sys.exc_info()[1]
     if exc is not None and isinstance(exc, WindowsJobError):
-        exc.details.setdefault("cleanup_errors", []).extend(errors)
+        existing = exc.details.get("cleanup_errors")
+        if isinstance(existing, list):
+            existing.extend(errors)
+        else:
+            exc.details["cleanup_errors"] = list(errors)
         return
     logger.warning("windows job cleanup diagnostics: %s", "; ".join(errors))
 

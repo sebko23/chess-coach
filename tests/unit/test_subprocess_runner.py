@@ -840,7 +840,10 @@ def test_uncappable_platform_refuses_and_spawns_no_process(
     """
     subprocess_runner = _runner()
 
-    # Simulate a platform with NO enforcement mechanism at all.
+    # Simulate a platform with NO enforcement mechanism at all. The platform
+    # constant is patched as well as the capability flag, so the error
+    # details name the SIMULATED platform rather than the real host.
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "sunos5")
     monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
 
     spawn_calls: list[object] = []
@@ -869,7 +872,10 @@ def test_uncappable_platform_refuses_and_spawns_no_process(
         "an unsupported platform is not a transient condition and must not be "
         f"marked retriable, got {exc.retriable!r}"
     )
-    assert exc.details.get("platform") == "win32", (
+    # BBF-FU-22-B2-windows-job-object: the simulated uncappable platform is
+    # no longer "win32" (Windows now HAS an enforcement mechanism), so the
+    # assertion pins the SIMULATED platform rather than a literal.
+    assert exc.details.get("platform") == "sunos5", (
         f"the error details must name the platform, got {exc.details!r}"
     )
     assert exc.details.get("required_mechanism") == MEMORY_CAP_MECHANISM, (
