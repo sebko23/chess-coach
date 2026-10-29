@@ -602,6 +602,7 @@ def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
         "fs": _runner.set_fs_isolation_preexec,
         "popen": _runner.subprocess.Popen,
         "supported": _runner.MEMORY_CAP_SUPPORTED,
+        "windows_job": _runner.WINDOWS_JOB_SUPPORTED,
     }
     _runner.set_rlimit_as_preexec = _fake_rlimit  # type: ignore[assignment]
     _runner.set_network_isolation_preexec = _fake_network  # type: ignore[assignment]
@@ -611,8 +612,16 @@ def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
     # runner now refuses BEFORE spawning anything, so this wiring test must
     # simulate a SUPPORTED platform to reach the Popen call it is asserting.
     # The Windows refusal is covered separately by
-    # `test_windows_unsupported_path_never_spawns_a_parser`.
+    # `test_uncappable_platform_path_never_spawns_a_parser`.
     _runner.MEMORY_CAP_SUPPORTED = True  # type: ignore[assignment]
+    # BBF-FU-22-B2-windows-job-object: this test is specifically about the
+    # LINUX `subprocess.Popen` + composed-`preexec_fn` path. On Windows the
+    # runner no longer uses `subprocess.Popen` at all -- it launches through
+    # the Job Object backend -- so the composed preexec is not part of the
+    # Windows path and the wiring assertion does not apply there. The
+    # Windows path is covered by tests/windows/test_windows_job_enforcement.py.
+    # Force the Linux branch so this test keeps measuring what it claims.
+    _runner.WINDOWS_JOB_SUPPORTED = False  # type: ignore[assignment]
     try:
         # The runner's post-Popen behaviour is irrelevant here. On
         # Windows the real `subprocess.Popen` refuses `preexec_fn`
@@ -627,6 +636,7 @@ def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
         _runner.set_fs_isolation_preexec = original["fs"]  # type: ignore[assignment]
         _runner.subprocess.Popen = original["popen"]  # type: ignore[assignment]
         _runner.MEMORY_CAP_SUPPORTED = original["supported"]  # type: ignore[assignment]
+        _runner.WINDOWS_JOB_SUPPORTED = original["windows_job"]  # type: ignore[assignment]
 
     assert calls == ["rlimit", "network", "fs"], (
         "the composed pre-exec hook did not run the A-F11 "
@@ -765,7 +775,11 @@ async def test_unsupported_platform_returns_501_not_422(
     # `sys.platform`: mutating the shared stdlib module would corrupt
     # unrelated runtime behaviour (asyncio / anyio) and make this test
     # measure the wrong thing.
-    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    #
+    # BBF-FU-22-B2-windows-job-object: Windows now HAS an enforcement
+    # mechanism (the Job Object backend), so the uncappable platform is
+    # simulated with a platform that genuinely has neither mechanism.
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "sunos5")
     monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
 
     spawn_calls: list[object] = []
@@ -822,7 +836,7 @@ async def test_unsupported_platform_is_distinct_from_other_pdf_outcomes(
         f"malformed input must be 400, got {bad.status_code}"
     )
 
-    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "sunos5")
     monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
     unsupported = await prod_client.post(
         "/v1/import/pdf",
@@ -836,7 +850,7 @@ async def test_unsupported_platform_is_distinct_from_other_pdf_outcomes(
     assert unsupported.status_code not in (400, 404, 413, 422, 504)
 
 
-def test_windows_unsupported_path_never_spawns_a_parser(
+def test_uncappable_platform_path_never_spawns_a_parser(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The guard fires BEFORE `subprocess.Popen`, so nothing is started.
@@ -847,7 +861,10 @@ def test_windows_unsupported_path_never_spawns_a_parser(
     """
     subprocess_runner = _route_runner_module()
 
-    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    # BBF-FU-22-B2-windows-job-object: Windows now HAS an enforcement
+    # mechanism (the Job Object backend), so the uncappable platform is
+    # simulated with a platform that genuinely has neither mechanism.
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "sunos5")
     monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
 
     spawn_calls: list[object] = []
@@ -895,11 +912,25 @@ def test_linux_cap_contract_is_per_process_not_an_aggregate_tree_budget() -> Non
     The Linux cap is a 2 GiB `RLIMIT_AS` address-space limit applied PER
     PROCESS. Descendants inherit it independently; each descendant gets its
     OWN allowance. There is NO aggregate process-tree memory budget.
+
+    BBF-FU-22-B2-windows-job-object: the MECHANISM string is now
+    platform-dependent, because Windows enforces the same per-process
+    ceiling through a Job Object rather than through `RLIMIT_AS`. The
+    *semantics* are unchanged on both platforms: a per-process ceiling
+    inherited independently by descendants, never an aggregate tree budget.
     """
     subprocess_runner = _route_runner_module()
 
     assert subprocess_runner.MEM_CAP_BYTES == 2 * 1024**3
-    assert subprocess_runner.MEMORY_CAP_MECHANISM == "RLIMIT_AS via preexec_fn"
+
+    # The mechanism names the platform's enforcement route. On Linux it
+    # is the `RLIMIT_AS` preexec; on Windows it is the Job Object.
+    if subprocess_runner.HOST_PLATFORM == "win32":
+        assert subprocess_runner.MEMORY_CAP_MECHANISM == (
+            "Windows Job Object (JOB_OBJECT_LIMIT_PROCESS_MEMORY)"
+        )
+    else:
+        assert subprocess_runner.MEMORY_CAP_MECHANISM == "RLIMIT_AS via preexec_fn"
 
     src = Path(subprocess_runner.__file__).read_text(encoding="utf-8")
     # The contract is stated in the module's own docstring.

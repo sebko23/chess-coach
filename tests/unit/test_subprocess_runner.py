@@ -32,7 +32,7 @@ checks do NOT establish:
 - `test_descendant_inherits_memory_cap_independently` - a descendant
   inherits the limit, and each descendant gets its OWN 2 GiB
   allowance (there is no aggregate process-tree budget).
-- `test_windows_pdf_parsing_is_unsupported_and_spawns_no_process` -
+- `test_uncappable_platform_refuses_and_spawns_no_process` -
   the Windows path refuses deliberately and never starts a parser.
 """
 from __future__ import annotations
@@ -807,10 +807,10 @@ def test_descendant_inherits_memory_cap_independently(tmp_path: Path) -> None:
     )
 
 
-def test_windows_pdf_parsing_is_unsupported_and_spawns_no_process(
+def test_uncappable_platform_refuses_and_spawns_no_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An uncappable platform refuses deliberately and spawns NOTHING.
+    """A platform with NEITHER enforcement mechanism refuses deliberately.
 
     This test FAILS against the pre-BB1 implementation, which reached
     `subprocess.Popen(preexec_fn=...)`, had CPython raise
@@ -826,13 +826,21 @@ def test_windows_pdf_parsing_is_unsupported_and_spawns_no_process(
          (timeout) outcomes;
       3. `subprocess.Popen` is NEVER called, so no parser process starts.
 
-    The Windows platform is SIMULATED (the repository has no Windows CI job).
-    B1 implements no Windows enforcement and claims none: this test pins the
-    REFUSAL contract, not a Windows mechanism.
+    BBF-FU-22-B2-windows-job-object: B2 gave Windows a REAL enforcement
+    mechanism (the Job Object backend), so Windows is no longer an
+    uncappable platform. The refusal contract still has to hold for a
+    platform with neither mechanism, so this test now simulates a
+    genuinely uncappable platform by patching `MEMORY_CAP_SUPPORTED` to
+    False -- exactly the state B1 left Windows in, and the state a
+    non-Windows, non-Linux host would be in.
+
+    The Windows mechanism itself is proved in
+    `tests/windows/test_windows_job_enforcement.py`, which runs on a real
+    `windows-latest` runner.
     """
     subprocess_runner = _runner()
 
-    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    # Simulate a platform with NO enforcement mechanism at all.
     monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
 
     spawn_calls: list[object] = []
@@ -881,10 +889,15 @@ def test_windows_pdf_parsing_is_unsupported_and_spawns_no_process(
 def test_ensure_memory_cap_supported_raises_on_unsupported_platform(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The guard itself is the single gate, and it raises the typed error."""
+    """The guard itself is the single gate, and it raises the typed error.
+
+    BBF-FU-22-B2-windows-job-object: Windows now HAS an enforcement
+    mechanism (the Job Object backend), so the uncappable platform is
+    simulated with a platform that genuinely has neither mechanism.
+    """
     subprocess_runner = _runner()
 
-    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(subprocess_runner, "HOST_PLATFORM", "sunos5")
     monkeypatch.setattr(subprocess_runner, "MEMORY_CAP_SUPPORTED", False)
 
     with pytest.raises(UnsupportedParserPlatformError):

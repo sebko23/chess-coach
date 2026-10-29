@@ -15,24 +15,45 @@ The other 3 properties (network isolation, read-only FS,
 timeout) are out of scope here; the timeout is already
 enforced by the route's `asyncio.wait_for` wrapper.
 
-**Platform support (BBF-FU-22-windows-contract-correction).**
-The cap mechanism is Unix-only: `resource` is a Unix stdlib module and
-CPython rejects `preexec_fn` on Windows
-(`ValueError: preexec_fn is not supported on Windows platforms`).
-Windows PDF parsing is therefore UNSUPPORTED. `ensure_memory_cap_supported()`
-raises a typed `UnsupportedParserPlatformError` (HTTP 501, error code
-`internal.not_implemented`) BEFORE any parser process is spawned, so an
-uncapped `pdftoppm` is never launched and the refusal is distinguishable
-from a malformed PDF, a missing tool, a timeout, or a generic parser
-failure. Real Windows enforcement (a Job Object with
-`JOB_OBJECT_LIMIT_PROCESS_MEMORY`) is separately approved B2 work and is
-NOT implemented here.
+**Platform support (BBF-FU-22-windows-contract-correction, extended by
+BBF-FU-22-B2-windows-job-object).**
+The B1 cap mechanism was Unix-only: `resource` is a Unix stdlib module
+and CPython rejects `preexec_fn` on Windows
+(`ValueError: preexec_fn is not supported on Windows platforms`), so B1
+made Windows PDF parsing UNSUPPORTED via
+`ensure_memory_cap_supported()` (a typed
+`UnsupportedParserPlatformError`, HTTP 501, error code
+`internal.not_implemented`) raised BEFORE any parser process was spawned.
+
+**B2 replaced that refusal with real enforcement.** On Windows the
+parser is now launched through the Job Object backend in
+:mod:`chess_coach.pdf_ocr.windows_job`: the target is created
+suspended, the Job is configured with
+`JOB_OBJECT_LIMIT_PROCESS_MEMORY`, the target is assigned to the Job,
+and only then is it resumed. The limit is therefore in force before the
+target can allocate or spawn descendants, and the B1 refusal path is no
+longer reached on Windows. The backend **fails closed**: a Job-creation,
+limit-configuration, process-creation, assignment, or resume failure
+terminates the target without resuming it, so an uncapped parser is
+never launched. There is no fallback to `preexec_fn`, to source-tree
+execution, or to the Linux `RLIMIT_AS` mechanism on Windows.
+
+`ensure_memory_cap_supported()` still exists and still raises on a
+platform that has neither mechanism, but on Windows it no longer fires.
 
 **The Linux cap is per-process, not an aggregate process-tree budget.**
 `RLIMIT_AS` caps the virtual address space of the process it is applied
 to. Descendants inherit the limit, but each descendant gets its OWN
 independent 2 GiB allowance. There is no aggregate memory budget across
 the process tree: the limit is NOT an aggregate process-tree memory budget.
+
+**The Windows cap is per-process too.** The Job Object's
+`ProcessMemoryLimit` field is the **per-process** limit; the aggregate
+`JobMemoryLimit` field (and its `JOB_OBJECT_LIMIT_JOB_MEMORY` flag) is
+deliberately left disabled and at zero. Descendants inherit Job
+membership (breakaway is never enabled) and each gets its OWN 2 GiB
+allowance. The Windows limit is likewise NOT a 2 GiB aggregate
+process-tree memory budget.
 
 The architectural pattern established here (bypass
 pdf2image, call pdftoppm directly via `subprocess.Popen`
@@ -56,6 +77,7 @@ from pathlib import Path
 from PIL import Image
 
 from chess_coach.errors import NotImplementedYetError
+from chess_coach.pdf_ocr.windows_job import WINDOWS_JOB_SUPPORTED
 
 # `resource` is a Unix-only stdlib module. On Windows, it's
 # not available; the cap mechanism is a no-op (Windows
@@ -72,26 +94,33 @@ MEM_CAP_BYTES: int = 2 * 1024 * 1024 * 1024  # 2 GiB
 
 #: True when this platform can enforce the A-F11 property-4 memory cap.
 #:
-#: The cap is enforced with ``resource.setrlimit(RLIMIT_AS, ...)`` via
-#: ``preexec_fn``. ``resource`` is a Unix-only stdlib module, and CPython
-#: rejects ``preexec_fn`` outright on Windows
-#: (``ValueError: preexec_fn is not supported on Windows platforms``),
-#: so there is no mechanism by which the cap could be applied there.
+#: **Linux:** the cap is enforced with ``resource.setrlimit(RLIMIT_AS, ...)``
+#: via ``preexec_fn``.
 #:
-#: Windows PDF parsing is therefore UNSUPPORTED: this BBF refuses to launch
-#: an uncapped parser rather than pretending the cap is in force. Real
-#: Windows enforcement (a Job Object with
-#: ``JOB_OBJECT_LIMIT_PROCESS_MEMORY``) is separately approved B2 work.
+#: **Windows:** the cap is enforced with a Job Object
+#: (``JOB_OBJECT_LIMIT_PROCESS_MEMORY``) by the
+#: :mod:`chess_coach.pdf_ocr.windows_job` backend
+#: (``BBF-FU-22-B2-windows-job-object``). The target is created suspended,
+#: the Job is configured, the target is assigned, and only then is it
+#: resumed -- so the limit is in force before the target can allocate.
+#:
+#: **Any other platform:** the cap cannot be enforced, so PDF parsing is
+#: refused.
+#:
 #: The platform identifier used for the capability decision. A module-level
 #: name (rather than a bare `sys.platform` read) so that tests can simulate
 #: an uncappable platform without mutating the process-wide `sys.platform`,
 #: which would corrupt unrelated runtime behaviour (asyncio, anyio, ...).
 HOST_PLATFORM: str = sys.platform
 
-MEMORY_CAP_SUPPORTED: bool = HOST_PLATFORM != "win32"
+MEMORY_CAP_SUPPORTED: bool = HOST_PLATFORM != "win32" or WINDOWS_JOB_SUPPORTED
 
-#: The capability that is missing on Windows, named for the error details.
-MEMORY_CAP_MECHANISM: str = "RLIMIT_AS via preexec_fn"
+#: The capability that enforces the cap, named for the error details.
+MEMORY_CAP_MECHANISM: str = (
+    "RLIMIT_AS via preexec_fn"
+    if HOST_PLATFORM != "win32"
+    else "Windows Job Object (JOB_OBJECT_LIMIT_PROCESS_MEMORY)"
+)
 
 # pdftoppm invocation defaults. These match the previous
 # pdf2image.convert_from_bytes defaults (DPI=200, fmt=ppm)
@@ -565,15 +594,22 @@ def ensure_memory_cap_supported() -> None:
     """Raise if this platform cannot enforce the A-F11 memory cap.
 
     The A-F11 contract requires the PDF parser to run with a 2 GB memory
-    cap. That cap is applied with ``RLIMIT_AS`` through ``preexec_fn``,
-    which is a Unix-only mechanism: CPython raises
-    ``ValueError: preexec_fn is not supported on Windows platforms``
-    before the child process is created.
+    cap. The cap is enforced differently per platform:
 
-    Rather than letting that incidental ``ValueError`` surface as a
-    generic 422 (which would be indistinguishable from a malformed PDF
-    or a parser failure), this guard raises a deliberate, typed
-    unsupported-platform result.
+    * **Linux** — ``resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))`` in a
+      ``preexec_fn`` callback.
+    * **Windows** — a Job Object with
+      ``JOB_OBJECT_LIMIT_PROCESS_MEMORY`` at 2 GiB, applied by the
+      :mod:`chess_coach.pdf_ocr.windows_job` backend
+      (``BBF-FU-22-B2-windows-job-object``). The target is created
+      suspended and resumed only after Job assignment, so the cap is in
+      force before the target allocates.
+
+    On any other platform neither mechanism is available, so the guard
+    raises a deliberate, typed unsupported-platform result rather than
+    letting an incidental ``ValueError`` surface as a generic 422 (which
+    would be indistinguishable from a malformed PDF or a parser
+    failure).
 
     Raises:
         UnsupportedParserPlatformError: if the cap cannot be enforced.
@@ -582,8 +618,7 @@ def ensure_memory_cap_supported() -> None:
         raise UnsupportedParserPlatformError(
             "PDF parsing is not supported on this platform: the A-F11 2 GB "
             "memory cap cannot be enforced here, so no parser process is "
-            "started. Windows enforcement requires the separately approved "
-            "Job Object implementation.",
+            "started.",
             details={
                 "platform": HOST_PLATFORM,
                 "required_mechanism": MEMORY_CAP_MECHANISM,
@@ -710,6 +745,24 @@ def run_pdftoppm_in_subprocess(
         # child writes output files into tmpdir (which is
         # the per-book artifact dir in production use, but
         # a tempdir for the test path).
+        #
+        # BBF-FU-22-B2-windows-job-object: on Windows the launch
+        # goes through the Job Object backend instead of
+        # `subprocess.Popen`. The Job backend creates the target
+        # suspended, configures the Job's per-process memory
+        # limit, assigns the target, and only then resumes it,
+        # so no target code can allocate or spawn descendants
+        # before the limit is in force. The Linux path below is
+        # unchanged.
+        if WINDOWS_JOB_SUPPORTED:
+            return _run_pdftoppm_in_windows_job(
+                args,
+                pdf_bytes=pdf_bytes,
+                tmpdir=tmpdir,
+                timeout_seconds=timeout_seconds,
+                mem_cap_bytes=mem_cap_bytes,
+            )
+
         proc: subprocess.Popen[bytes] = subprocess.Popen(  # noqa: S603
             args,
             stdin=subprocess.PIPE,
@@ -746,6 +799,84 @@ def run_pdftoppm_in_subprocess(
                 "the PDF may be empty or the page range may be out of bounds."
             )
         return [Image.open(p) for p in png_files]
+
+
+def _run_pdftoppm_in_windows_job(
+    args: list[str],
+    *,
+    pdf_bytes: bytes,
+    tmpdir: Path,
+    timeout_seconds: int,
+    mem_cap_bytes: int,
+) -> list[Image.Image]:
+    """Run pdftoppm through the Windows Job Object backend.
+
+    **BBF-FU-22-B2-windows-job-object.** The target is created
+    suspended, the Job is created and configured with the
+    per-process memory limit, the target is assigned to the Job,
+    and only then is it resumed. No target code runs before the
+    limit is in force.
+
+    The outcome taxonomy is preserved by mapping the backend's typed
+    errors onto the errors the Linux path already raises, so the
+    route layer can distinguish them:
+
+    * a Job setup failure raises :class:`WindowsJobSetupError`
+      (a containment-setup failure, distinct from a parser failure);
+    * an attributable per-process limit violation raises
+      :class:`WindowsJobLimitExceededError`;
+    * a timeout raises :class:`WindowsJobTimeoutError`;
+    * a nonzero parser exit still raises ``RuntimeError``, preserving
+      the existing parser-failure semantics.
+
+    A nonzero exit on its own is **never** classified as a limit hit:
+    only the Job's own limit-violation signal is.
+    """
+    from chess_coach.pdf_ocr.windows_job import (
+        WindowsJobLimitExceededError,
+        WindowsJobSetupError,
+        WindowsJobTimeoutError,
+        run_in_windows_job,
+    )
+
+    try:
+        result = run_in_windows_job(
+            args,
+            stdin_bytes=pdf_bytes,
+            timeout_seconds=timeout_seconds,
+            limit_bytes=mem_cap_bytes,
+            cwd=tmpdir,
+        )
+    except WindowsJobLimitExceededError:
+        # The A-F11 property-4 hit. The route surfaces this as 422, the
+        # same status the Linux `RLIMIT_AS` hit produces, but it is a
+        # distinct exception type so it is never confused with a
+        # malformed PDF or a generic parser failure.
+        raise
+    except WindowsJobTimeoutError:
+        # The route's outer `asyncio.wait_for` would also fire, but the
+        # inner backend timeout is authoritative because it terminated
+        # and drained the Job first.
+        raise
+    except WindowsJobSetupError:
+        # Containment setup failed: the target was never resumed, so no
+        # unconstrained parser ran. This is a containment-setup failure,
+        # not a parser failure.
+        raise
+
+    if result.returncode != 0:
+        stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        raise RuntimeError(
+            f"pdftoppm exited with code {result.returncode}: {stderr_text[:500]}"
+        )
+
+    png_files = sorted(tmpdir.glob("*.png"))
+    if not png_files:
+        raise RuntimeError(
+            "pdftoppm exited cleanly but produced no PNG files; "
+            "the PDF may be empty or the page range may be out of bounds."
+        )
+    return [Image.open(p) for p in png_files]
 
 
 def pdftoppm_available() -> bool:

@@ -595,6 +595,92 @@ jobs:
         # runtime. See scripts/dev/verify_gold_package_artifacts.py.
         run: python scripts/dev/verify_gold_package_artifacts.py --repo-root .
 
+  # FU-22-B2 (BBF-FU-22-B2-windows-job-object): REAL Windows proof for
+  # A-F11 property 4 (the 2 GB memory cap) on Windows.
+  #
+  # This is the only Windows runner in the workflow. B1 left Windows PDF
+  # parsing unsupported because `RLIMIT_AS` is Unix-only; B2 enforces the
+  # same per-process ceiling through a Windows Job Object
+  # (JOB_OBJECT_LIMIT_PROCESS_MEMORY) and this job is the platform proof
+  # that the enforcement is real: the kernel denies the over-limit
+  # allocation, descendants inherit the limit, an unrelated sibling
+  # survives cleanup, the target stays suspended until assignment, a
+  # setup failure cannot execute an unconstrained target, and the
+  # mandatory negative control demonstrably crosses the same threshold
+  # when the Job assignment is bypassed.
+  #
+  # The Linux `RLIMIT_AS` job is untouched and continues to protect the
+  # Linux half of the contract.
+  windows-job-enforcement:
+    name: Windows Job Object enforcement
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install package + test deps
+        # `pip install -e .[dev]` installs the package (so the production
+        # `chess_coach.pdf_ocr.windows_job` module is the one under test)
+        # AND the dev extras (pytest). There is NO Windows-only dependency
+        # to install: B2 deliberately uses the standard-library `ctypes`
+        # binding to kernel32, so `uv.lock` and the dependency set are
+        # unchanged and there is no separate dependency-install proof to
+        # satisfy.
+        run: |
+          python -m pip install --upgrade pip --quiet
+          pip install -e '.[dev]'
+
+      - name: Run the Windows Job Object enforcement tests
+        # These are REAL Win32 calls on a REAL Windows runner: no mocked
+        # Job API, no skip, no source-tree-only proof. The file is
+        # collected explicitly (rather than via the tests/ glob) so the
+        # job fails loudly if the file is renamed or moved -- a silently
+        # unenforced test provides no protection.
+        #
+        # `-p no:randomly` is not used; the suite has no ordering
+        # dependency. `--timeout` is not set: the limit tests allocate
+        # 512 MiB against a 64 MiB Job limit, which is fast.
+        run: pytest tests/windows/test_windows_job_enforcement.py -v --no-header
+
+      - name: Verify the Windows production path is importable and wired
+        # A smoke check that the PRODUCTION module (not a test copy) is
+        # what the runner uses, that it reports the 2 GiB per-process
+        # limit, and that the aggregate Job-memory limit is disabled.
+        # This is the "dependency/install proof" for B2: the ctypes
+        # backend must be present in the installed environment.
+        run: |
+          python -c "
+          from chess_coach.pdf_ocr import windows_job as wj
+          from chess_coach.pdf_ocr import subprocess_runner as sr
+          assert wj.WINDOWS_JOB_SUPPORTED, 'the Job backend must be active on Windows'
+          assert wj.JOB_OBJECT_LIMIT_BYTES == 2 * 1024**3, wj.JOB_OBJECT_LIMIT_BYTES
+          assert sr.MEMORY_CAP_SUPPORTED, 'Windows must be a memory-cap-supported platform'
+          assert sr.MEM_CAP_BYTES == 2 * 1024**3
+          print('Windows Job Object backend active; per-process limit =', wj.JOB_OBJECT_LIMIT_BYTES)
+          "
+
+      - name: Verify the Windows PDF route uses the Job backend
+        # The route must reach the Job backend, not `subprocess.Popen`
+        # with `preexec_fn` (which CPython rejects on Windows).
+        run: |
+          python -c "
+          import inspect
+          from chess_coach.gateway.routes import pdf_ingest
+          src = inspect.getsource(pdf_ingest)
+          assert 'WindowsJobLimitExceededError' in src
+          assert 'WindowsJobSetupError' in src
+          assert 'WindowsJobTimeoutError' in src
+          from chess_coach.pdf_ocr import subprocess_runner as sr
+          assert 'WINDOWS_JOB_SUPPORTED' in inspect.getsource(sr.run_pdftoppm_in_subprocess)
+          print('Windows route maps the Job error taxonomy')
+          "
+
   mypy:
     name: mypy strict
     runs-on: ubuntu-latest
