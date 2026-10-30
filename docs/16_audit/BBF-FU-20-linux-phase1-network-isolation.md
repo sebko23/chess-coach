@@ -155,9 +155,29 @@ a missing capability.** Three measurements establish this:
   have its propagation changed, and the kernel refuses the operation
   with `EACCES`.
 
-The last point is the deployment requirement, and it is the same one
-the AppArmor policy expresses: **the host's mount namespace must let a
-user-namespace process modify the mounts it inherits.**
+The AppArmor question is closed by two further measurements:
+
+* The profile **after** the unshare is still `docker-default (enforce)`.
+  On Ubuntu 24.04 a process that creates a user namespace is expected
+  to transition into `unprivileged_userns`, but that transition does not
+  happen here — the container's own profile governs the mount.
+* The AppArmor audit log contains **only `STATUS` records** (profile
+  loads and replaces) and **no `DENIED` record at all**. AppArmor never
+  denied the mount.
+
+So the LSM is not the denyer, and neither is a missing capability. The
+denial is the **kernel's mount-namespace rule**, and the deployment
+requirement it implies is:
+
+> The host's mount namespace must let a user-namespace process modify
+> the mounts it inherits.
+
+A container whose root mount is not locked satisfies this. A runner
+that hands the container a locked (shared-propagation, or otherwise
+inherited-and-locked) root mount does not, and no mount strategy can
+work there — which is exactly what the measurement shows: every
+variant, including a brand-new tmpfs with no inheritance involved, is
+refused with `EACCES`.
 
 **Operational requirement.** The supported Linux deployment therefore
 needs a host AppArmor policy that permits `mount` inside an

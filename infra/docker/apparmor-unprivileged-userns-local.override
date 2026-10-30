@@ -28,8 +28,20 @@
 #
 # The same strategies all succeed on a host without the restriction, and
 # the effective capability mask inside the new user namespace is fully
-# populated in both cases -- so the denial is the LSM policy and not the
-# kernel capability check.
+# populated in both cases.
+#
+# IMPORTANT: the later measurements showed that the LSM is NOT the
+# denyer -- the profile after the unshare is still `docker-default
+# (enforce)`, and the AppArmor audit log contains no DENIED record.
+# The denial is the kernel's rule that a mount INHERITED into a
+# user-namespace-owned mount namespace is locked, so its propagation
+# cannot be changed.
+#
+# This override is therefore NOT the fix for that denial. It is kept
+# because the namespace transition into `unprivileged_userns` is the
+# documented Ubuntu 24.04 behaviour, and the launcher must be permitted
+# to create a user namespace at all. If a deployment does not restrict
+# unprivileged user namespaces, this override is unnecessary.
 #
 # WHY ONE RULE
 #
