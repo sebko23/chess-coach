@@ -6,29 +6,45 @@
 # restricted unprivileged user namespaces by default. A process that
 # creates a user namespace transitions into AppArmor's
 # `unprivileged_userns` profile, which grants `userns`, `network`,
-# `file rwlkm`, `signal`, `dbus`, `unix`, `mqueue` and `ptrace` -- but
-# NOT `mount` and NOT `x`.
+# `file rwlkm /{,**}`, `signal`, `dbus`, `unix`, `mqueue` and `ptrace` --
+# but NOT `mount`.
 #
-# The sandbox launcher's containment sequence needs BOTH:
+# The sandbox launcher's containment sequence needs `mount` inside that
+# namespace: it makes mount propagation private, remounts the root
+# filesystem read-only, and bind-mounts the artifact path writable.
+# Without it the launcher cannot establish the boundary, and it
+# correctly fails closed.
 #
-#   * `mount` -- to make mount propagation private, remount the root
-#     filesystem read-only, and bind-mount the artifact path writable;
-#   * `x` -- to exec the parser after the namespace is established.
+# MEASURED ON THE RUNNER
 #
-# Ubuntu's own profile ends with:
+# Every mount variant was refused with EACCES, including a brand-new
+# tmpfs with no inheritance involved:
 #
-#   include if exists <local/unprivileged_userns>
+#   mount(/, MS_REC|MS_PRIVATE)            EACCES
+#   mount(/, MS_REC|MS_SLAVE)              EACCES
+#   mount(/, MS_BIND)                      EACCES
+#   mount(tmpfs, /tmp/newroot)             EACCES
+#   mount(/, MS_REMOUNT|MS_BIND|MS_RDONLY) EACCES
 #
-# which is exactly the site-specific override mechanism this file uses.
-# Adding rules there is the documented way to adjust the profile for a
-# site, and it keeps the diff against the stock profile to two rules.
+# The same strategies all succeed on a host without the restriction, and
+# the effective capability mask inside the new user namespace is fully
+# populated in both cases -- so the denial is the LSM policy and not the
+# kernel capability check.
+#
+# WHY ONE RULE
+#
+# The launcher execs the parser as a CHILD process, and the stock
+# profile already grants children exec permission through
+# `allow pix /** -> &unprivileged_userns`. An explicit `x` rule cannot be
+# added here: the stock `allow file rwlkm /{,**}` covers the same tree,
+# and AppArmor rejects the merged rule with "conflicting x modifiers",
+# which makes the whole profile fail to load.
 #
 # SCOPE
 #
-# This is applied ONLY to the GitHub-hosted CI runner, in the
-# dedicated `linux-network-isolation` job. It is not applied to the
-# production deployment, whose host AppArmor policy is the operator's
-# to configure.
+# This is applied ONLY to the GitHub-hosted CI runner, in the dedicated
+# `linux-network-isolation` job. It is not applied to the production
+# deployment, whose host AppArmor policy is the operator's to configure.
 #
 # It is NOT `flags=(unconfined)`, it does not disable AppArmor, and it
 # grants no capability. The container still runs as UID 1000 with no
@@ -38,4 +54,3 @@
 # The delta is asserted by scripts/dev/verify_apparmor_delta.py.
 
   mount,
-  allow file x /{,**},

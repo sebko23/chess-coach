@@ -41,7 +41,6 @@ STOCK_PROFILE_URL = (
 #: The rules the override is allowed to contain.
 REQUIRED_RULES = {
     "mount": "the containment sequence needs to mount inside the namespace",
-    "allow file x /{,**}": "the parser must be executable after the namespace is set up",
 }
 
 
@@ -143,7 +142,7 @@ def main() -> int:
 
     print()
     if ok:
-        print("=== APPARMOR OVERRIDE VERIFIED: minimal two-rule delta ===")
+        print("=== APPARMOR OVERRIDE VERIFIED: minimal single-rule delta ===")
         return 0
     print("=== APPARMOR OVERRIDE VERIFICATION FAILED ===")
     return 1
