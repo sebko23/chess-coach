@@ -157,6 +157,10 @@ def _enter_userns(lib: ctypes.CDLL, *, also_netns: bool = True) -> bool:
         print(f"  map: FAILED {exc}", flush=True)
         return False
     print(f"  map: OK caps={_caps()} propagation(/)={_propagation('/')}", flush=True)
+    # The profile AFTER the transition is what governs the mount: on
+    # Ubuntu 24.04 the process transitions into `unprivileged_userns`
+    # when it creates a user namespace.
+    print(f"  apparmor AFTER unshare: {_apparmor_status()}", flush=True)
     return True
 
 
@@ -358,6 +362,32 @@ def _ns_id(kind: str) -> str:
         return "unknown"
 
 
+def strategy_complain_mode(lib: ctypes.CDLL) -> bool:
+    """Switch the LSM to complain mode and retry the mount.
+
+    In complain mode the operation is ALLOWED but every denial is
+    logged. If the mount succeeds once the profile is in complain
+    mode, the LSM was the denyer; if it still fails with EACCES, the
+    kernel is.
+
+    This is a diagnostic and it never changes the production
+    behaviour: the launcher still fails closed.
+    """
+    try:
+        with open("/proc/self/attr/current", "w", encoding="utf-8") as handle:
+            handle.write("complain")
+        print("  switched the profile to complain mode", flush=True)
+    except OSError as exc:
+        print(f"  could not switch to complain mode: {exc}", flush=True)
+        return False
+    if not _enter_userns(lib):
+        return False
+    rc = _mount(lib, b"none", b"/", MS_REC | MS_PRIVATE)
+    ok = _report("mount(/, MS_REC|MS_PRIVATE) in complain mode", rc)
+    print(f"  => {'AppArmor WAS the denyer' if ok else 'the KERNEL is the denyer'}", flush=True)
+    return ok
+
+
 STRATEGIES = {
     "private": strategy_private,
     "slave": strategy_slave,
@@ -369,6 +399,7 @@ STRATEGIES = {
     "no_userns_remount": strategy_no_userns_remount,
     "lsm_report": strategy_lsm_report,
     "cap_status": strategy_cap_status,
+    "complain_mode": strategy_complain_mode,
 }
 
 

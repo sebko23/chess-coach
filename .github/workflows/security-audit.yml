@@ -381,14 +381,22 @@ jobs:
         # accepts. It is a diagnostic: it reports, it does not
         # install a fallback.
         run: |
-          for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro no_userns no_userns_remount lsm_report cap_status; do
+          for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro no_userns no_userns_remount lsm_report cap_status complain_mode; do
             echo "--- $s ---"
             docker run --rm --user 1000:1000 \
               --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
               -v "$PWD/scripts/dev:/probe:ro" \
               --entrypoint python3 chess-coach-backend:fu20 \
-              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=|BEFORE|AFTER|ns id" || true
+              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=|BEFORE|AFTER|ns id|=>" || true
           done
+
+      - name: Dump the AppArmor audit log after the probe
+        # The complain-mode probe allows every operation and logs the
+        # denials, so the audit log now names the rule that refused the
+        # mount.
+        run: |
+          sudo journalctl -k --no-pager -n 400 2>/dev/null | grep -i "apparmor" | tail -30 || true
+          sudo dmesg 2>/dev/null | grep -i "apparmor" | tail -30 || true
 
       - name: Run the restricted-versus-unrestricted proof
         # The proof container is the PRODUCTION image, running as the
