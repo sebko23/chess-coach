@@ -1,0 +1,41 @@
+# Local AppArmor override for the `unprivileged_userns` profile.
+#
+# WHY THIS EXISTS
+#
+# Ubuntu 24.04 (the GitHub-hosted `ubuntu-latest` runner image) enables
+# restricted unprivileged user namespaces by default. A process that
+# creates a user namespace transitions into AppArmor's
+# `unprivileged_userns` profile, which grants `userns`, `network`,
+# `file rwlkm`, `signal`, `dbus`, `unix`, `mqueue` and `ptrace` -- but
+# NOT `mount` and NOT `x`.
+#
+# The sandbox launcher's containment sequence needs BOTH:
+#
+#   * `mount` -- to make mount propagation private, remount the root
+#     filesystem read-only, and bind-mount the artifact path writable;
+#   * `x` -- to exec the parser after the namespace is established.
+#
+# Ubuntu's own profile ends with:
+#
+#   include if exists <local/unprivileged_userns>
+#
+# which is exactly the site-specific override mechanism this file uses.
+# Adding rules there is the documented way to adjust the profile for a
+# site, and it keeps the diff against the stock profile to two rules.
+#
+# SCOPE
+#
+# This is applied ONLY to the GitHub-hosted CI runner, in the
+# dedicated `linux-network-isolation` job. It is not applied to the
+# production deployment, whose host AppArmor policy is the operator's
+# to configure.
+#
+# It is NOT `flags=(unconfined)`, it does not disable AppArmor, and it
+# grants no capability. The container still runs as UID 1000 with no
+# host CAP_SYS_ADMIN, and the shipped seccomp profile still governs
+# which syscalls are permitted at all.
+#
+# The delta is asserted by scripts/dev/verify_apparmor_delta.py.
+
+  mount,
+  allow file x /{,**},

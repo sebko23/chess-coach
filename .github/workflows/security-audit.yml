@@ -333,22 +333,35 @@ jobs:
           done
           docker logs fu20p-srv 2>&1 | head -3
 
-      - name: Install the AppArmor profile on the runner
-        # Docker does NOT load a custom AppArmor profile into the
-        # kernel -- the profile must already be present, or the
-        # container fails to start with:
-        #   unable to apply apparmor profile: apparmor failed to apply
-        #   profile: write fsmount:fscontext:proc/thread-self/attr/
-        #   apparmor/exec: no such file or directory
-        #
-        # Ubuntu 24.04's `unprivileged_userns` profile grants `userns`
-        # but NOT `mount`, which is what the launcher's containment
-        # sequence needs. This profile grants both. It is loaded into
-        # the kernel here, on the CI host only.
+      - name: Verify the AppArmor override is a minimal delta
+        # The override must grant exactly the two rules the launcher
+        # needs and nothing else: no capability, no deny, no
+        # unconfined flag.
         run: |
-          sudo cp "$PWD/infra/docker/apparmor-fu20-ci.profile" /etc/apparmor.d/chess-coach-fu20
-          sudo apparmor_parser -r -W /etc/apparmor.d/chess-coach-fu20
-          sudo aa-status | grep -i "chess-coach-fu20" || echo "profile not listed"
+          python scripts/dev/verify_apparmor_delta.py \
+            infra/docker/apparmor-unprivileged-userns-local.override
+
+      - name: Extend the runner's unprivileged_userns AppArmor profile
+        # Ubuntu 24.04 restricts unprivileged user namespaces by
+        # default. A process that creates a user namespace transitions
+        # into AppArmor's `unprivileged_userns` profile, which grants
+        # `userns` but NOT `mount` and NOT `x`. The launcher's
+        # containment sequence needs both: `mount` to make the root
+        # filesystem read-only and bind-mount the artifact path
+        # writable, and `x` to exec the parser afterwards.
+        #
+        # Ubuntu's own profile ends with
+        #   include if exists <local/unprivileged_userns>
+        # which is the documented site-specific override mechanism. The
+        # override below uses it, so the delta against the stock
+        # profile is exactly two rules.
+        run: |
+          sudo mkdir -p /etc/apparmor.d/local
+          sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
+            /etc/apparmor.d/local/unprivileged_userns
+          sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
+          echo "--- the profile the runner will use ---"
+          sudo cat /etc/apparmor.d/unprivileged_userns
 
       - name: Probe the mount-propagation strategies
         # The launcher's mount stage must work in the SUPPORTED
@@ -361,7 +374,6 @@ jobs:
             echo "--- $s ---"
             docker run --rm --user 1000:1000 \
               --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
-              --security-opt "apparmor=chess-coach-fu20" \
               -v "$PWD/scripts/dev:/probe:ro" \
               --entrypoint python3 chess-coach-backend:fu20 \
               /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=" || true
@@ -378,7 +390,6 @@ jobs:
         run: |
           docker run --rm --network fu20p --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
-            --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/scripts/dev/verify_linux_network_isolation.py:/proof.py:ro" \
             -e FU20_ENDPOINT_HOST -e FU20_ENDPOINT_PORT \
             --entrypoint python3 chess-coach-backend:fu20 \
@@ -391,7 +402,6 @@ jobs:
         run: |
           docker run --rm --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
-            --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/tests:/app/tests:ro" \
             -v "$PWD/services:/app/services:ro" \
             -v "$PWD/libs:/app/libs:ro" \
