@@ -388,6 +388,52 @@ def strategy_complain_mode(lib: ctypes.CDLL) -> bool:
     return ok
 
 
+def _ns_owner_relationship() -> dict[str, str]:
+    """Which user namespace owns this process's PID and mount namespaces.
+
+    The kernel permits a mount only when the caller holds
+    CAP_SYS_ADMIN in the user namespace that owns the mount namespace
+    it modifies, and -- for a mount namespace the caller did not
+    create -- in the user namespace that owns the PID namespace.
+
+    A container runtime creates the PID namespace in the HOST's user
+    namespace. The launcher creates its own user namespace, so the
+    two differ, and the capability the launcher holds in ITS namespace
+    is not the one the kernel asks for.
+
+    This reports the ids so the relationship can be compared.
+    """
+    out: dict[str, str] = {}
+    for kind in ("user", "mnt", "pid", "net"):
+        try:
+            out[kind] = os.readlink(f"/proc/self/ns/{kind}")
+        except OSError:
+            out[kind] = "unavailable"
+    return out
+
+
+def strategy_ns_owners(lib: ctypes.CDLL) -> bool:
+    """Report the namespace ids BEFORE and AFTER the unshare.
+
+    The mount is permitted only when the caller holds CAP_SYS_ADMIN in
+    the user namespace that owns the PID namespace. The ids make the
+    ownership relationship visible: if the user namespace changes but
+    the PID namespace does not, the PID namespace is owned by the
+    PARENT's user namespace and the launcher can never satisfy the
+    rule.
+    """
+    before = _ns_owner_relationship()
+    print(f"  BEFORE: {before}", flush=True)
+    if not _enter_userns(lib):
+        return False
+    after = _ns_owner_relationship()
+    print(f"  AFTER : {after}", flush=True)
+    print(f"  user ns changed : {before.get('user') != after.get('user')}", flush=True)
+    print(f"  pid  ns changed : {before.get('pid') != after.get('pid')}", flush=True)
+    print(f"  mnt  ns changed : {before.get('mnt') != after.get('mnt')}", flush=True)
+    return True
+
+
 STRATEGIES = {
     "private": strategy_private,
     "slave": strategy_slave,
@@ -400,6 +446,7 @@ STRATEGIES = {
     "lsm_report": strategy_lsm_report,
     "cap_status": strategy_cap_status,
     "complain_mode": strategy_complain_mode,
+    "ns_owners": strategy_ns_owners,
 }
 
 
