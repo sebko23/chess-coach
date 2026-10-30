@@ -363,8 +363,18 @@ jobs:
           echo "--- the override that was installed ---"
           sudo cat /etc/apparmor.d/local/unprivileged_userns
           echo "--- the COMPILED policy: does it grant mount? ---"
-          sudo aa-decode < /sys/kernel/security/apparmor/policy/unprivileged_userns \
-            2>/dev/null | grep -c "mount" || echo "could not decode"
+          # `apparmor_parser --compile` writes the compiled policy to
+          # stdout in a readable form. If the override were included,
+          # the compiled policy would name the mount rule.
+          sudo apparmor_parser --compile /etc/apparmor.d/unprivileged_userns 2>/dev/null \
+            | tr "\0" "\n" | grep -icE "^(mount|allow mount)" || echo "NO MOUNT RULE"
+          echo "--- does the profile still have the include hook? ---"
+          sudo grep -n "include if exists" /etc/apparmor.d/unprivileged_userns || echo "NO HOOK"
+          echo "--- is the local override readable and non-empty? ---"
+          sudo cat /etc/apparmor.d/local/unprivileged_userns | grep -v "^#" | grep -v "^$" || echo "EMPTY"
+          echo "--- the profile as the kernel sees it ---"
+          sudo cat /sys/kernel/security/apparmor/policy/unprivileged_userns \
+            2>/dev/null | tr "\0" "\n" | grep -iE "mount|profile" | head -20 || true
           echo "--- the override file's presence ---"
           sudo ls -l /etc/apparmor.d/local/unprivileged_userns
           echo "--- the AppArmor DENIED audit log (last 20) ---"
@@ -383,6 +393,9 @@ jobs:
         run: |
           for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro no_userns no_userns_remount lsm_report cap_status complain_mode ns_owners kernel; do
             echo "--- $s ---"
+            sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
+              /etc/apparmor.d/local/unprivileged_userns
+            sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
             docker run --rm --user 1000:1000 \
               --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
               -v "$PWD/scripts/dev:/probe:ro" \
@@ -407,6 +420,9 @@ jobs:
           FU20_ENDPOINT_HOST: fu20p-srv
           FU20_ENDPOINT_PORT: "18099"
         run: |
+          sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
+            /etc/apparmor.d/local/unprivileged_userns
+          sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
           docker run --rm --network fu20p --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
             -v "$PWD/scripts/dev/verify_linux_network_isolation.py:/proof.py:ro" \
@@ -419,6 +435,9 @@ jobs:
         # only run where the kernel permits one; the production
         # container with the shipped profile is that place.
         run: |
+          sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
+            /etc/apparmor.d/local/unprivileged_userns
+          sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
           docker run --rm --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
             -v "$PWD/tests:/app/tests:ro" \
