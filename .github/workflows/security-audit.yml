@@ -333,6 +333,22 @@ jobs:
           done
           docker logs fu20p-srv 2>&1 | head -3
 
+      - name: Probe the mount-propagation strategies
+        # The launcher's mount stage must work in the SUPPORTED
+        # deployment. The runner and a developer machine differ, so
+        # this step measures which strategy the runner actually
+        # accepts. It is a diagnostic: it reports, it does not
+        # install a fallback.
+        run: |
+          for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro; do
+            echo "--- $s ---"
+            docker run --rm --user 1000:1000 \
+              --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+              -v "$PWD/scripts/dev:/probe:ro" \
+              --entrypoint python3 chess-coach-backend:fu20 \
+              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -E "===|rc=|FAILED" || true
+          done
+
       - name: Run the restricted-versus-unrestricted proof
         # The proof container is the PRODUCTION image, running as the
         # deployment's non-root UID 1000, with the SHIPPED seccomp

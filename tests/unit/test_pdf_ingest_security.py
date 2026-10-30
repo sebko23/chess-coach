@@ -979,13 +979,26 @@ def test_linux_cap_contract_is_per_process_not_an_aggregate_tree_budget() -> Non
     assert subprocess_runner.MEM_CAP_BYTES == 2 * 1024**3
 
     # The mechanism names the platform's enforcement route. On Linux it
-    # is the `RLIMIT_AS` preexec; on Windows it is the Job Object.
+    # is the `RLIMIT_AS` applied by the sandbox launcher; on Windows it
+    # is the Job Object.
+    #
+    # BBF-FU-20-linux-phase1-network-isolation moved the Linux cap from
+    # a `preexec_fn` callback into the launcher, which owns the whole
+    # containment sequence. The SEMANTICS are unchanged: a per-process
+    # ceiling, inherited independently by descendants, never an aggregate
+    # tree budget. The assertion below pins the mechanism string so a
+    # future change cannot silently move the cap.
     if subprocess_runner.HOST_PLATFORM == "win32":
         assert subprocess_runner.MEMORY_CAP_MECHANISM == (
             "Windows Job Object (JOB_OBJECT_LIMIT_PROCESS_MEMORY)"
         )
     else:
-        assert subprocess_runner.MEMORY_CAP_MECHANISM == "RLIMIT_AS via preexec_fn"
+        assert subprocess_runner.MEMORY_CAP_MECHANISM == (
+            "RLIMIT_AS in the sandbox launcher"
+        )
+        # The cap is applied by the launcher, BEFORE the parser is
+        # exec'd -- not by a preexec_fn callback.
+        assert "preexec_fn" not in subprocess_runner.MEMORY_CAP_MECHANISM
 
     src = Path(subprocess_runner.__file__).read_text(encoding="utf-8")
     # The contract is stated in the module's own docstring.

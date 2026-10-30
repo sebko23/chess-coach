@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+"""Probe which mount-propagation strategy works in THIS environment.
+
+Run as: ``probe_mount_strategies.py <strategy>``
+
+Each strategy runs in a FRESH process, because ``unshare(CLONE_NEWUSER)``
+cannot be undone and a failed attempt changes what the next attempt sees.
+
+The strategies cover the ways a container can make its root read-only
+inside a user namespace. The launcher needs one that works both on a
+developer's Docker Desktop and on a CI runner.
+
+This is a DIAGNOSTIC: it prints what happened and exits 0 on success,
+1 on failure. It never installs a fallback.
+"""
+from __future__ import annotations
+
+import ctypes
+import ctypes.util
+import errno as _errno
+import os
+import sys
+
+CLONE_NEWNS = 0x00020000
+CLONE_NEWUSER = 0x10000000
+CLONE_NEWNET = 0x40000000
+
+MS_RDONLY = 1
+MS_REMOUNT = 32
+MS_NOSUID = 2
+MS_NODEV = 4
+MS_NOEXEC = 8
+MS_BIND = 4096
+MS_REC = 16384
+MS_PRIVATE = 1 << 18
+MS_SLAVE = 1 << 19
+MS_SHARED = 1 << 20
+
+
+def _libc() -> ctypes.CDLL:
+    lib = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    lib.unshare.argtypes = [ctypes.c_int]
+    lib.unshare.restype = ctypes.c_int
+    lib.mount.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_char_p,
+        ctypes.c_ulong,
+        ctypes.c_void_p,
+    ]
+    lib.mount.restype = ctypes.c_int
+    return lib
+
+
+def _mount(lib: ctypes.CDLL, source: bytes, target: bytes, flags: int) -> int:
+    ctypes.set_errno(0)
+    rc = lib.mount(source, target, None, flags, None)
+    return rc
+
+
+def _propagation(path: str = "/") -> str:
+    """The propagation state of a mount, from /proc/self/mountinfo."""
+    try:
+        with open("/proc/self/mountinfo", encoding="utf-8") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) < 6 or parts[4] != path:
+                    continue
+                optional = parts[6] if len(parts) > 6 else ""
+                marks = [
+                    f
+                    for f in optional.split(",")
+                    if f.split(":")[0] in {"shared", "master", "private", "slave", "unbindable"}
+                ]
+                return ",".join(marks) if marks else "none"
+    except OSError:
+        pass
+    return "unknown"
+
+
+def _caps() -> str:
+    try:
+        with open("/proc/self/status", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("CapEff:"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
+
+
+def _report(stage: str, rc: int) -> bool:
+    err = ctypes.get_errno()
+    name = _errno.errorcode.get(err, str(err)) if err else ""
+    ok = rc == 0
+    print(f"  {stage}: rc={rc} errno={err} {name} {'OK' if ok else 'FAIL'}", flush=True)
+    return ok
+
+
+def _enter_userns(lib: ctypes.CDLL, *, also_netns: bool = True) -> bool:
+    flags = CLONE_NEWUSER | CLONE_NEWNS
+    if also_netns:
+        flags |= CLONE_NEWNET
+    # The deployment identity must be captured BEFORE the unshare: once
+    # CLONE_NEWUSER is active the uid map is empty and getuid() reports
+    # the overflow uid 65534, which the kernel rejects as a map target.
+    uid = os.getuid()
+    gid = os.getgid()
+    ctypes.set_errno(0)
+    rc = lib.unshare(flags)
+    if rc != 0:
+        return _report("unshare", rc)
+    try:
+        with open("/proc/self/setgroups", "w") as handle:
+            handle.write("deny")
+        with open("/proc/self/uid_map", "w") as handle:
+            handle.write(f"{uid} {uid} 1\n")
+        with open("/proc/self/gid_map", "w") as handle:
+            handle.write(f"{gid} {gid} 1\n")
+    except OSError as exc:
+        print(f"  map: FAILED {exc}", flush=True)
+        return False
+    print(f"  map: OK caps={_caps()} propagation(/)={_propagation('/')}", flush=True)
+    return True
+
+
+def strategy_private(lib: ctypes.CDLL) -> bool:
+    """The current launcher strategy."""
+    if not _enter_userns(lib):
+        return False
+    return _report("mount(/, MS_REC|MS_PRIVATE)", _mount(lib, b"none", b"/", MS_REC | MS_PRIVATE))
+
+
+def strategy_slave(lib: ctypes.CDLL) -> bool:
+    """Make the root a SLAVE instead of fully private."""
+    if not _enter_userns(lib):
+        return False
+    return _report("mount(/, MS_REC|MS_SLAVE)", _mount(lib, b"none", b"/", MS_REC | MS_SLAVE))
+
+
+def strategy_bind_then_private(lib: ctypes.CDLL) -> bool:
+    """Bind / onto itself, then make the NEW mount private.
+
+    A bind mount created inside the new user namespace is not LOCKED, so
+    the propagation change on it is permitted even when the inherited
+    root is.
+    """
+    if not _enter_userns(lib):
+        return False
+    if not _report("mount(/, MS_BIND)", _mount(lib, b"/", b"/", MS_BIND)):
+        return False
+    return _report("mount(/, MS_REC|MS_PRIVATE)", _mount(lib, b"none", b"/", MS_REC | MS_PRIVATE))
+
+
+def strategy_separate_mountns(lib: ctypes.CDLL) -> bool:
+    """Unshare the mount namespace in a SECOND call, after the userns."""
+    if not _enter_userns(lib, also_netns=True):
+        return False
+    # A second, dedicated mount-namespace unshare.
+    ctypes.set_errno(0)
+    rc = lib.unshare(CLONE_NEWNS)
+    if rc != 0:
+        return _report("unshare(CLONE_NEWNS) #2", rc)
+    print(f"  second mountns: OK caps={_caps()}", flush=True)
+    return _report("mount(/, MS_REC|MS_PRIVATE)", _mount(lib, b"none", b"/", MS_REC | MS_PRIVATE))
+
+
+def strategy_tmpfs_root(lib: ctypes.CDLL) -> bool:
+    """Mount a fresh tmpfs and pivot_root into it.
+
+    The new root is created by this process inside its own user
+    namespace, so it is never LOCKED and the old root is discarded
+    entirely rather than made read-only.
+    """
+    if not _enter_userns(lib):
+        return False
+    if not _report("mount(tmpfs, /newroot)", _mount(lib, b"tmpfs", b"/newroot", 0)):
+        return False
+    os.makedirs("/newroot/oldroot", exist_ok=True)
+    # pivot_root(new_root, put_old)
+    libc = _libc()
+    libc.pivot_root.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    libc.pivot_root.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    rc = libc.pivot_root(b"/newroot", b"/newroot/oldroot")
+    if rc != 0:
+        return _report("pivot_root", rc)
+    os.chdir("/")
+    rc = _mount(lib, b"none", b"/", MS_REC | MS_PRIVATE)
+    return _report("mount(/, MS_REC|MS_PRIVATE) after pivot", rc)
+
+
+def strategy_remount_ro(lib: ctypes.CDLL) -> bool:
+    """Can the root be remounted read-only WITHOUT changing propagation?
+
+    This is the interesting alternative: if the propagation change is
+    what the kernel refuses, a read-only remount over the existing root
+    might still be permitted.
+    """
+    if not _enter_userns(lib):
+        return False
+    rc = _mount(lib, b"none", b"/", MS_REMOUNT | MS_BIND | MS_RDONLY)
+    return _report("mount(/, MS_REMOUNT|MS_BIND|MS_RDONLY)", rc)
+
+
+STRATEGIES = {
+    "private": strategy_private,
+    "slave": strategy_slave,
+    "bind_then_private": strategy_bind_then_private,
+    "separate_mountns": strategy_separate_mountns,
+    "tmpfs_root": strategy_tmpfs_root,
+    "remount_ro": strategy_remount_ro,
+}
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("usage: probe_mount_strategies.py <strategy>", flush=True)
+        print("strategies: " + ", ".join(sorted(STRATEGIES)), flush=True)
+        return 2
+    name = sys.argv[1]
+    if name not in STRATEGIES:
+        print(f"unknown strategy: {name}", flush=True)
+        return 2
+    print(f"=== strategy: {name} ===", flush=True)
+    print(f"  before: caps={_caps()} propagation(/)={_propagation('/')}", flush=True)
+    lib = _libc()
+    ok = STRATEGIES[name](lib)
+    print(f"=== {name}: {'SUCCESS' if ok else 'FAILED'} ===", flush=True)
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
