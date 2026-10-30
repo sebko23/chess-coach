@@ -278,6 +278,29 @@ def strategy_no_userns_remount(lib: ctypes.CDLL) -> bool:
     )
 
 
+def strategy_lsm_report(lib: ctypes.CDLL) -> bool:
+    """Report the LSM/AppArmor state, without performing any mount.
+
+    Ubuntu 24.04 restricts unprivileged user namespaces with an AppArmor
+    profile. Creating the namespace is allowed, but `mount` inside it is
+    denied, which is why EVERY mount strategy fails there with EACCES.
+    This reports the state so a CI log shows it.
+    """
+    print(f"  apparmor={_apparmor_status()}", flush=True)
+    print(f"  capabilities={_caps()}", flush=True)
+    print(f"  propagation(/)={_propagation('/')}", flush=True)
+    for knob in (
+        "/proc/sys/kernel/unprivileged_userns_clone",
+        "/proc/sys/user/max_user_namespaces",
+    ):
+        try:
+            with open(knob, encoding="utf-8") as handle:
+                print(f"  {knob}={handle.read().strip()}", flush=True)
+        except OSError:
+            print(f"  {knob}=unavailable", flush=True)
+    return True
+
+
 STRATEGIES = {
     "private": strategy_private,
     "slave": strategy_slave,
@@ -287,6 +310,7 @@ STRATEGIES = {
     "remount_ro": strategy_remount_ro,
     "no_userns": strategy_no_userns,
     "no_userns_remount": strategy_no_userns_remount,
+    "lsm_report": strategy_lsm_report,
 }
 
 
