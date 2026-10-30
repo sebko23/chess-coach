@@ -92,6 +92,13 @@ def _namespace_capable() -> tuple[bool, str]:
     blocks ``unshare(CLONE_NEWUSER)`` without ``CAP_SYS_ADMIN``, and
     the launcher then correctly fails closed.
 
+    The probe unshares the same three namespaces the launcher does --
+    ``CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWNS`` -- because the
+    shipped seccomp profile permits exactly that combination and not a
+    bare ``CLONE_NEWUSER``. Probing with the bare flag would report a
+    false negative in the very environment the tests are meant to run
+    in.
+
     The environment-dependent assertions are therefore gated on this
     probe. The functional proof runs in the production container with
     the shipped seccomp profile, where the namespace IS available
@@ -107,7 +114,11 @@ def _namespace_capable() -> tuple[bool, str]:
         "libc.unshare.argtypes = [ctypes.c_int]\n"
         "libc.unshare.restype = ctypes.c_int\n"
         "ctypes.set_errno(0)\n"
-        "rc = libc.unshare(0x10000000)\n"
+        # The launcher unshares the three namespaces TOGETHER, and the\n"
+        "        # shipped seccomp profile permits exactly that combination.\n"
+        "        # A bare CLONE_NEWUSER is NOT permitted by that profile, so\n"
+        "        # probing with it would report a false negative.\n"
+        "rc = libc.unshare(0x10000000 | 0x40000000 | 0x00020000)\n"
         "if rc != 0:\n"
         "    print('unshare failed: errno=%d' % ctypes.get_errno())\n"
         "    sys.exit(1)\n"
