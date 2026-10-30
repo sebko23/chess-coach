@@ -361,7 +361,7 @@ jobs:
             echo "--- $s ---"
             docker run --rm --user 1000:1000 \
               --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
-              --security-opt "apparmor=$PWD/infra/docker/apparmor-fu20-ci.profile" \
+              --security-opt "apparmor=chess-coach-fu20" \
               -v "$PWD/scripts/dev:/probe:ro" \
               --entrypoint python3 chess-coach-backend:fu20 \
               /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=" || true
@@ -378,7 +378,7 @@ jobs:
         run: |
           docker run --rm --network fu20p --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
-            --security-opt "apparmor=$PWD/infra/docker/apparmor-fu20-ci.profile" \
+            --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/scripts/dev/verify_linux_network_isolation.py:/proof.py:ro" \
             -e FU20_ENDPOINT_HOST -e FU20_ENDPOINT_PORT \
             --entrypoint python3 chess-coach-backend:fu20 \
@@ -391,7 +391,7 @@ jobs:
         run: |
           docker run --rm --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
-            --security-opt "apparmor=$PWD/infra/docker/apparmor-fu20-ci.profile" \
+            --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/tests:/app/tests:ro" \
             -v "$PWD/services:/app/services:ro" \
             -v "$PWD/libs:/app/libs:ro" \
