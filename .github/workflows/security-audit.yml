@@ -381,13 +381,13 @@ jobs:
         # accepts. It is a diagnostic: it reports, it does not
         # install a fallback.
         run: |
-          for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro no_userns no_userns_remount lsm_report; do
+          for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro no_userns no_userns_remount lsm_report cap_status; do
             echo "--- $s ---"
             docker run --rm --user 1000:1000 \
               --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
               -v "$PWD/scripts/dev:/probe:ro" \
               --entrypoint python3 chess-coach-backend:fu20 \
-              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=" || true
+              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=|BEFORE|AFTER|ns id" || true
           done
 
       - name: Run the restricted-versus-unrestricted proof

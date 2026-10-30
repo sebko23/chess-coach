@@ -301,6 +301,63 @@ def strategy_lsm_report(lib: ctypes.CDLL) -> bool:
     return True
 
 
+def _cap_status() -> dict[str, str]:
+    """Every capability set the process holds, for diagnostics.
+
+    The mount stage needs CAP_SYS_ADMIN. Inside a new user namespace
+    the process holds it (CapEff shows it), but a mount operation on a
+    mount INHERITED from the parent namespace is governed by the
+    parent's rules: if the inherited mount is LOCKED, the operation
+    requires CAP_SYS_ADMIN in the namespace that owns it.
+    """
+    out: dict[str, str] = {}
+    try:
+        with open("/proc/self/status", encoding="utf-8") as handle:
+            for line in handle:
+                for key in (
+                    "CapInh",
+                    "CapPrm",
+                    "CapEff",
+                    "CapBnd",
+                    "CapAmb",
+                    "NoNewPrivs",
+                    "Seccomp",
+                ):
+                    if line.startswith(f"{key}:"):
+                        out[key] = line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return out
+
+
+def strategy_cap_status(lib: ctypes.CDLL) -> bool:
+    """Report every capability set, before and after the unshare.
+
+    This distinguishes the two possible causes of an EACCES on mount:
+    a missing capability, versus an LSM policy. The kernel's AppArmor
+    audit log is empty for the denial, so the capability sets are the
+    decisive measurement.
+    """
+    before = _cap_status()
+    print("  BEFORE unshare:", before, flush=True)
+    if not _enter_userns(lib):
+        return False
+    after = _cap_status()
+    print("  AFTER  unshare:", after, flush=True)
+    print(f"  parent ns id: {_ns_id('user')}", flush=True)
+    print(f"  mount ns id : {_ns_id('mnt')}", flush=True)
+    return True
+
+
+def _ns_id(kind: str) -> str:
+    """The kernel's id for one of this process's namespaces."""
+    try:
+        with open(f"/proc/self/ns/{kind}", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except OSError:
+        return "unknown"
+
+
 STRATEGIES = {
     "private": strategy_private,
     "slave": strategy_slave,
@@ -311,6 +368,7 @@ STRATEGIES = {
     "no_userns": strategy_no_userns,
     "no_userns_remount": strategy_no_userns_remount,
     "lsm_report": strategy_lsm_report,
+    "cap_status": strategy_cap_status,
 }
 
 
