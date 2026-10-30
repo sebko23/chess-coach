@@ -285,3 +285,88 @@ jobs:
         # to users and auditing them would surface noise.
         working-directory: apps/desktop
         run: pnpm audit --audit-level moderate --prod
+
+  # BBF-FU-20-linux-phase1-network-isolation: the A-F11 property-2
+  # (no network access) proof. This job runs the PRODUCTION container
+  # image with the SHIPPED narrow seccomp profile and the deployment's
+  # non-root identity (UID 1000, no host CAP_SYS_ADMIN, not privileged).
+  #
+  # It runs BOTH an unrestricted control and the launcher-restricted
+  # parser against the SAME controlled endpoint. The control MUST
+  # connect; if it does not, the job fails and the restricted result
+  # proves nothing.
+  linux-network-isolation:
+    name: linux network isolation (production container)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build the production image
+        run: docker build -t chess-coach-backend:fu20 -f Dockerfile .
+
+      - name: Verify the shipped seccomp profile is a narrow delta
+        # The profile must differ from the pinned Docker/Moby default
+        # ONLY by the narrow namespace/mount/identity ALLOW rules, and
+        # the dangerous capability-gated operations (bpf,
+        # perf_event_open, fsopen, move_mount) must remain denied to a
+        # non-root process. Do not broaden the profile to make a test
+        # pass.
+        run: |
+          python scripts/dev/verify_seccomp_profile.py \
+            infra/docker/seccomp-backend.json
+
+      - name: Start the controlled reachable endpoint
+        # A real TCP + UDP echo server the restricted and unrestricted
+        # processes both target.
+        run: |
+          docker network create fu20p
+          docker run -d --name fu20p-srv --network fu20p \
+            -v "$PWD/scripts/dev:/srv:ro" \
+            --entrypoint python3 python:3.11-slim-bookworm \
+            /srv/fu20_network_endpoint.py \
+            --tcp-port 18099 --udp-port 18098
+          for _ in $(seq 1 30); do
+            if docker logs fu20p-srv 2>&1 | grep -q SERVER_READY; then break; fi
+            sleep 1
+          done
+          docker logs fu20p-srv 2>&1 | head -3
+
+      - name: Run the restricted-versus-unrestricted proof
+        # The proof container is the PRODUCTION image, running as the
+        # deployment's non-root UID 1000, with the SHIPPED seccomp
+        # profile. The package comes from the image's editable install,
+        # so the import path is the real production one.
+        env:
+          FU20_ENDPOINT_HOST: fu20p-srv
+          FU20_ENDPOINT_PORT: "18099"
+        run: |
+          docker run --rm --network fu20p --user 1000:1000 \
+            --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+            -v "$PWD/scripts/dev/verify_linux_network_isolation.py:/proof.py:ro" \
+            -e FU20_ENDPOINT_HOST -e FU20_ENDPOINT_PORT \
+            --entrypoint python3 chess-coach-backend:fu20 \
+            /proof.py /tmp/fu20_result.json
+
+      - name: Run the launcher unit tests in the production container
+        # The launcher tests that need an unprivileged user namespace
+        # only run where the kernel permits one; the production
+        # container with the shipped profile is that place.
+        run: |
+          docker run --rm --user 1000:1000 \
+            --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+            -v "$PWD/tests:/app/tests:ro" \
+            -v "$PWD/services:/app/services:ro" \
+            -v "$PWD/libs:/app/libs:ro" \
+            --entrypoint sh chess-coach-backend:fu20 -c '
+              cd /app
+              python -m pytest tests/unit/test_linux_sandbox.py -q \
+                --no-header -p no:cacheprovider
+            '
+
+      - name: Clean up the endpoint and network
+        if: always()
+        run: |
+          docker rm -f fu20p-srv 2>/dev/null || true
+          docker network rm fu20p 2>/dev/null || true

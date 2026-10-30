@@ -402,8 +402,22 @@ def test_pdf_parsing_runs_in_separate_subprocess() -> None:
     # A-F11 property 4 implementation). This is the assertion
     # that distinguishes "subprocess_runner.py exists" from
     # "subprocess_runner.py actually implements the cap".
-    assert hasattr(_runner, "set_rlimit_as_preexec"), (
-        "subprocess_runner.set_rlimit_as_preexec is missing; "
+    #
+    # BBF-FU-20-linux-phase1-network-isolation: the cap mechanism moved
+    # from the retired `set_rlimit_as_preexec` preexec helper into the
+    # sandbox launcher, which applies the same 2 GiB `RLIMIT_AS` before
+    # the parser is executed. The assertion is re-pointed at the
+    # launcher's contract -- the SAME guarantee, one owner.
+    from chess_coach.pdf_ocr.linux_sandbox import (
+        MEMORY_CAP_BYTES as LAUNCHER_MEMORY_CAP_BYTES,
+    )
+
+    assert LAUNCHER_MEMORY_CAP_BYTES == 2 * 1024**3, (
+        "the sandbox launcher's memory cap must be 2 GiB per the "
+        f"A-F11 contract; got {LAUNCHER_MEMORY_CAP_BYTES} bytes"
+    )
+    assert hasattr(_runner, "ensure_memory_cap_supported"), (
+        "subprocess_runner.ensure_memory_cap_supported is missing; "
         "A-F11 property 4 (2 GB memory cap) is not implemented. "
         "The cap is the architectural reason the route bypasses "
         "pdf2image in the first place."
@@ -418,29 +432,21 @@ def test_pdf_parsing_runs_in_separate_subprocess() -> None:
 @pytest.mark.skip(
     reason=(
         "A-F11 property 2 (no outbound network access in the PDF-parsing "
-        "subprocess) is enforced on Linux but NOT on Windows, and the "
-        "Linux enforcement cannot be asserted deterministically here. "
-        "On Linux, BBF-FU-20-impl (PRs #163/#164) added "
-        "set_network_isolation_preexec(), which calls os.setsid() then "
-        "unshare(CLONE_NEWNET) via ctypes; that syscall requires "
-        "CAP_SYS_ADMIN (or kernel.unprivileged_userns_clone), which CI "
-        "containers generally lack, so an end-to-end 'egress is denied' "
-        "assertion would be capability-dependent and flaky. On Windows "
-        "the helper degrades to stripping proxy environment variables, "
-        "which is a defense-in-depth measure and explicitly NOT a "
-        "guarantee of isolation (pywin32 does not expose "
-        "SetInformationJobObject for JobObjectNetRateControlInformation). "
-        "Tracked as FU-20 (A-F11 property 2 - network isolation), NOT "
-        "FU-22, which is property 4 (the 2 GB memory cap, resolved by "
-        "BBF-FU-22-impl PR #145). What this BBF adds instead is "
-        "test_network_isolation_is_wired_into_the_popen_preexec, which "
-        "deterministically asserts the helper is composed into the "
-        "preexec_fn actually handed to subprocess.Popen, plus "
-        "test_set_network_isolation_preexec_requests_unshare in "
-        "tests/unit/test_subprocess_runner.py which asserts the "
-        "unshare(CLONE_NEWNET) call is requested on Linux. Verifying "
-        "that the syscall SUCCEEDED remains deferred per FU-20's own "
-        "out-of-scope note (2)."
+        "subprocess) is enforced FAIL CLOSED on Linux and REFUSED on "
+        "Windows. The end-to-end 'egress is denied' assertion needs a "
+        "real unprivileged user namespace AND a controlled reachable "
+        "endpoint, which this test environment does not provide. "
+        "BBF-FU-20-linux-phase1-network-isolation replaces the retired "
+        "`set_network_isolation_preexec` helper (which fell back to "
+        "proxy stripping and only ever REQUESTED the namespace) with the "
+        "sandbox launcher, which ESTABLISHES the namespace and fails "
+        "closed if it cannot. The real denial proof runs in the "
+        "production container with the shipped seccomp profile: "
+        "`scripts/dev/verify_linux_network_isolation.py`, driven by the "
+        "`linux-network-isolation` CI job, which runs an unrestricted "
+        "control in the same job against the same endpoint. The "
+        "deterministic wiring assertion here is "
+        "`test_network_isolation_is_wired_into_the_launcher`."
     ),
 )
 def test_subprocess_cannot_initiate_outbound_network() -> None:
@@ -475,25 +481,23 @@ def test_subprocess_cannot_initiate_outbound_network() -> None:
 @pytest.mark.skip(
     reason=(
         "A-F11 property 3 (read-only filesystem in PDF-parsing "
-        "subprocess, except for the per-book artifact dir) is PARTIALLY "
-        "implemented as of BBF-FU-21-bind-mount: the bind-mount step "
-        "(`set_fs_isolation_preexec(tmpdir)` performs "
-        "mount(MS_REMOUNT|MS_BIND|MS_RDONLY) + mount(MS_BIND) on the "
-        "artifact dir after a successful "
-        "unshare(CLONE_NEWUSER|CLONE_NEWNS)). The negative-invariant "
-        "test (write outside the artifact dir is denied) requires "
-        "CAP_SYS_ADMIN or `kernel.unprivileged_userns_clone` sysctl "
-        "in the test environment; this test environment lacks the "
-        "capability, so the assertion is skip-gated. See "
-        "`test_set_fs_isolation_preexec_performs_mount_on_linux_with_capability` "
-        "in `tests/unit/test_subprocess_runner.py` for the real "
-        "assertion run on hosts that DO have the capability. On "
-        "Windows the no-op applies (AppLocker/WDAC is the "
-        "deployment-config concern per BBF-FU-21-windows-scope). "
-        "The follow-up BBF that flips the FU-21 ledger entry to "
-        "RESOLVED on the Linux-full-enforcement surface is a "
-        "separate deliverable per the skill's one-BBF = "
-        "one-clean-change rule."
+        "subprocess, except for the per-book artifact dir) is enforced "
+        "FAIL CLOSED on Linux by the sandbox launcher: it makes mount "
+        "propagation private, remounts the root filesystem read-only, "
+        "bind-mounts only the artifact dir writable, and VERIFIES both "
+        "(artifact writable; ordinary root write fails with EROFS). The "
+        "negative-invariant assertion (a write outside the artifact dir "
+        "is denied) needs a real unprivileged user namespace, which this "
+        "test environment lacks, so it is capability-gated here. "
+        "BBF-FU-20-linux-phase1-network-isolation retired the FU-21 "
+        "helper's no-op fallback, so a mount failure is now a setup "
+        "failure that prevents the parser from executing. The real "
+        "assertion runs in the production container: "
+        "`tests/unit/test_linux_sandbox.py::"
+        "test_root_filesystem_is_read_only_and_artifact_is_writable`, "
+        "driven by the `linux-network-isolation` CI job. On Windows the "
+        "no-op applies (AppLocker/WDAC is the deployment-config concern "
+        "per BBF-FU-21-windows-scope)."
     ),
 )
 def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
@@ -529,63 +533,122 @@ def test_subprocess_filesystem_writes_restricted_to_artifact_dir() -> None:
     assert True  # placeholder; see brief BBF-FU-21-bind-mount for the real assertion path
 
 
-def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
-    """A-F11 property 2: network isolation is composed into the
-    `preexec_fn` that `run_pdftoppm_in_subprocess` passes to
-    `subprocess.Popen`.
+def test_network_isolation_is_wired_into_the_launcher() -> None:
+    """A-F11 property 2: the Linux launch goes through the sandbox launcher.
 
-    BBF-FU-20-impl (PRs #163/#164) implemented
-    `set_network_isolation_preexec()` in
-    `services/chess_coach/pdf_ocr/subprocess_runner.py`:
-    on Linux it calls `os.setsid()` then
-    `unshare(CLONE_NEWNET)` via ctypes; on Windows it
-    degrades to stripping proxy environment variables.
+    **BBF-FU-20-linux-phase1-network-isolation.** This test used to
+    assert that the network-isolation helper was composed into the
+    `preexec_fn` handed to `subprocess.Popen`. That composition is
+    retired: the Linux launch now goes through the dedicated sandbox
+    launcher, which owns the whole containment boundary.
 
-    What was NOT covered until this test: that the helper is
-    actually *wired in*. `run_pdftoppm_in_subprocess` composes
-    three pre-exec hooks into a single callable
-    (`_combined_preexec`) because `subprocess.Popen` accepts
-    only one `preexec_fn`. A regression that dropped the
-    network-isolation call from that composition would disable
-    A-F11 property 2 in production while every helper-level
-    test still passed.
-
-    This test asserts the wiring, not the kernel behaviour:
-    it is deterministic, needs no CAP_SYS_ADMIN, no network,
-    no `unshare` success, and no `pdftoppm` binary. It passes
-    identically on Linux, macOS and Windows.
+    The assertion is **re-pointed, not weakened**. The old test proved a
+    helper was *wired in*; the new one proves the launch goes through the
+    **launcher**, that the launcher is handed the artifact directory and
+    the memory cap, and that the parser command is passed through
+    unmodified. A regression that dropped the launcher and launched the
+    parser directly would fail this test.
     """
     import chess_coach.pdf_ocr.subprocess_runner as _runner
-
-    calls: list[str] = []
-
-    def _fake_rlimit(cap_bytes: int):
-        calls.append("rlimit")
-        return lambda: None
-
-    def _fake_network():
-        calls.append("network")
-        return lambda: None
-
-    def _fake_fs(artifact_dir):  # noqa: ARG001 - signature parity only
-        calls.append("fs")
-        return lambda: None
 
     captured: dict[str, object] = {}
 
     class _FakePopen:
         def __init__(self, args, **kwargs):  # noqa: ANN001 - test double
-            captured["preexec_fn"] = kwargs.get("preexec_fn")
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+            self.returncode = 0
+
+        def communicate(self, input=None, timeout=None):  # noqa: ANN001, A002
+            # The fake produces no PNG files, so the runner raises.
+            return (None, b"")
+
+        def kill(self) -> None:
+            return None
+
+        def wait(self) -> int:
+            return 0
+
+    original = {
+        "popen": _runner.subprocess.Popen,
+        "supported": _runner.MEMORY_CAP_SUPPORTED,
+        "network": _runner.NETWORK_ISOLATION_SUPPORTED,
+        "windows_job": _runner.WINDOWS_JOB_SUPPORTED,
+    }
+    _runner.subprocess.Popen = _FakePopen  # type: ignore[assignment]
+    # Simulate a SUPPORTED platform so the runner reaches the launch.
+    _runner.MEMORY_CAP_SUPPORTED = True  # type: ignore[assignment]
+    _runner.NETWORK_ISOLATION_SUPPORTED = True  # type: ignore[assignment]
+    # Force the Linux branch: on Windows the runner uses the Job Object
+    # backend, not the launcher, and the Windows path is refused for
+    # network isolation anyway.
+    _runner.WINDOWS_JOB_SUPPORTED = False  # type: ignore[assignment]
+    try:
+        with pytest.raises(RuntimeError):
+            _runner.run_pdftoppm_in_subprocess(b"%PDF-1.4 fake")
+    finally:
+        _runner.subprocess.Popen = original["popen"]  # type: ignore[assignment]
+        _runner.MEMORY_CAP_SUPPORTED = original["supported"]  # type: ignore[assignment]
+        _runner.NETWORK_ISOLATION_SUPPORTED = original["network"]  # type: ignore[assignment]
+        _runner.WINDOWS_JOB_SUPPORTED = original["windows_job"]  # type: ignore[assignment]
+
+    argv = captured.get("args")
+    assert isinstance(argv, list), (
+        f"the launcher was not invoked with an argv list: {argv!r}"
+    )
+    # The launch is the sandbox launcher module, NOT the parser itself.
+    assert "chess_coach.pdf_ocr.linux_sandbox" in argv, (
+        "the Linux launch must go through the sandbox launcher; "
+        f"observed argv: {argv!r}"
+    )
+    # The parser command is passed through unmodified after the separator.
+    assert "--" in argv, f"the launcher argv has no '--' separator: {argv!r}"
+    parser_argv = argv[argv.index("--") + 1 :]
+    assert parser_argv, (
+        f"the parser command was not passed through unmodified: {parser_argv!r}"
+    )
+    assert parser_argv[0].endswith("pdftoppm"), (
+        f"the parser command was not passed through unmodified: {parser_argv!r}"
+    )
+    # The artifact dir and the memory cap are handed to the launcher.
+    assert "--artifact-dir" in argv, (
+        f"the launcher was not given the artifact directory: {argv!r}"
+    )
+    assert "--limit-bytes" in argv, (
+        f"the launcher was not given the memory cap: {argv!r}"
+    )
+    assert argv[argv.index("--limit-bytes") + 1] == str(2 * 1024**3), (
+        "the launcher must receive the 2 GiB per-process cap"
+    )
+    # A dedicated status channel is wired up for the setup-failure report.
+    kwargs = captured.get("kwargs") or {}
+    assert kwargs.get("pass_fds"), (
+        "the launcher must receive a dedicated status descriptor; "
+        f"observed kwargs: {kwargs!r}"
+    )
+
+
+def test_the_launcher_never_lets_the_parser_run_uncontained() -> None:
+    """The negative control: an uncontained launch must FAIL this gate.
+
+    **BBF-FU-20-linux-phase1-network-isolation.** The retired
+    implementation fell back to proxy-environment stripping when the
+    namespace could not be established -- that is defence in depth, never
+    isolation. This test pins the property that makes the fallback
+    unacceptable: a launch that does NOT go through the sandbox launcher
+    must not satisfy the A-F11 property-2 contract.
+
+    It fails against the retired proxy-stripping/no-op behaviour for the
+    expected reason: the launcher is absent, so there is no containment.
+    """
+    import chess_coach.pdf_ocr.subprocess_runner as _runner
+
+    captured: dict[str, object] = {}
+
+    class _FakePopen:
+        def __init__(self, args, **kwargs):  # noqa: ANN001 - test double
             captured["args"] = args
             self.returncode = 0
-            # The real `subprocess.Popen` invokes `preexec_fn` in the
-            # child between fork and exec. There is no fork here, so
-            # the fake runs it inline. That is what makes the
-            # composition observable: if `_combined_preexec` dropped
-            # the network-isolation call, `calls` would be short.
-            preexec = captured.get("preexec_fn")
-            if callable(preexec):
-                preexec()
 
         def communicate(self, input=None, timeout=None):  # noqa: ANN001, A002
             return (None, b"")
@@ -597,54 +660,34 @@ def test_network_isolation_is_wired_into_the_popen_preexec() -> None:
             return 0
 
     original = {
-        "rlimit": _runner.set_rlimit_as_preexec,
-        "network": _runner.set_network_isolation_preexec,
-        "fs": _runner.set_fs_isolation_preexec,
         "popen": _runner.subprocess.Popen,
         "supported": _runner.MEMORY_CAP_SUPPORTED,
+        "network": _runner.NETWORK_ISOLATION_SUPPORTED,
         "windows_job": _runner.WINDOWS_JOB_SUPPORTED,
     }
-    _runner.set_rlimit_as_preexec = _fake_rlimit  # type: ignore[assignment]
-    _runner.set_network_isolation_preexec = _fake_network  # type: ignore[assignment]
-    _runner.set_fs_isolation_preexec = _fake_fs  # type: ignore[assignment]
     _runner.subprocess.Popen = _FakePopen  # type: ignore[assignment]
-    # BBF-FU-22-windows-contract-correction: on an uncappable platform the
-    # runner now refuses BEFORE spawning anything, so this wiring test must
-    # simulate a SUPPORTED platform to reach the Popen call it is asserting.
-    # The Windows refusal is covered separately by
-    # `test_uncappable_platform_path_never_spawns_a_parser`.
     _runner.MEMORY_CAP_SUPPORTED = True  # type: ignore[assignment]
-    # BBF-FU-22-B2-windows-job-object: this test is specifically about the
-    # LINUX `subprocess.Popen` + composed-`preexec_fn` path. On Windows the
-    # runner no longer uses `subprocess.Popen` at all -- it launches through
-    # the Job Object backend -- so the composed preexec is not part of the
-    # Windows path and the wiring assertion does not apply there. The
-    # Windows path is covered by tests/windows/test_windows_job_enforcement.py.
-    # Force the Linux branch so this test keeps measuring what it claims.
+    _runner.NETWORK_ISOLATION_SUPPORTED = True  # type: ignore[assignment]
     _runner.WINDOWS_JOB_SUPPORTED = False  # type: ignore[assignment]
     try:
-        # The runner's post-Popen behaviour is irrelevant here. On
-        # Windows the real `subprocess.Popen` refuses `preexec_fn`
-        # outright, but we replace Popen with a fake that accepts
-        # it, so the composed hook always runs. The fake produces
-        # no PNG files, so the runner then raises RuntimeError.
         with pytest.raises(RuntimeError):
             _runner.run_pdftoppm_in_subprocess(b"%PDF-1.4 fake")
     finally:
-        _runner.set_rlimit_as_preexec = original["rlimit"]  # type: ignore[assignment]
-        _runner.set_network_isolation_preexec = original["network"]  # type: ignore[assignment]
-        _runner.set_fs_isolation_preexec = original["fs"]  # type: ignore[assignment]
         _runner.subprocess.Popen = original["popen"]  # type: ignore[assignment]
         _runner.MEMORY_CAP_SUPPORTED = original["supported"]  # type: ignore[assignment]
+        _runner.NETWORK_ISOLATION_SUPPORTED = original["network"]  # type: ignore[assignment]
         _runner.WINDOWS_JOB_SUPPORTED = original["windows_job"]  # type: ignore[assignment]
 
-    assert calls == ["rlimit", "network", "fs"], (
-        "the composed pre-exec hook did not run the A-F11 "
-        f"isolation callbacks in order; observed: {calls!r}"
+    argv = captured.get("args")
+    # THIS is the negative control: an uncontained launch (the parser
+    # command as argv[0], with no launcher) does NOT satisfy the
+    # property-2 contract.
+    uncontained = isinstance(argv, list) and argv and "linux_sandbox" not in " ".join(
+        str(part) for part in argv
     )
-    preexec_fn = captured.get("preexec_fn")
-    assert callable(preexec_fn), (
-        f"subprocess.Popen was called without a callable preexec_fn: {preexec_fn!r}"
+    assert not uncontained, (
+        "the parser was launched WITHOUT the sandbox launcher: "
+        f"{argv!r}. A-F11 property 2 would not be enforced."
     )
 
 
@@ -673,10 +716,9 @@ def test_subprocess_respects_2gb_memory_cap() -> None:
     on Linux, and the CI integration test (Linux, pdftoppm installed
     via apt) exercises the full route path on every PR.
     """
-    # 1. The module exposes set_rlimit_as_preexec
+    # 1. The module exposes the cap constant
     from chess_coach.pdf_ocr.subprocess_runner import (
         MEM_CAP_BYTES,
-        set_rlimit_as_preexec,
     )
     # 2. MEM_CAP_BYTES is exactly 2 GB
     expected = 2 * 1024 * 1024 * 1024
@@ -684,10 +726,23 @@ def test_subprocess_respects_2gb_memory_cap() -> None:
         f"MEM_CAP_BYTES must be 2 GiB per A-F11 contract; "
         f"got {MEM_CAP_BYTES} bytes"
     )
-    # 3. set_rlimit_as_preexec is callable and accepts the
-    # 2 GB value without error
-    preexec = set_rlimit_as_preexec(MEM_CAP_BYTES)
-    assert callable(preexec)
+    # 3. The sandbox launcher applies the SAME 2 GiB cap before the
+    # parser is executed.
+    #
+    # BBF-FU-20-linux-phase1-network-isolation: the cap moved from the
+    # retired `set_rlimit_as_preexec` preexec helper into the launcher.
+    # The assertion is re-pointed at the launcher's contract, and the
+    # behavioural proof (the cap actually denying an over-limit
+    # allocation) lives in
+    # `tests/unit/test_linux_sandbox.py::test_memory_cap_is_applied_inside_the_namespace`.
+    from chess_coach.pdf_ocr.linux_sandbox import (
+        MEMORY_CAP_BYTES as LAUNCHER_MEMORY_CAP_BYTES,
+    )
+
+    assert LAUNCHER_MEMORY_CAP_BYTES == MEM_CAP_BYTES, (
+        "the sandbox launcher and the runner must agree on the 2 GiB "
+        f"cap; launcher={LAUNCHER_MEMORY_CAP_BYTES} runner={MEM_CAP_BYTES}"
+    )
 
 
 # ===========================================================================
