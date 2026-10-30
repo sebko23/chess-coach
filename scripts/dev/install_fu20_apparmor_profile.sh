@@ -1,113 +1,45 @@
 #!/bin/bash
-# Install a container-scoped AppArmor profile for the FU-20 proof.
+# Install the FU-20 container-scoped AppArmor profile.
 #
 # WHY
 #
-# The GitHub-hosted `ubuntu-latest` runner's kernel (7.0.0-1017-azure)
-# has `kernel.apparmor_restrict_unprivileged_userns = 1`, and the
-# runner's `docker-default` AppArmor profile DENIES `mount`. The
-# launcher's container therefore cannot mount even a fresh tmpfs
-# inside its own user namespace, and the proof fails closed at the
+# Moby's `docker-default` profile -- the one every container runs
+# under when AppArmor is enabled on the host -- contains `deny mount,`.
+# That rule is a plain `deny`, not an `audit deny`, so it produces NO
+# audit-log entry: the denial is silent. It also outranks any `allow
+# mount` elsewhere in the profile.
+#
+# The FU-20 launcher's containment sequence builds its own root by
+# mounting a fresh tmpfs, so under `docker-default` the container
+# cannot mount at all and the launcher fails closed at the
 # `mount_new_root` stage.
 #
-# The denial is SILENT: the profile's rule is a plain `deny`, not an
-# `audit deny`, so no DENIED record reaches the audit log. The
-# `unprivileged_userns` transition target is NOT the denier -- the
-# container's profile after the unshare is still `docker-default`.
+# The profile installed here is Moby's own `docker-default` for the
+# pinned version (v26.1.4) with exactly two changes: the profile is
+# renamed so the host's `docker-default` is left untouched, and
+# `deny mount,` becomes `allow mount,`. Every other rule is Moby's.
 #
-# WHAT
-#
-# A profile derived from the runner's OWN `docker-default`, with the
-# `deny mount` rule removed and `allow mount` added, installed under a
-# different name and attached ONLY to this job's container. The
-# runner's `docker-default` itself is left untouched, and no other
-# container on the runner is affected.
-#
-# The script prints the exact diff so the change is auditable, and
-# verifies that the resulting profile still carries the `docker-default`
-# rules for everything except `mount`.
+# It is attached ONLY to this job's containers with
+# `--security-opt apparmor=chess-coach-fu20`. The container still runs
+# as UID 1000 with no host CAP_SYS_ADMIN, and the shipped seccomp
+# profile still governs which syscalls are permitted.
 set -euo pipefail
 
 PROFILE_NAME="chess-coach-fu20"
-SRC="/etc/apparmor.d/docker-default"
+SRC="$(dirname "$0")/../../infra/docker/apparmor-fu20.profile"
 DST="/etc/apparmor.d/${PROFILE_NAME}"
 
-# Docker ships its AppArmor profile in the daemon's bundle and
-# installs a copy at /etc/apparmor.d/docker-default on most systems.
-# The runner does not have that file, so the profile is located by
-# SEARCHING for it: the source profile must be the exact text the
-# runner enforces, and the kernel's policy store holds only the
-# COMPILED form, which cannot be re-parsed as source.
-FOUND=""
-for candidate in \
-  /etc/apparmor.d/docker-default \
-  /etc/apparmor.d/apparmor.d.docker-default \
-  /usr/share/apparmor-profiles/docker-default \
-  /usr/share/docker/contrib/apparmor/docker-default \
-  /usr/libexec/docker/docker-default \
-  /usr/share/apparmor/containers/docker-default
-do
-  if [[ -f "$candidate" ]]; then
-    FOUND="$candidate"
-    break
-  fi
-done
-
-if [[ -z "$FOUND" ]]; then
-  echo "--- searching the filesystem for the docker-default profile ---" >&2
-  FOUND="$(sudo find / -xdev -name 'docker-default' -type f 2>/dev/null | head -1)"
-fi
-
-if [[ -z "$FOUND" ]]; then
-  echo "FAIL: the docker-default profile source was not found on this host." >&2
-  echo "      The kernel's policy store holds only the COMPILED form, which" >&2
-  echo "      cannot be re-parsed as source, so the profile text is required." >&2
+if [[ ! -f "$SRC" ]]; then
+  echo "FAIL: the profile source ${SRC} does not exist" >&2
   exit 1
 fi
 
-echo "--- the docker-default profile source: ${FOUND} ---"
-sudo cp "$FOUND" "$DST"
+sudo cp "$SRC" "$DST"
+echo "--- the profile being installed (${DST}) ---"
+sudo grep -vE '^\s*(#|$)' "$DST"
 
-# Derive the profile: rename it, drop the `deny mount` rule, and add
-# `allow mount`. python3 is used rather than sed because the profile's
-# structure (a nested `profile` block with its own braces) makes a
-# textual rule edit fragile.
-sudo python3 - "$DST" "$PROFILE_NAME" <<'PYEOF'
-import re
-import sys
-
-path, name = sys.argv[1], sys.argv[2]
-text = open(path, encoding="utf-8").read()
-
-# 1. Rename the profile so the runner's own `docker-default` is kept.
-text, count = re.subn(
-    r"^profile\s+docker-default\b", f"profile {name}", text, count=1, flags=re.M
-)
-if count != 1:
-    sys.exit(f"FAIL: could not rename the profile (found {count} matches)")
-
-# 2. Remove the `deny mount` rule. A plain `deny` OUTRANKS an `allow`
-#    in AppArmor, so the deny has to go, not be overridden.
-before = text
-text = re.sub(r"^[ \t]*deny[ \t]+mount[ \t]*,[ \t]*\n", "", text, flags=re.M)
-removed = before.count("deny mount") - text.count("deny mount")
-
-# 3. Add `allow mount` inside the profile body: immediately before the
-#    profile's own closing brace.
-closing = text.rfind("}")
-if closing == -1:
-    sys.exit("FAIL: the profile has no closing brace")
-text = text[:closing] + "  allow mount,\n" + text[closing:]
-
-open(path, "w", encoding="utf-8").write(text)
-print(f"removed {removed} `deny mount` rule(s) and added `allow mount`")
-PYEOF
-
-echo "--- the exact diff against the runner's docker-default ---"
-sudo diff -u "$SRC" "$DST" || true
-
-echo "--- installing the derived profile ---"
+echo "--- installing it ---"
 sudo apparmor_parser -r "$DST"
 
-echo "--- the profile the container will run under ---"
+echo "--- the profiles now loaded ---"
 sudo aa-status 2>/dev/null | grep -E "${PROFILE_NAME}|docker-default" || true
