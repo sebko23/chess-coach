@@ -30,6 +30,14 @@ COPY libs/ ./libs/
 COPY services/ ./services/
 COPY apps/ ./apps/
 
-RUN uv pip install --system --no-cache -e .
+# `uv sync` puts the dev extra -- which is what carries pytest -- in
+# the project venv at /app/.venv, not in the system python. The
+# project itself is installed INTO that venv as well, so a single
+# interpreter has both pytest and the application stack, and the
+# package layout is the installed one rather than a PYTHONPATH
+# approximation.
+RUN uv pip install --no-cache -e .
+
+ENV PATH="/app/.venv/bin:${PATH}"
 
 WORKDIR /app

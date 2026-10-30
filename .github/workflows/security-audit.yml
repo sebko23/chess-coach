@@ -423,12 +423,10 @@ jobs:
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
             --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/tests:/app/tests:ro" \
-            -v "$PWD/services:/app/services:ro" \
-            -v "$PWD/libs:/app/libs:ro" \
             --entrypoint sh chess-coach-fu20-test -c '
               cd /app
-              PYTHONPATH=/app/libs:/app/services python -m pytest \
-                tests/unit/test_linux_sandbox.py -q --no-header -p no:cacheprovider
+              python -m pytest tests/unit/test_linux_sandbox.py -q \
+                --no-header -p no:cacheprovider
             '
 
       - name: Clean up the endpoint and network
