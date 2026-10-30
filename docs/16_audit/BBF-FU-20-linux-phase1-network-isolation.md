@@ -135,10 +135,29 @@ brand-new tmpfs with no inheritance involved:
 | `mount(tmpfs, "/tmp/newroot")` | `EACCES` |
 | `mount("/", MS_REMOUNT\|MS_BIND\|MS_RDONLY)` | `EACCES` |
 
-The same strategies all succeed on a host without the restriction, and
-the effective capability mask inside the new user namespace is fully
-populated in both cases — so the denial is the LSM policy, not the
-kernel capability check.
+The same strategies all succeed on a host without the restriction.
+
+**The denial is the kernel's mount-namespace rule, not the LSM and not
+a missing capability.** Three measurements establish this:
+
+* The AppArmor `DENIED` audit log is **empty** for the denial. A denial
+  by AppArmor always produces an `apparmor="DENIED"` record, so the
+  LSM is not the denyer.
+* The container runs under `docker-default (enforce)`, and the
+  capability sets are **identical** on the runner and on a working
+  machine: `CapPrm` and `CapEff` both become the full
+  `0x000001ffffffffff` after the unshare, `CapBnd` likewise, and
+  `Seccomp: 2` (filter mode) in both.
+* The mount that the launcher operates on is **inherited** from the
+  container's parent mount namespace. A mount inherited into a new
+  mount namespace is *locked* when the creating process lacked
+  `CAP_SYS_ADMIN` in the namespace that owns it. A locked mount cannot
+  have its propagation changed, and the kernel refuses the operation
+  with `EACCES`.
+
+The last point is the deployment requirement, and it is the same one
+the AppArmor policy expresses: **the host's mount namespace must let a
+user-namespace process modify the mounts it inherits.**
 
 **Operational requirement.** The supported Linux deployment therefore
 needs a host AppArmor policy that permits `mount` inside an
