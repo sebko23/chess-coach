@@ -1634,7 +1634,7 @@ Investigation-first BBF would:
 - `docs/02_modules/module-decomposition.md` § A-F7 (subprocess sandbox spec)
 ## FU-20 — A-F11 property 2 (network isolation) has no implementation or test
 
-**Status:** **PARTIALLY RESOLVED.** The 2026-10-18 state (PR #163 and PR #164, feature commits `190a0c27` under merge `4c11159c` and `913652c3` under merge `fa0bfd73`, BBF-FU-20-impl + BBF-FU-20-impl-windows) is **preserved as history below** and was **not** a proven implementation: its Linux path fell back to proxy stripping when `unshare` failed, its Windows path was unreachable after FU-22 B2, and its 3 tests proved only that `unshare` was *requested*. The 2026-10-29 Linux Phase 1 implementation (`BBF-FU-20-linux-phase1-network-isolation`) replaces it with a **fail-closed** combined user/network/mount namespace launcher whose denial is proven in the production container; the release-scope closure is a **separate stage** that lands only after that CI proof is green. See the *2026-10-29 Linux Phase 1* record below.
+**Status:** **RESOLVED for the named release scope (2026-10-30)** — *Linux network isolation enforced fail closed, Windows PDF parsing explicitly refused*. The 2026-10-18 state (PR #163 and PR #164, feature commits `190a0c27` under merge `4c11159c` and `913652c3` under merge `fa0bfd73`, BBF-FU-20-impl + BBF-FU-20-impl-windows) is **preserved as history below** and was **not** a proven implementation: its Linux path fell back to proxy stripping when `unshare` failed, its Windows path was unreachable after FU-22 B2, and its 3 tests proved only that `unshare` was *requested*. The 2026-10-29 Linux Phase 1 implementation (`BBF-FU-20-linux-phase1-network-isolation`) replaced it with a **fail-closed** combined user/network/mount namespace launcher, and the release-scope closure landed on 2026-10-30 after the production-container CI proof went green. **The Windows AppContainer network isolation remains open as a separately approved follow-up** — it is *not* part of this closure. See the *2026-10-29 Linux Phase 1* and *2026-10-30 release-scope closure* records below.
 
 **Historical state (superseded 2026-10-29 by `BBF-FU-20-linux-phase1-network-isolation`).** **PARTIALLY RESOLVED 2026-10-18 via squash-merge of PR #163 and PR #164** (feature commits `190a0c27` (under merge `4c11159c`) and `913652c3` (under merge `fa0bfd73`), BBF-FU-20-impl + BBF-FU-20-impl-windows). The Linux path is complete: `set_network_isolation_preexec()` in `services/chess_coach/pdf_ocr/subprocess_runner.py` calls `os.setsid()` to create a new session, then `unshare(CLONE_NEWNET)` via ctypes to enter a fresh network namespace (no loopback, no localhost, no DNS, no outbound TCP/UDP). The Windows path is best-effort: strips proxy env vars (`http_proxy`, `https_proxy`, `all_proxy`, `no_proxy` and their uppercase variants) since the `pywin32` module does not expose `SetInformationJobObject` for `JobObjectNetRateControlInformation`. 3 new tests added to `tests/unit/test_subprocess_runner.py` (7 passed, 2 skipped on Windows). CI: 15/15 green on main (`fa0bfd73`). *Correction (2026-10-29): the "Linux path is complete" claim was **not proven** — the `unshare` failure path fell back to proxy-environment stripping (defense in depth, never network denial), the tests proved only that `os.setsid()` ran and that `unshare` was requested, and the Windows proxy-stripping branch became unreachable after FU-22 B2 because the Windows launch inherits the parent environment and never invokes the network helper.*
 
@@ -1648,6 +1648,48 @@ Investigation-first BBF would:
 - **Proof.** `scripts/dev/verify_linux_network_isolation.py` runs in the **production container** as UID 1000 with the **shipped profile** against a controlled reachable endpoint, with an unrestricted control in the same job that must connect for the denial result to be valid. Measured: the namespace exposes loopback only, an outbound connection is refused with `ENETUNREACH`, the identity mapping preserves uid 1000, capabilities are confined to the new user namespace, root is read-only (`EROFS`) with the artifact path writable, and the 2 GiB `RLIMIT_AS` is read back.
 - **Out of scope for this phase.** Windows AppContainer, Windows Firewall, Job network-rate control, and any proxy-only behaviour are explicitly **not** implemented. The namespace-escape-resistance measurement is recorded as an explicit not-established item rather than assumed.
 - Brief: `docs/16_audit/BBF-FU-20-linux-phase1-network-isolation.md`.
+
+**2026-10-30 release-scope closure — FU-20 RESOLVED for the named scope.**
+*Scope closed:* A-F11 property 2 for the current release — **Linux** PDF
+parsing runs with **no network access, enforced fail closed**, and
+**Windows** PDF parsing is **explicitly refused** because no
+network-isolation boundary is proven there.
+
+*Evidence (production container, shipped seccomp profile, shipped AppArmor
+profile, UID 1000, `linux-network-isolation` CI job):*
+
+| Property | Measured |
+|---|---|
+| Unrestricted control | **connects** — the run is valid only because the control connected |
+| Restricted parser | **denied** — TCP, UDP, DNS query, child and grandchild all `ENETUNREACH` |
+| Setup status | `"OK"` — every containment stage completed before exec |
+| Namespace identity | `/proc/self/ns/net` differs from the gateway's |
+| Interfaces | loopback only — no `eth0` |
+| Identity | uid 1000 preserved |
+| Root filesystem | read-only (`EROFS`) with the artifact path writable |
+| Memory cap | 2 GiB `RLIMIT_AS` applied before exec |
+| Launcher unit suite in the container | **22 passed, 0 skipped** |
+
+*Error taxonomy (distinct, per the directive):* the Windows refusal is a
+**platform-capability** boundary — HTTP **501**, `internal.not_implemented`;
+a Linux containment setup failure is a **deployment/runtime** failure — HTTP
+**500**, `internal.network_isolation_setup_failed`, naming the failing
+stage. Operators and telemetry can tell an unsupported platform from a
+blocked or misconfigured deployment.
+
+*Deployment policy proved:* the container keeps running as non-root UID 1000
+with **no host `CAP_SYS_ADMIN`**, **no `privileged: true`**, and no broad
+seccomp relaxation. The seccomp profile is a narrow delta on the pinned
+Moby/Docker **26.1.4** default, and the dangerous capability-gated
+operations (`bpf`, `perf_event_open`, `fsopen`, `move_mount` and 12 others)
+remain denied to UID 1000.
+
+*Still open, and deliberately not closed by this record:* **Windows
+network isolation** (AppContainer with the no-internet-client capability)
+remains a **separately approved follow-up**. Windows PDF parsing is
+**refused**, not isolated — this record does not claim otherwise. The
+**namespace-escape-resistance** measurement remains an explicit
+not-established item rather than an assumed property.
 
 **Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
 Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)
