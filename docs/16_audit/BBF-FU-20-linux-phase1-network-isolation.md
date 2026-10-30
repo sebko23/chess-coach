@@ -166,18 +166,43 @@ The AppArmor question is closed by two further measurements:
   denied the mount.
 
 So the LSM is not the denyer, and neither is a missing capability. The
-denial is the **kernel's mount-namespace rule**, and the deployment
-requirement it implies is:
+denial is the **kernel's mount-namespace rule**: a mount inherited into a
+user-namespace-owned mount namespace is locked, and a locked mount's
+propagation cannot be changed.
 
-> The host's mount namespace must let a user-namespace process modify
-> the mounts it inherits.
+### The launcher does not depend on the inherited root
 
-A container whose root mount is not locked satisfies this. A runner
-that hands the container a locked (shared-propagation, or otherwise
-inherited-and-locked) root mount does not, and no mount strategy can
-work there — which is exactly what the measurement shows: every
-variant, including a brand-new tmpfs with no inheritance involved, is
-refused with `EACCES`.
+The original design operated on the container's inherited root, which
+is exactly the mount that may be locked. The launcher now **builds its
+own root** instead:
+
+1. Mount a fresh tmpfs as the sandbox root. It is created inside the
+   launcher's own user and mount namespace, so it is never inherited
+   and never locked.
+2. Recursively bind each top-level entry of the old root into it, so
+   the parser finds the absolute paths it expects
+   (`/usr/local/bin/pdftoppm`, the shared libraries, `/etc/ld.so.cache`).
+3. Bind the artifact path at its **original** absolute path inside the
+   new root, so the parser's argv still resolves after the pivot.
+4. `pivot_root` into the new root and detach the old one: the sandbox
+   has no path back to the host filesystem.
+5. Make the new root's propagation private, then remount the whole
+   tree read-only **except** the artifact path. A mount still locked
+   from the container runtime (`/dev`) is **detached** rather than
+   remounted — the sandbox does not need the host's device nodes, and
+   leaving them reachable would be exactly the exposure the sandbox
+   exists to prevent.
+6. Descriptor hygiene, the 2 GiB `RLIMIT_AS`, then exec.
+
+`/proc` is one of the bound entries, so the parser sees the same
+`/proc` the container provides, showing the sandbox's own pidns and
+netns. Its submounts are locked and cannot be remounted read-only, so
+they are left as the container runtime provides them — the same
+behaviour the original design had.
+
+This removes the dependency on the inherited root entirely: the
+containment sequence no longer requires the host to let a
+user-namespace process modify the mounts it inherits.
 
 **Operational requirement.** The supported Linux deployment therefore
 needs a host AppArmor policy that permits `mount` inside an

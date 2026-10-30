@@ -331,7 +331,9 @@ def test_mount_failure_is_a_setup_failure(monkeypatch: pytest.MonkeyPatch) -> No
 
     with pytest.raises(NetworkIsolationSetupError) as excinfo:
         linux_sandbox.sandbox_prepare(Path("/tmp"))
-    assert excinfo.value.stage == "mount_private_propagation"
+    # The fresh-root mount is the FIRST mount stage, so it is the one
+    # that reports the failure.
+    assert excinfo.value.stage == "mount_new_root"
 
 
 def test_memory_cap_failure_is_a_setup_failure(
@@ -347,9 +349,16 @@ def test_memory_cap_failure_is_a_setup_failure(
     monkeypatch.setattr(linux_sandbox, "_libc", lambda: _StubLibc())
     monkeypatch.setattr(linux_sandbox, "_map_identity", lambda _u, _g: None)
     monkeypatch.setattr(linux_sandbox, "_private_mount_propagation", lambda _l: None)
-    monkeypatch.setattr(linux_sandbox, "_remount_root_read_only", lambda _l: None)
-    monkeypatch.setattr(linux_sandbox, "_bind_artifact_writable", lambda _l, _a: None)
+    monkeypatch.setattr(linux_sandbox, "_remount_tree_read_only", lambda _l, **_k: None)
+    monkeypatch.setattr(
+        linux_sandbox, "_bind_artifact_writable", lambda _l, _s, _t: None
+    )
     monkeypatch.setattr(linux_sandbox, "_verify_filesystem_policy", lambda _a: None)
+    monkeypatch.setattr(linux_sandbox, "_new_root_dir", lambda _b: Path("/tmp"))
+    monkeypatch.setattr(linux_sandbox, "_mount_fresh_root", lambda _l, _r: None)
+    monkeypatch.setattr(linux_sandbox, "_reconstruct_root", lambda *_a, **_k: None)
+    monkeypatch.setattr(linux_sandbox, "_pivot_into", lambda *_a, **_k: None)
+    monkeypatch.setattr(linux_sandbox, "_detach_old_root", lambda _l: None)
     monkeypatch.setattr(
         linux_sandbox, "_reject_inherited_sockets", lambda *_a, **_k: None
     )
@@ -608,9 +617,16 @@ def test_unshare_is_called_exactly_once(
     monkeypatch.setattr(linux_sandbox, "_libc", lambda: _StubLibc())
     monkeypatch.setattr(linux_sandbox, "_map_identity", lambda _u, _g: None)
     monkeypatch.setattr(linux_sandbox, "_private_mount_propagation", lambda _l: None)
-    monkeypatch.setattr(linux_sandbox, "_remount_root_read_only", lambda _l: None)
-    monkeypatch.setattr(linux_sandbox, "_bind_artifact_writable", lambda _l, _a: None)
+    monkeypatch.setattr(linux_sandbox, "_remount_tree_read_only", lambda _l, **_k: None)
+    monkeypatch.setattr(
+        linux_sandbox, "_bind_artifact_writable", lambda _l, _s, _t: None
+    )
     monkeypatch.setattr(linux_sandbox, "_verify_filesystem_policy", lambda _a: None)
+    monkeypatch.setattr(linux_sandbox, "_new_root_dir", lambda _b: Path("/tmp"))
+    monkeypatch.setattr(linux_sandbox, "_mount_fresh_root", lambda _l, _r: None)
+    monkeypatch.setattr(linux_sandbox, "_reconstruct_root", lambda *_a, **_k: None)
+    monkeypatch.setattr(linux_sandbox, "_pivot_into", lambda *_a, **_k: None)
+    monkeypatch.setattr(linux_sandbox, "_detach_old_root", lambda _l: None)
     monkeypatch.setattr(
         linux_sandbox, "_reject_inherited_sockets", lambda *_a, **_k: None
     )

@@ -66,6 +66,10 @@ SANDBOX_CLONE_FLAGS = CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWNS
 
 MS_RDONLY = 1
 MS_REMOUNT = 32
+MNT_DETACH = 2
+MS_NOSUID = 2
+MS_NODEV = 4
+MS_NOEXEC = 8
 MS_BIND = 4096
 MS_PRIVATE = 1 << 18
 MS_REC = 16384
@@ -213,6 +217,290 @@ def _mount_propagation_state(path: str = "/") -> str:
     return f"{path} unknown"
 
 
+def _new_root_dir(base: Path) -> Path:
+    """Create the mountpoint for the launcher's own root.
+
+    It lives beside the artifact directory, which is a writable path
+    that exists in the supported deployment, so the mountpoint can be
+    created before the root filesystem is made read-only.
+    """
+    root = base / ".sandbox-root"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise _fail(
+            "mount_new_root",
+            "could not create the sandbox root mountpoint",
+            errno=exc.errno,
+            errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+            path=str(root),
+        ) from exc
+    return root
+
+
+def _mount_fresh_root(lib: ctypes.CDLL, root: Path) -> None:
+    """Mount a fresh tmpfs as the launcher's own root.
+
+    A mount INHERITED from the parent mount namespace is locked when
+    the process that created it lacked CAP_SYS_ADMIN in the namespace
+    that owns it, and a locked mount's propagation cannot be changed --
+    the kernel refuses the operation with EACCES. A tmpfs created
+    HERE, inside this process's own user and mount namespace, is never
+    inherited and never locked, so its propagation and its flags are
+    the launcher's to set.
+
+    This is what makes the containment sequence work in a deployment
+    whose root mount is locked.
+    """
+    ctypes.set_errno(0)
+    rc = lib.mount(
+        b"tmpfs",
+        str(root).encode(),
+        b"tmpfs",
+        MS_NOSUID | MS_NODEV,
+        None,
+    )
+    if rc != 0:
+        err = ctypes.get_errno()
+        raise _fail(
+            "mount_new_root",
+            "could not mount the sandbox root",
+            errno=err,
+            errno_name=errno.errorcode.get(err, str(err)),
+            path=str(root),
+        )
+
+
+def _make_mountpoint(path: Path) -> None:
+    """Create a mountpoint directory, reporting the failing stage."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise _fail(
+            "mount_artifact_bind",
+            "could not create the artifact mountpoint",
+            errno=exc.errno,
+            errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+            path=str(path),
+        ) from exc
+
+
+def _reconstruct_root(lib: ctypes.CDLL, root: Path, skip: str) -> None:
+    """Fill the fresh root with the old root's content.
+
+    Each top-level entry of the current root is recursively
+    bind-mounted into the new root, so the parser finds the absolute
+    paths it expects: `/usr/local/bin/pdftoppm`, the shared libraries,
+    `/etc/ld.so.cache`, and so on.
+
+    The entries are bound individually rather than binding the whole
+    root in one call, so that `root/oldroot` stays on the new root's
+    own tmpfs and can serve as `pivot_root`'s put_old directory.
+
+    Each of these binds is created inside the sandbox's own mount
+    namespace, so none of them is locked and every one of them can be
+    remounted.
+    """
+    try:
+        entries = sorted(os.listdir("/"))
+    except OSError as exc:
+        raise _fail(
+            "mount_reconstruct_root",
+            "could not read the root directory",
+            errno=exc.errno,
+            errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+        ) from exc
+    for name in entries:
+        if name == skip:
+            continue
+        source = f"/{name}"
+        target = root / name
+        if os.path.isdir(source):
+            _make_mountpoint(target)
+        else:
+            # A regular file cannot be a mountpoint, so it is bound
+            # onto an existing empty file of the same name.
+            try:
+                target.touch(exist_ok=True)
+            except OSError as exc:
+                raise _fail(
+                    "mount_reconstruct_root",
+                    "could not create a root file mountpoint",
+                    errno=exc.errno,
+                    errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+                    path=str(target),
+                ) from exc
+        ctypes.set_errno(0)
+        rc = lib.mount(
+            source.encode(), str(target).encode(), None, MS_BIND | MS_REC, None
+        )
+        if rc != 0:
+            err = ctypes.get_errno()
+            raise _fail(
+                "mount_reconstruct_root",
+                "could not bind a root entry into the sandbox root",
+                errno=err,
+                errno_name=errno.errorcode.get(err, str(err)),
+                path=source,
+            )
+
+
+def _bind_artifact_writable(lib: ctypes.CDLL, source: Path, target: Path) -> None:
+    """Bind-mount `source` at `target`, then make `target` writable.
+
+    The bind must be remounted separately: a bind of a read-only
+    source inherits the read-only flag, so the target would stay
+    read-only without the second call.
+    """
+    source_b = str(source).encode()
+    target_b = str(target).encode()
+    ctypes.set_errno(0)
+    rc = lib.mount(source_b, target_b, None, MS_BIND, None)
+    if rc != 0:
+        err = ctypes.get_errno()
+        raise _fail(
+            "mount_artifact_bind",
+            "could not bind-mount the artifact directory",
+            errno=err,
+            errno_name=errno.errorcode.get(err, str(err)),
+            artifact_dir=str(source),
+        )
+    ctypes.set_errno(0)
+    rc = lib.mount(b"none", target_b, None, MS_REMOUNT | MS_BIND, None)
+    if rc != 0:
+        err = ctypes.get_errno()
+        raise _fail(
+            "mount_artifact_writable",
+            "could not make the artifact directory writable",
+            errno=err,
+            errno_name=errno.errorcode.get(err, str(err)),
+            artifact_dir=str(target),
+        )
+
+
+def _pivot_into(lib: ctypes.CDLL, root: Path) -> None:
+    """Pivot into the fresh root and detach the old one.
+
+    `pivot_root` makes the fresh tmpfs the process's root and puts the
+    old root under `<root>/oldroot`, where it can be unmounted. The
+    old root is then unreachable: the sandbox has no path back to the
+    host filesystem.
+    """
+    old = root / "oldroot"
+    _make_mountpoint(old)
+    libc = _libc()
+    libc.pivot_root.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    libc.pivot_root.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    rc = libc.pivot_root(str(root).encode(), str(old).encode())
+    if rc != 0:
+        err = ctypes.get_errno()
+        raise _fail(
+            "pivot_root",
+            "could not pivot into the sandbox root",
+            errno=err,
+            errno_name=errno.errorcode.get(err, str(err)),
+        )
+    os.chdir("/")
+
+
+def _detach_old_root(lib: ctypes.CDLL) -> None:
+    """Detach the old root after the pivot.
+
+    `pivot_root` moves the old root to `/oldroot`; unmounting it
+    leaves the sandbox with no path back to the host filesystem.
+    """
+    ctypes.set_errno(0)
+    rc = lib.umount2(b"/oldroot", MNT_DETACH)
+    if rc != 0:
+        err = ctypes.get_errno()
+        raise _fail(
+            "pivot_root",
+            "could not detach the old root",
+            errno=err,
+            errno_name=errno.errorcode.get(err, str(err)),
+        )
+
+
+def _remount_tree_read_only(lib: ctypes.CDLL, writable: Path | None = None) -> None:
+    """Make the whole new root read-only except the writable path.
+
+    The root tmpfs and each of the binds are separate mounts, so each
+    is remounted individually. Every one of them was created inside
+    the sandbox's own mount namespace, so none is locked and each
+    remount is permitted.
+
+    A mount that is still locked -- one inherited from the container
+    runtime, such as /dev -- cannot be remounted. It is DETACHED
+    instead: the sandbox does not need the host's device nodes, and
+    leaving them reachable would be exactly the exposure the sandbox
+    exists to prevent.
+    """
+    ctypes.set_errno(0)
+    rc = lib.mount(b"none", b"/", None, MS_REMOUNT | MS_BIND | MS_RDONLY, None)
+    if rc != 0:
+        err = ctypes.get_errno()
+        raise _fail(
+            "mount_root_read_only",
+            "could not remount the root filesystem read-only",
+            errno=err,
+            errno_name=errno.errorcode.get(err, str(err)),
+        )
+    try:
+        entries = sorted(os.listdir("/"))
+    except OSError:
+        return
+    writable_str = str(writable) if writable is not None else None
+    for name in entries:
+        target = f"/{name}"
+        if writable_str is not None and target == writable_str:
+            # The artifact path is the one writable path by policy.
+            continue
+        if target == "/oldroot":
+            # The old root was detached with MNT_DETACH, which is a
+            # LAZY unmount: the entry stays in the mount table until
+            # the last reference goes away. The old root is not
+            # reachable through it, so it is skipped here.
+            continue
+        if target == "/proc":
+            # /proc is a recursive bind created inside the sandbox's
+            # own mount namespace. It is NOT detached: the parser
+            # needs it, and it exposes the sandbox's own pidns and
+            # netns because the mount namespace is the sandbox's.
+            continue
+        if not os.path.isdir(target):
+            # A regular-file bind is already read-only by virtue of the
+            # read-only filesystem it was bound from.
+            continue
+        ctypes.set_errno(0)
+        rc = lib.mount(
+            b"none", target.encode(), None, MS_REMOUNT | MS_BIND | MS_RDONLY, None
+        )
+        if rc == 0:
+            continue
+        err = ctypes.get_errno()
+        if err == errno.EPERM:
+            ctypes.set_errno(0)
+            detach_rc = lib.umount2(target.encode(), MNT_DETACH)
+            if detach_rc != 0:
+                detach_err = ctypes.get_errno()
+                raise _fail(
+                    "mount_root_read_only",
+                    "could not detach a locked root entry",
+                    errno=detach_err,
+                    errno_name=errno.errorcode.get(detach_err, str(detach_err)),
+                    path=target,
+                )
+            continue
+        raise _fail(
+            "mount_root_read_only",
+            "could not remount a root entry read-only",
+            errno=err,
+            errno_name=errno.errorcode.get(err, str(err)),
+            path=target,
+        )
+
+
 def _private_mount_propagation(lib: ctypes.CDLL) -> None:
     ctypes.set_errno(0)
     rc = lib.mount(b"none", b"/", None, MS_REC | MS_PRIVATE, None)
@@ -238,47 +526,6 @@ def _effective_capabilities() -> str:
     except OSError:
         pass
     return "unknown"
-
-
-def _remount_root_read_only(lib: ctypes.CDLL) -> None:
-    ctypes.set_errno(0)
-    rc = lib.mount(b"none", b"/", None, MS_REMOUNT | MS_BIND | MS_RDONLY, None)
-    if rc != 0:
-        err = ctypes.get_errno()
-        raise _fail(
-            "mount_root_read_only",
-            "could not remount the root filesystem read-only",
-            errno=err,
-            errno_name=errno.errorcode.get(err, str(err)),
-        )
-
-
-def _bind_artifact_writable(lib: ctypes.CDLL, artifact_dir: Path) -> None:
-    target = str(artifact_dir).encode()
-    ctypes.set_errno(0)
-    rc = lib.mount(target, target, None, MS_BIND, None)
-    if rc != 0:
-        err = ctypes.get_errno()
-        raise _fail(
-            "mount_artifact_bind",
-            "could not bind-mount the artifact directory",
-            errno=err,
-            errno_name=errno.errorcode.get(err, str(err)),
-            artifact_dir=str(artifact_dir),
-        )
-    # A bind of a read-only source inherits the read-only flag, so the
-    # artifact mount needs its own remount pass without MS_RDONLY.
-    ctypes.set_errno(0)
-    rc = lib.mount(b"none", target, None, MS_REMOUNT | MS_BIND, None)
-    if rc != 0:
-        err = ctypes.get_errno()
-        raise _fail(
-            "mount_artifact_writable",
-            "could not make the artifact directory writable",
-            errno=err,
-            errno_name=errno.errorcode.get(err, str(err)),
-            artifact_dir=str(artifact_dir),
-        )
 
 
 def _verify_filesystem_policy(artifact_dir: Path) -> None:
@@ -396,9 +643,35 @@ def sandbox_prepare(
     lib = _libc()
     _unshare(lib)
     _map_identity(uid, gid)
+
+    # Build the launcher's OWN root rather than operating on the
+    # inherited one. A mount inherited from the parent mount namespace
+    # is locked when the process that created it lacked CAP_SYS_ADMIN
+    # in the namespace that owns it, and a locked mount's propagation
+    # cannot be changed -- the kernel refuses with EACCES. A tmpfs
+    # created here is never inherited and never locked.
+    root = _new_root_dir(artifact_dir.parent)
+    _mount_fresh_root(lib, root)
+    # Fill the new root with the old root's content, so the parser
+    # finds the absolute paths it expects.
+    _reconstruct_root(lib, root, skip=root.name)
+    # The artifact is bound at its ORIGINAL absolute path inside the new
+    # root, so the parser's argv -- which names that path -- still
+    # resolves after the pivot.
+    try:
+        relative = artifact_dir.relative_to("/")
+    except ValueError:
+        relative = Path(artifact_dir.name)
+    _make_mountpoint(root / relative)
+    _bind_artifact_writable(lib, artifact_dir, root / relative)
+    _pivot_into(lib, root)
+    # The new root is ours: its propagation is ours to set.
     _private_mount_propagation(lib)
-    _remount_root_read_only(lib)
-    _bind_artifact_writable(lib, artifact_dir)
+    # The old root is detached BEFORE the tree is remounted: after the
+    # pivot it is visible as /oldroot, and it is the old, writable root.
+    _detach_old_root(lib)
+    # The root tree is made read-only except for the artifact path.
+    _remount_tree_read_only(lib, writable=artifact_dir)
     _verify_filesystem_policy(artifact_dir)
     _reject_inherited_sockets(preserve_fds)
     _apply_memory_cap(limit_bytes)
@@ -526,9 +799,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # observe the OK line until the parser exits. Closing it makes the
     # gateway see the OK line and EOF immediately, and the parser cannot
     # touch the channel at all.
-    _write_status(status_fd, STATUS_OK)
+    # The status descriptor is closed AT exec by the kernel (FD_CLOEXEC),
+    # not closed here. Closing it here would mean an exec failure could
+    # not be reported: the gateway would read "OK" and then see the
+    # failure exit code with no explanation. With FD_CLOEXEC the parser
+    # never inherits the channel, and a failed exec can still be
+    # reported on it.
     with contextlib.suppress(OSError):
-        os.close(status_fd)
+        os.set_inheritable(status_fd, False)
+    _write_status(status_fd, STATUS_OK)
     try:
         os.execv(parser_argv[0], parser_argv)  # noqa: S606  -- intentional: the parser exec
     except OSError as exc:
