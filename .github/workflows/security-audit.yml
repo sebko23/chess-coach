@@ -412,16 +412,23 @@ jobs:
         # container with the shipped profile is that place.
         run: |
           sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
+          # The production image is a RUNTIME image and carries no
+          # pytest. The launcher unit tests therefore run in a test
+          # image built from the same base, with the same seccomp
+          # profile and the same AppArmor profile attached, and with
+          # the same package layout.
+          docker build -q -t chess-coach-fu20-test \
+            -f "$PWD/scripts/dev/Dockerfile.fu20-test" "$PWD"
           docker run --rm --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
             --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/tests:/app/tests:ro" \
             -v "$PWD/services:/app/services:ro" \
             -v "$PWD/libs:/app/libs:ro" \
-            --entrypoint sh chess-coach-backend:fu20 -c '
+            --entrypoint sh chess-coach-fu20-test -c '
               cd /app
-              python -m pytest tests/unit/test_linux_sandbox.py -q \
-                --no-header -p no:cacheprovider
+              PYTHONPATH=/app/libs:/app/services python -m pytest \
+                tests/unit/test_linux_sandbox.py -q --no-header -p no:cacheprovider
             '
 
       - name: Clean up the endpoint and network
