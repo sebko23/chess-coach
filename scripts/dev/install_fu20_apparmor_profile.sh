@@ -32,12 +32,41 @@ PROFILE_NAME="chess-coach-fu20"
 SRC="/etc/apparmor.d/docker-default"
 DST="/etc/apparmor.d/${PROFILE_NAME}"
 
-if [[ ! -f "$SRC" ]]; then
-  echo "FAIL: ${SRC} does not exist on this host" >&2
+# Docker ships its AppArmor profile in the daemon's bundle and
+# installs a copy at /etc/apparmor.d/docker-default on most systems.
+# The runner does not have that file, so the profile is located by
+# SEARCHING for it: the source profile must be the exact text the
+# runner enforces, and the kernel's policy store holds only the
+# COMPILED form, which cannot be re-parsed as source.
+FOUND=""
+for candidate in \
+  /etc/apparmor.d/docker-default \
+  /etc/apparmor.d/apparmor.d.docker-default \
+  /usr/share/apparmor-profiles/docker-default \
+  /usr/share/docker/contrib/apparmor/docker-default \
+  /usr/libexec/docker/docker-default \
+  /usr/share/apparmor/containers/docker-default
+do
+  if [[ -f "$candidate" ]]; then
+    FOUND="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$FOUND" ]]; then
+  echo "--- searching the filesystem for the docker-default profile ---" >&2
+  FOUND="$(sudo find / -xdev -name 'docker-default' -type f 2>/dev/null | head -1)"
+fi
+
+if [[ -z "$FOUND" ]]; then
+  echo "FAIL: the docker-default profile source was not found on this host." >&2
+  echo "      The kernel's policy store holds only the COMPILED form, which" >&2
+  echo "      cannot be re-parsed as source, so the profile text is required." >&2
   exit 1
 fi
 
-sudo cp "$SRC" "$DST"
+echo "--- the docker-default profile source: ${FOUND} ---"
+sudo cp "$FOUND" "$DST"
 
 # Derive the profile: rename it, drop the `deny mount` rule, and add
 # `allow mount`. python3 is used rather than sed because the profile's
