@@ -333,55 +333,42 @@ jobs:
           done
           docker logs fu20p-srv 2>&1 | head -3
 
-      - name: Verify the AppArmor override is a minimal delta
-        # The override must grant exactly the two rules the launcher
-        # needs and nothing else: no capability, no deny, no
-        # unconfined flag.
-        run: |
-          python scripts/dev/verify_apparmor_delta.py \
-            infra/docker/apparmor-unprivileged-userns-local.override
 
-      - name: Extend the runner's unprivileged_userns AppArmor profile
-        # Ubuntu 24.04 restricts unprivileged user namespaces by
-        # default. A process that creates a user namespace transitions
-        # into AppArmor's `unprivileged_userns` profile, which grants
-        # `userns` but NOT `mount` and NOT `x`. The launcher's
-        # containment sequence needs both: `mount` to make the root
-        # filesystem read-only and bind-mount the artifact path
-        # writable, and `x` to exec the parser afterwards.
+      - name: Derive a container-scoped AppArmor profile that may mount
+        # The runner's kernel (7.0.0-1017-azure) has
+        # `kernel.apparmor_restrict_unprivileged_userns = 1`, and the
+        # runner's `docker-default` AppArmor profile carries a plain
+        # `deny mount` rule. The launcher's containment sequence needs
+        # `mount` to build its own root, so the container cannot mount
+        # even a fresh tmpfs inside its own user namespace.
         #
-        # Ubuntu's own profile ends with
-        #   include if exists <local/unprivileged_userns>
-        # which is the documented site-specific override mechanism. The
-        # override below uses it, so the delta against the stock
-        # profile is exactly two rules.
+        # The denial is SILENT: `deny mount` is not an `audit deny`, so
+        # nothing reaches the audit log -- which is why the earlier
+        # diagnosis saw an empty DENIED log and wrongly suspected the
+        # LSM's transition profile.
+        #
+        # The script derives a NEW profile from the runner's OWN
+        # `docker-default`, removes only the `deny mount` rule and adds
+        # `allow mount`. The runner's `docker-default` is left
+        # untouched, and the derived profile is attached ONLY to this
+        # job's containers. The script prints the exact diff.
         run: |
-          sudo mkdir -p /etc/apparmor.d/local
-          sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
-            /etc/apparmor.d/local/unprivileged_userns
-          sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
-          echo "--- the override that was installed ---"
-          sudo cat /etc/apparmor.d/local/unprivileged_userns
-          echo "--- the COMPILED policy: does it grant mount? ---"
-          # `apparmor_parser --compile` writes the compiled policy to
-          # stdout in a readable form. If the override were included,
-          # the compiled policy would name the mount rule.
-          sudo apparmor_parser --compile /etc/apparmor.d/unprivileged_userns 2>/dev/null \
-            | tr "\0" "\n" | grep -icE "^(mount|allow mount)" || echo "NO MOUNT RULE"
-          echo "--- does the profile still have the include hook? ---"
-          sudo grep -n "include if exists" /etc/apparmor.d/unprivileged_userns || echo "NO HOOK"
-          echo "--- is the local override readable and non-empty? ---"
-          sudo cat /etc/apparmor.d/local/unprivileged_userns | grep -v "^#" | grep -v "^$" || echo "EMPTY"
-          echo "--- the profile as the kernel sees it ---"
-          sudo cat /sys/kernel/security/apparmor/policy/unprivileged_userns \
-            2>/dev/null | tr "\0" "\n" | grep -iE "mount|profile" | head -20 || true
-          echo "--- the override file's presence ---"
-          sudo ls -l /etc/apparmor.d/local/unprivileged_userns
+          sudo bash "$PWD/scripts/dev/install_fu20_apparmor_profile.sh"
+          echo "--- the derived profile that was installed ---"
+          sudo cat /etc/apparmor.d/chess-coach-fu20
+          echo "--- the runner's own docker-default mount rules (the denier) ---"
+          sudo grep -nE "deny|allow|^profile|mount" /etc/apparmor.d/docker-default 2>/dev/null \
+            | head -40 || echo "NO docker-default PROFILE"
+          echo "--- the COMPILED derived policy: does it grant mount? ---"
+          sudo apparmor_parser --compile /etc/apparmor.d/chess-coach-fu20 2>/dev/null \
+            | tr "\0" "\n" | grep -icE "^mount" || echo "NO MOUNT RULE"
           echo "--- the AppArmor DENIED audit log (last 20) ---"
           sudo dmesg 2>/dev/null | grep -i "apparmor.*DENIED" | tail -20 || true
           sudo journalctl -k --no-pager -n 200 2>/dev/null | grep -i "apparmor.*DENIED" | tail -20 || true
           echo "--- the profile the container will actually run under ---"
-          docker run --rm --user 1000:1000 --entrypoint sh chess-coach-backend:fu20 \
+          sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
+          docker run --rm --user 1000:1000 --security-opt "apparmor=chess-coach-fu20" \
+            --entrypoint sh chess-coach-backend:fu20 \
             -c "cat /proc/self/attr/current" 2>&1 | tail -2
 
       - name: Probe the mount-propagation strategies
@@ -393,11 +380,10 @@ jobs:
         run: |
           for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro no_userns no_userns_remount lsm_report cap_status complain_mode ns_owners kernel; do
             echo "--- $s ---"
-            sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
-              /etc/apparmor.d/local/unprivileged_userns
-            sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
+            sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
             docker run --rm --user 1000:1000 \
               --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+              --security-opt "apparmor=chess-coach-fu20" \
               -v "$PWD/scripts/dev:/probe:ro" \
               --entrypoint python3 chess-coach-backend:fu20 \
               /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=|BEFORE|AFTER|ns id|=>|changed|kernel:|proc/sys" || true
@@ -420,11 +406,10 @@ jobs:
           FU20_ENDPOINT_HOST: fu20p-srv
           FU20_ENDPOINT_PORT: "18099"
         run: |
-          sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
-            /etc/apparmor.d/local/unprivileged_userns
-          sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
+          sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
           docker run --rm --network fu20p --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+            --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/scripts/dev/verify_linux_network_isolation.py:/proof.py:ro" \
             -e FU20_ENDPOINT_HOST -e FU20_ENDPOINT_PORT \
             --entrypoint python3 chess-coach-backend:fu20 \
@@ -435,11 +420,10 @@ jobs:
         # only run where the kernel permits one; the production
         # container with the shipped profile is that place.
         run: |
-          sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
-            /etc/apparmor.d/local/unprivileged_userns
-          sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
+          sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
           docker run --rm --user 1000:1000 \
             --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+            --security-opt "apparmor=chess-coach-fu20" \
             -v "$PWD/tests:/app/tests:ro" \
             -v "$PWD/services:/app/services:ro" \
             -v "$PWD/libs:/app/libs:ro" \
