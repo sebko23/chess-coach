@@ -360,8 +360,13 @@ jobs:
           sudo cp "$PWD/infra/docker/apparmor-unprivileged-userns-local.override" \
             /etc/apparmor.d/local/unprivileged_userns
           sudo apparmor_parser -r /etc/apparmor.d/unprivileged_userns
-          echo "--- the profile the runner will use ---"
-          sudo cat /etc/apparmor.d/unprivileged_userns
+          echo "--- the override that was installed ---"
+          sudo cat /etc/apparmor.d/local/unprivileged_userns
+          echo "--- the COMPILED policy: does it grant mount? ---"
+          sudo aa-decode < /sys/kernel/security/apparmor/policy/unprivileged_userns \
+            2>/dev/null | grep -c "mount" || echo "could not decode"
+          echo "--- the override file's presence ---"
+          sudo ls -l /etc/apparmor.d/local/unprivileged_userns
 
       - name: Probe the mount-propagation strategies
         # The launcher's mount stage must work in the SUPPORTED
