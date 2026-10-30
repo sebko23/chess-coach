@@ -109,6 +109,59 @@ Qdrant sidecar and every other service are unchanged. No host
 **Local non-container execution** does not provide the boundary and must
 fail closed. The launcher reports the failing stage rather than degrading.
 
+### The host AppArmor policy is part of the deployment contract
+
+The seccomp profile governs *which syscalls* the container may call. A
+second, independent confinement governs *whether a permitted syscall is
+allowed in this context*: the host's AppArmor policy.
+
+**Ubuntu 24.04 and later restrict unprivileged user namespaces by
+default.** A process that creates a user namespace transitions into
+AppArmor's `unprivileged_userns` profile, which grants `userns`,
+`network`, `file rwlkm`, `signal`, `dbus`, `unix`, `mqueue` and
+`ptrace` — but **not `mount`**. The launcher's containment sequence
+needs `mount` inside that namespace, so on such a host the launcher
+fails closed at the mount stage with `EACCES`.
+
+This was measured on the GitHub-hosted `ubuntu-latest` runner
+(Ubuntu 24.04.5). **Every** mount variant was refused, including a
+brand-new tmpfs with no inheritance involved:
+
+| Operation | Result on the runner |
+|---|---|
+| `mount("/", MS_REC\|MS_PRIVATE)` | `EACCES` |
+| `mount("/", MS_REC\|MS_SLAVE)` | `EACCES` |
+| `mount("/", MS_BIND)` | `EACCES` |
+| `mount(tmpfs, "/tmp/newroot")` | `EACCES` |
+| `mount("/", MS_REMOUNT\|MS_BIND\|MS_RDONLY)` | `EACCES` |
+
+The same strategies all succeed on a host without the restriction, and
+the effective capability mask inside the new user namespace is fully
+populated in both cases — so the denial is the LSM policy, not the
+kernel capability check.
+
+**Operational requirement.** The supported Linux deployment therefore
+needs a host AppArmor policy that permits `mount` inside an
+unprivileged user namespace. Two ways to satisfy it:
+
+1. Ship the `unprivileged_userns` profile from AppArmor upstream, which
+   grants broad namespace privileges to unprivileged namespace users.
+2. Ship a narrower profile that grants `userns` and `mount` only.
+
+`infra/docker/apparmor-fu20-ci.profile` is the second form, used by the
+`linux-network-isolation` CI job through
+`--security-opt apparmor=...`. It is **not** `flags=(unconfined)`, does
+not disable AppArmor and grants no capability; the container still runs
+as UID 1000 with no host `CAP_SYS_ADMIN`, and the shipped seccomp
+profile still governs which syscalls are permitted at all.
+
+The production Compose deployment does **not** force this profile: the
+host's AppArmor policy is the operator's to configure. A deployment
+whose policy denies `mount` inside an unprivileged user namespace will
+fail closed at the mount stage, and the PDF route will report
+`internal.network_isolation_setup_failed` rather than parse without
+the boundary.
+
 ## 4. The error taxonomy
 
 | Outcome | Condition | HTTP | ADR-0002 code |

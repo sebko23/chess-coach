@@ -60,7 +60,7 @@ abi <abi/4.0>,
 
 include <tunables/global>
 
-profile chess-coach-fu20 flags=(unconfined) {
+profile chess-coach-fu20 {
   userns,
   mount,
 
@@ -73,6 +73,12 @@ profile chess-coach-fu20 flags=(unconfined) {
   allow unix,
   allow mqueue,
   allow ptrace,
+
+  # AppArmor writes the profile into this path when the container is
+  # started. Without it the runtime fails with:
+  #   write fsmount:fscontext:proc/thread-self/attr/apparmor/exec:
+  #   no such file or directory
+  allow file rw /proc/thread-self/attr/apparmor/exec,
 
   include if exists <local/chess-coach-fu20>
 }

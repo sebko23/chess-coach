@@ -333,6 +333,23 @@ jobs:
           done
           docker logs fu20p-srv 2>&1 | head -3
 
+      - name: Install the AppArmor profile on the runner
+        # Docker does NOT load a custom AppArmor profile into the
+        # kernel -- the profile must already be present, or the
+        # container fails to start with:
+        #   unable to apply apparmor profile: apparmor failed to apply
+        #   profile: write fsmount:fscontext:proc/thread-self/attr/
+        #   apparmor/exec: no such file or directory
+        #
+        # Ubuntu 24.04's `unprivileged_userns` profile grants `userns`
+        # but NOT `mount`, which is what the launcher's containment
+        # sequence needs. This profile grants both. It is loaded into
+        # the kernel here, on the CI host only.
+        run: |
+          sudo cp "$PWD/infra/docker/apparmor-fu20-ci.profile" /etc/apparmor.d/chess-coach-fu20
+          sudo apparmor_parser -r -W /etc/apparmor.d/chess-coach-fu20
+          sudo aa-status | grep -i "chess-coach-fu20" || echo "profile not listed"
+
       - name: Probe the mount-propagation strategies
         # The launcher's mount stage must work in the SUPPORTED
         # deployment. The runner and a developer machine differ, so
@@ -347,7 +364,7 @@ jobs:
               --security-opt "apparmor=$PWD/infra/docker/apparmor-fu20-ci.profile" \
               -v "$PWD/scripts/dev:/probe:ro" \
               --entrypoint python3 chess-coach-backend:fu20 \
-              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:" || true
+              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=" || true
           done
 
       - name: Run the restricted-versus-unrestricted proof
