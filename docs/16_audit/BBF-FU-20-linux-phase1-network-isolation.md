@@ -148,7 +148,7 @@ a **controlled reachable endpoint** (a real TCP + UDP echo server).
 | `unshare(CLONE_NEWUSER\|CLONE_NEWNET\|CLONE_NEWNS)` | `rc=0` |
 | Host `CapEff` | `0000000000000000` (no host `CAP_SYS_ADMIN`) |
 | Identity after mapping | `uid=1000 gid=1000` (preserved) |
-| Capabilities in the new user namespace | `000001ffffffffff` (confined) |
+| Capabilities in the new user namespace | `0x000001ffffffffff` (confined) |
 | Mount propagation private | `rc=0` |
 | Root remounted read-only | `rc=0`; ordinary root write → `EROFS` |
 | Artifact path | writable |

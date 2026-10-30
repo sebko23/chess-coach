@@ -89,6 +89,36 @@ def _caps() -> str:
     return "unknown"
 
 
+def _apparmor_status() -> str:
+    """The AppArmor status of this process, for diagnostics.
+
+    GitHub's hosted runners ship an AppArmor profile that can deny
+    `mount` inside an unprivileged user namespace even when the kernel
+    capability check would pass. The status file names the profile so a
+    CI log shows which LSM, if any, is in force.
+    """
+    try:
+        with open("/proc/self/attr/current", encoding="utf-8") as handle:
+            value = handle.read().strip()
+        if value and value != "unconfined":
+            return value
+        return "unconfined"
+    except OSError:
+        return "unknown"
+
+
+def _security_opts() -> str:
+    """The container's security options, for diagnostics."""
+    parts = []
+    for path, label in (("/proc/self/attr/current", "apparmor"),):
+        try:
+            with open(path, encoding="utf-8") as handle:
+                parts.append(f"{label}={handle.read().strip()}")
+        except OSError:
+            parts.append(f"{label}=unavailable")
+    return " ".join(parts)
+
+
 def _report(stage: str, rc: int) -> bool:
     err = ctypes.get_errno()
     name = _errno.errorcode.get(err, str(err)) if err else ""
@@ -203,6 +233,28 @@ def strategy_remount_ro(lib: ctypes.CDLL) -> bool:
     return _report("mount(/, MS_REMOUNT|MS_BIND|MS_RDONLY)", rc)
 
 
+def strategy_no_userns(lib: ctypes.CDLL) -> bool:
+    """Can mount() be called WITHOUT a user namespace?
+
+    This is the control that separates the two possible causes. If
+    mount() fails here too, the environment's LSM (or seccomp) denies
+    mount outright. If it succeeds, the denial is specific to mounts
+    performed inside an unprivileged user namespace.
+    """
+    return _report(
+        "mount(tmpfs, /tmp/probe-root) WITHOUT a userns",
+        _mount(lib, b"tmpfs", b"/tmp/probe-root", 0),
+    )
+
+
+def strategy_no_userns_remount(lib: ctypes.CDLL) -> bool:
+    """Can the root be remounted read-only WITHOUT a user namespace?"""
+    return _report(
+        "mount(/, MS_REMOUNT|MS_BIND|MS_RDONLY) WITHOUT a userns",
+        _mount(lib, b"none", b"/", MS_REMOUNT | MS_BIND | MS_RDONLY),
+    )
+
+
 STRATEGIES = {
     "private": strategy_private,
     "slave": strategy_slave,
@@ -210,6 +262,8 @@ STRATEGIES = {
     "separate_mountns": strategy_separate_mountns,
     "tmpfs_root": strategy_tmpfs_root,
     "remount_ro": strategy_remount_ro,
+    "no_userns": strategy_no_userns,
+    "no_userns_remount": strategy_no_userns_remount,
 }
 
 
@@ -224,6 +278,7 @@ def main() -> int:
         return 2
     print(f"=== strategy: {name} ===", flush=True)
     print(f"  before: caps={_caps()} propagation(/)={_propagation('/')}", flush=True)
+    print(f"  lsm: {_security_opts()}", flush=True)
     lib = _libc()
     ok = STRATEGIES[name](lib)
     print(f"=== {name}: {'SUCCESS' if ok else 'FAILED'} ===", flush=True)
