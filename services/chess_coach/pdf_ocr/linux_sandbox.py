@@ -151,7 +151,7 @@ def _unshare(lib: ctypes.CDLL) -> None:
     ctypes.set_errno(0)
     rc = lib.unshare(SANDBOX_CLONE_FLAGS)
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "namespace_creation",
             "could not create the sandbox namespace",
@@ -261,7 +261,7 @@ def _mount_fresh_root(lib: ctypes.CDLL, root: Path) -> None:
         None,
     )
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "mount_new_root",
             "could not mount the sandbox root",
@@ -335,7 +335,7 @@ def _reconstruct_root(lib: ctypes.CDLL, root: Path, skip: str) -> None:
             source.encode(), str(target).encode(), None, MS_BIND | MS_REC, None
         )
         if rc != 0:
-            err = ctypes.get_errno()
+            err = ctypes.get_errno() or 0
             raise _fail(
                 "mount_reconstruct_root",
                 "could not bind a root entry into the sandbox root",
@@ -357,7 +357,7 @@ def _bind_artifact_writable(lib: ctypes.CDLL, source: Path, target: Path) -> Non
     ctypes.set_errno(0)
     rc = lib.mount(source_b, target_b, None, MS_BIND, None)
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "mount_artifact_bind",
             "could not bind-mount the artifact directory",
@@ -368,7 +368,7 @@ def _bind_artifact_writable(lib: ctypes.CDLL, source: Path, target: Path) -> Non
     ctypes.set_errno(0)
     rc = lib.mount(b"none", target_b, None, MS_REMOUNT | MS_BIND, None)
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "mount_artifact_writable",
             "could not make the artifact directory writable",
@@ -394,7 +394,7 @@ def _pivot_into(lib: ctypes.CDLL, root: Path) -> None:
     ctypes.set_errno(0)
     rc = libc.pivot_root(str(root).encode(), str(old).encode())
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "pivot_root",
             "could not pivot into the sandbox root",
@@ -413,7 +413,7 @@ def _detach_old_root(lib: ctypes.CDLL) -> None:
     ctypes.set_errno(0)
     rc = lib.umount2(b"/oldroot", MNT_DETACH)
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "pivot_root",
             "could not detach the old root",
@@ -439,7 +439,7 @@ def _remount_tree_read_only(lib: ctypes.CDLL, writable: Path | None = None) -> N
     ctypes.set_errno(0)
     rc = lib.mount(b"none", b"/", None, MS_REMOUNT | MS_BIND | MS_RDONLY, None)
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "mount_root_read_only",
             "could not remount the root filesystem read-only",
@@ -478,12 +478,12 @@ def _remount_tree_read_only(lib: ctypes.CDLL, writable: Path | None = None) -> N
         )
         if rc == 0:
             continue
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         if err == errno.EPERM:
             ctypes.set_errno(0)
             detach_rc = lib.umount2(target.encode(), MNT_DETACH)
             if detach_rc != 0:
-                detach_err = ctypes.get_errno()
+                detach_err = ctypes.get_errno() or 0
                 raise _fail(
                     "mount_root_read_only",
                     "could not detach a locked root entry",
@@ -505,7 +505,7 @@ def _private_mount_propagation(lib: ctypes.CDLL) -> None:
     ctypes.set_errno(0)
     rc = lib.mount(b"none", b"/", None, MS_REC | MS_PRIVATE, None)
     if rc != 0:
-        err = ctypes.get_errno()
+        err = ctypes.get_errno() or 0
         raise _fail(
             "mount_private_propagation",
             "could not make mount propagation private",
