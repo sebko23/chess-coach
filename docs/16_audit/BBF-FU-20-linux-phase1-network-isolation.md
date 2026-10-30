@@ -318,3 +318,40 @@ any kind is implemented here.
    contract; the CI job covers descendants and inherited-socket
    non-bypass, and the escape attempt is recorded as an explicit
    not-established item rather than assumed.
+
+## 9. The release-scope closure (2026-10-30)
+
+FU-20 is **RESOLVED for the named release scope**: A-F11 property 2 for
+the current release — Linux PDF parsing runs with **no network access,
+enforced fail closed**, and Windows PDF parsing is **explicitly refused**
+because no network-isolation boundary is proven there.
+
+The closure rests on the production-container CI proof
+(`linux-network-isolation` job), measured against the shipped seccomp
+profile and the shipped AppArmor profile at UID 1000:
+
+| Property | Measured |
+|---|---|
+| Unrestricted control | **connects** — the denial result is valid only because the control connected |
+| Restricted parser | **denied** — TCP, UDP, the DNS query, the child and the grandchild all `ENETUNREACH` |
+| Setup status | `"OK"` — every containment stage completed before the parser was executed |
+| Namespace identity | `/proc/self/ns/net` differs from the gateway's |
+| Interfaces | loopback only — no `eth0` |
+| Identity | uid 1000 preserved |
+| Root filesystem | read-only (`EROFS`), artifact path writable |
+| Memory cap | 2 GiB `RLIMIT_AS` applied before exec |
+| Launcher unit suite in the container | **22 passed, 0 skipped** |
+
+The error taxonomy stays distinct, as the directive required: the Windows
+refusal is a **platform-capability** boundary (HTTP **501**,
+`internal.not_implemented`) and a Linux containment setup failure is a
+**deployment/runtime** failure (HTTP **500**,
+`internal.network_isolation_setup_failed`) that names the failing stage.
+
+**Deliberately not closed by this record.** Windows network isolation
+(AppContainer with the no-internet-client capability) remains a
+**separately approved follow-up**; Windows PDF parsing is *refused*, not
+isolated. The namespace-escape-resistance measurement remains an explicit
+not-established item (section 8). FU-21's and FU-22's statuses are
+unchanged, and the original FU-20 entry and the PR #163/#164 history are
+preserved as labelled history.
