@@ -187,6 +187,32 @@ def _map_identity(uid: int, gid: int) -> None:
     _write_map("/proc/self/gid_map", f"{gid} {gid} 1\n", "gid_map")
 
 
+def _mount_propagation_state(path: str = "/") -> str:
+    """Describe the propagation state of a mount, for diagnostics.
+
+    The launcher's setup errors travel on the status channel, so the
+    reason a mount stage failed must be recoverable from a CI log
+    without a shell in the sandbox.
+    """
+    try:
+        with open("/proc/self/mountinfo", encoding="utf-8") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) < 6:
+                    continue
+                mount_point = parts[4]
+                if mount_point != path:
+                    continue
+                optional = parts[6] if len(parts) > 6 else ""
+                known = {"shared", "master", "private", "slave", "unbindable"}
+                flags = [f for f in optional.split(",") if f in known]
+                state = "|".join(flags) if flags else "no-propagation-flag"
+                return f"{path} {state} {parts[2]}"
+    except OSError:
+        pass
+    return f"{path} unknown"
+
+
 def _private_mount_propagation(lib: ctypes.CDLL) -> None:
     ctypes.set_errno(0)
     rc = lib.mount(b"none", b"/", None, MS_REC | MS_PRIVATE, None)
@@ -197,7 +223,21 @@ def _private_mount_propagation(lib: ctypes.CDLL) -> None:
             "could not make mount propagation private",
             errno=err,
             errno_name=errno.errorcode.get(err, str(err)),
+            propagation=_mount_propagation_state("/"),
+            caps=_effective_capabilities(),
         )
+
+
+def _effective_capabilities() -> str:
+    """The effective capability mask, for diagnostics."""
+    try:
+        with open("/proc/self/status", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("CapEff:"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return "unknown"
 
 
 def _remount_root_read_only(lib: ctypes.CDLL) -> None:
@@ -448,8 +488,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             preserve_fds=frozenset({status_fd}),
         )
     except NetworkIsolationSetupError as exc:
+        # The diagnostic details travel with the status line: a setup
+        # failure that only says "could not make mount propagation
+        # private" is not diagnosable from a CI log.
+        #
+        # The format is `SETUP_FAILURE <stage>\x00<message> [details]`.
+        # The `\x00` separator is what the gateway parses to recover the
+        # failing stage, so it must be preserved exactly; the optional
+        # diagnostics go AFTER the message and are part of it.
+        detail = exc.details.get("errno_name") or exc.details.get("errno")
+        extra = {
+            key: value
+            for key, value in exc.details.items()
+            if key not in {"errno", "errno_name"} and value is not None
+        }
+        message = exc.message
+        if detail:
+            message = f"{message} [{detail}]"
+        for key, value in extra.items():
+            message = f"{message} {key}={value}"
         _write_status(
-            status_fd, f"{STATUS_SETUP_FAILURE} {exc.stage}\x00{exc.message}"
+            status_fd,
+            f"{STATUS_SETUP_FAILURE} {exc.stage}\x00{message}",
         )
         return SETUP_FAILURE_EXIT
     except BaseException as exc:  # noqa: BLE001

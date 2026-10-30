@@ -84,6 +84,72 @@ requires_namespace = pytest.mark.skipif(
 # --------------------------------------------------------------------------
 # The error taxonomy
 # --------------------------------------------------------------------------
+def _namespace_capable() -> tuple[bool, str]:
+    """Can THIS environment create the sandbox namespace?
+
+    The launcher needs an unprivileged user namespace. A plain CI
+    runner does not provide one: Docker's default seccomp profile
+    blocks ``unshare(CLONE_NEWUSER)`` without ``CAP_SYS_ADMIN``, and
+    the launcher then correctly fails closed.
+
+    The environment-dependent assertions are therefore gated on this
+    probe. The functional proof runs in the production container with
+    the shipped seccomp profile, where the namespace IS available
+    (the ``linux-network-isolation`` CI job).
+
+    Returns ``(capable, reason)``.
+    """
+    if sys.platform == "win32":
+        return False, "Windows has no Linux user namespaces"
+    probe = (
+        "import ctypes, ctypes.util, os, sys\n"
+        "libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)\n"
+        "libc.unshare.argtypes = [ctypes.c_int]\n"
+        "libc.unshare.restype = ctypes.c_int\n"
+        "ctypes.set_errno(0)\n"
+        "rc = libc.unshare(0x10000000)\n"
+        "if rc != 0:\n"
+        "    print('unshare failed: errno=%d' % ctypes.get_errno())\n"
+        "    sys.exit(1)\n"
+        "try:\n"
+        "    with open('/proc/self/setgroups', 'w') as h:\n"
+        "        h.write('deny')\n"
+        "    uid = os.getuid()\n"
+        "    with open('/proc/self/uid_map', 'w') as h:\n"
+        "        h.write('%d %d 1\\n' % (uid, uid))\n"
+        "except OSError as e:\n"
+        "    print('map failed: %s' % e)\n"
+        "    sys.exit(1)\n"
+        "print('ok')\n"
+    )
+    cp = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if cp.returncode != 0:
+        detail = (cp.stdout or cp.stderr or "").strip().splitlines()
+        reason = detail[-1] if detail else "unknown"
+        return False, reason
+    return True, "ok"
+
+
+_NAMESPACE_CAPABLE, _NAMESPACE_REASON = _namespace_capable()
+
+requires_namespace = pytest.mark.skipif(
+    not _NAMESPACE_CAPABLE,
+    reason=(
+        "this environment cannot create an unprivileged user namespace "
+        f"({_NAMESPACE_REASON}). Docker's default seccomp profile blocks "
+        "unshare(CLONE_NEWUSER) without CAP_SYS_ADMIN, so the launcher "
+        "correctly fails closed here. The functional proof runs in the "
+        "production container with the shipped seccomp profile, driven by "
+        "the `linux-network-isolation` CI job."
+    ),
+)
+
+
 def test_setup_error_carries_the_failing_stage() -> None:
     """A setup failure names the exact stage that failed."""
     err = NetworkIsolationSetupError("boom", stage="mount_root_read_only")
@@ -397,6 +463,7 @@ def test_non_standard_descriptors_are_closed() -> None:
 # The memory cap
 # --------------------------------------------------------------------------
 @requires_namespace
+@requires_namespace
 def test_memory_cap_is_applied_inside_the_namespace(tmp_path: Path) -> None:
     """The 2 GiB RLIMIT_AS is in force after the setup completes.
 
@@ -435,6 +502,7 @@ def test_memory_cap_is_applied_inside_the_namespace(tmp_path: Path) -> None:
 
 
 @requires_namespace
+@requires_namespace
 def test_the_namespace_has_no_usable_interface(tmp_path: Path) -> None:
     """The new network namespace exposes loopback only."""
     probe = (
@@ -470,6 +538,7 @@ def test_the_namespace_has_no_usable_interface(tmp_path: Path) -> None:
     assert data["uid"] == os.getuid()
 
 
+@requires_namespace
 @requires_namespace
 def test_root_filesystem_is_read_only_and_artifact_is_writable(
     tmp_path: Path,
