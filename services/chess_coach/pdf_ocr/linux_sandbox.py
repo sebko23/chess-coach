@@ -232,7 +232,7 @@ def _new_root_dir(base: Path) -> Path:
             "mount_new_root",
             "could not create the sandbox root mountpoint",
             errno=exc.errno,
-            errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+            errno_name=errno.errorcode.get(exc.errno or 0, str(exc.errno)),
             path=str(root),
         ) from exc
     return root
@@ -280,7 +280,7 @@ def _make_mountpoint(path: Path) -> None:
             "mount_artifact_bind",
             "could not create the artifact mountpoint",
             errno=exc.errno,
-            errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+            errno_name=errno.errorcode.get(exc.errno or 0, str(exc.errno)),
             path=str(path),
         ) from exc
 
@@ -308,7 +308,7 @@ def _reconstruct_root(lib: ctypes.CDLL, root: Path, skip: str) -> None:
             "mount_reconstruct_root",
             "could not read the root directory",
             errno=exc.errno,
-            errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+            errno_name=errno.errorcode.get(exc.errno or 0, str(exc.errno)),
         ) from exc
     for name in entries:
         if name == skip:
@@ -327,7 +327,7 @@ def _reconstruct_root(lib: ctypes.CDLL, root: Path, skip: str) -> None:
                     "mount_reconstruct_root",
                     "could not create a root file mountpoint",
                     errno=exc.errno,
-                    errno_name=errno.errorcode.get(exc.errno, str(exc.errno)),
+                    errno_name=errno.errorcode.get(exc.errno or 0, str(exc.errno)),
                     path=str(target),
                 ) from exc
         ctypes.set_errno(0)

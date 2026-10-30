@@ -434,6 +434,34 @@ def strategy_ns_owners(lib: ctypes.CDLL) -> bool:
     return True
 
 
+def strategy_kernel(lib: ctypes.CDLL) -> bool:
+    """Report the kernel version and the user-namespace knobs.
+
+    An unprivileged user namespace is only usable when the kernel
+    permits it: `kernel.unprivileged_userns_clone` on the older
+    kernels, and `user.max_user_namespaces` on all of them. The
+    runner and a developer machine run different kernels, and the
+    difference decides whether the mount is permitted.
+    """
+    try:
+        with open("/proc/sys/kernel/osrelease", encoding="utf-8") as handle:
+            print(f"  kernel: {handle.read().strip()}", flush=True)
+    except OSError:
+        print("  kernel: unknown", flush=True)
+    for knob in (
+        "/proc/sys/kernel/unprivileged_userns_clone",
+        "/proc/sys/user/max_user_namespaces",
+        "/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
+        "/proc/sys/user/max_mnt_namespaces",
+    ):
+        try:
+            with open(knob, encoding="utf-8") as handle:
+                print(f"  {knob} = {handle.read().strip()}", flush=True)
+        except OSError:
+            print(f"  {knob} = unavailable", flush=True)
+    return True
+
+
 STRATEGIES = {
     "private": strategy_private,
     "slave": strategy_slave,
@@ -447,6 +475,7 @@ STRATEGIES = {
     "cap_status": strategy_cap_status,
     "complain_mode": strategy_complain_mode,
     "ns_owners": strategy_ns_owners,
+    "kernel": strategy_kernel,
 }
 
 
