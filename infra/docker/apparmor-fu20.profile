@@ -81,6 +81,12 @@ profile chess-coach-fu20 flags=(attach_disconnected,mediate_deleted) {
   deny @{PROC}/kcore rwklx,
 
   allow mount,
+  # AppArmor checks `pivot_root` as a SEPARATE permission from
+  # `mount`: the launcher pivots into the root it built, and the
+  # denial is reported as
+  #   apparmor="DENIED" operation="pivotroot" class="mount"
+  # even though the class is `mount`.
+  allow pivot_root,
 
   deny /sys/[^f]*/** wklx,
   deny /sys/f[^s]*/** wklx,
