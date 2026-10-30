@@ -49,17 +49,37 @@ def _unshare_available() -> bool:
     """Can this host create an unprivileged user namespace?"""
     if sys.platform == "win32":
         return False
+    # The probe is a standalone script: it must read the uid BEFORE
+    # the unshare, because once the user namespace exists the map is
+    # empty and os.getuid() returns the overflow uid (65534), which
+    # the kernel rejects as a mapping target. It must also unshare the
+    # same three namespaces the launcher does, because the shipped
+    # seccomp profile permits exactly that combination and not a bare
+    # CLONE_NEWUSER -- probing with the bare flag would report a false
+    # negative in the very environment the tests are meant to run in.
     probe = (
         "import ctypes, ctypes.util, os, sys\n"
         "libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)\n"
         "libc.unshare.argtypes = [ctypes.c_int]\n"
         "libc.unshare.restype = ctypes.c_int\n"
-        "pid = os.fork()\n"
-        "if pid == 0:\n"
-        "    rc = libc.unshare(0x10000000)\n"
-        "    os._exit(0 if rc == 0 else 1)\n"
-        "_, st = os.waitpid(pid, 0)\n"
-        "sys.exit(0 if os.WIFEXITED(st) and os.WEXITSTATUS(st) == 0 else 1)\n"
+        "uid = os.getuid()\n"
+        "gid = os.getgid()\n"
+        "ctypes.set_errno(0)\n"
+        "rc = libc.unshare(0x10000000 | 0x40000000 | 0x00020000)\n"
+        "if rc != 0:\n"
+        "    print('unshare failed: errno=%d' % ctypes.get_errno())\n"
+        "    sys.exit(1)\n"
+        "try:\n"
+        "    with open('/proc/self/setgroups', 'w') as h:\n"
+        "        h.write('deny')\n"
+        "    with open('/proc/self/uid_map', 'w') as h:\n"
+        "        h.write('%d %d 1\\n' % (uid, uid))\n"
+        "    with open('/proc/self/gid_map', 'w') as h:\n"
+        "        h.write('%d %d 1\\n' % (gid, gid))\n"
+        "except OSError as e:\n"
+        "    print('map failed: %s' % e)\n"
+        "    sys.exit(1)\n"
+        "print('ok')\n"
     )
     try:
         cp = subprocess.run(
@@ -108,16 +128,22 @@ def _namespace_capable() -> tuple[bool, str]:
     """
     if sys.platform == "win32":
         return False, "Windows has no Linux user namespaces"
+    # The probe is a standalone script: it must read the uid BEFORE
+    # the unshare, because once the user namespace exists the map is
+    # empty and os.getuid() returns the overflow uid (65534), which
+    # the kernel rejects as a mapping target. It must also unshare the
+    # same three namespaces the launcher does, because the shipped
+    # seccomp profile permits exactly that combination and not a bare
+    # CLONE_NEWUSER -- probing with the bare flag would report a false
+    # negative in the very environment the tests are meant to run in.
     probe = (
         "import ctypes, ctypes.util, os, sys\n"
         "libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)\n"
         "libc.unshare.argtypes = [ctypes.c_int]\n"
         "libc.unshare.restype = ctypes.c_int\n"
+        "uid = os.getuid()\n"
+        "gid = os.getgid()\n"
         "ctypes.set_errno(0)\n"
-        # The launcher unshares the three namespaces TOGETHER, and the\n"
-        "        # shipped seccomp profile permits exactly that combination.\n"
-        "        # A bare CLONE_NEWUSER is NOT permitted by that profile, so\n"
-        "        # probing with it would report a false negative.\n"
         "rc = libc.unshare(0x10000000 | 0x40000000 | 0x00020000)\n"
         "if rc != 0:\n"
         "    print('unshare failed: errno=%d' % ctypes.get_errno())\n"
@@ -125,9 +151,10 @@ def _namespace_capable() -> tuple[bool, str]:
         "try:\n"
         "    with open('/proc/self/setgroups', 'w') as h:\n"
         "        h.write('deny')\n"
-        "    uid = os.getuid()\n"
         "    with open('/proc/self/uid_map', 'w') as h:\n"
         "        h.write('%d %d 1\\n' % (uid, uid))\n"
+        "    with open('/proc/self/gid_map', 'w') as h:\n"
+        "        h.write('%d %d 1\\n' % (gid, gid))\n"
         "except OSError as e:\n"
         "    print('map failed: %s' % e)\n"
         "    sys.exit(1)\n"
