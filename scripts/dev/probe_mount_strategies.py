@@ -52,9 +52,15 @@ def _libc() -> ctypes.CDLL:
     return lib
 
 
-def _mount(lib: ctypes.CDLL, source: bytes, target: bytes, flags: int) -> int:
+def _mount(
+    lib: ctypes.CDLL,
+    source: bytes | None,
+    target: bytes,
+    flags: int,
+    fstype: bytes | None = None,
+) -> int:
     ctypes.set_errno(0)
-    rc = lib.mount(source, target, None, flags, None)
+    rc = lib.mount(source, target, fstype, flags, None)
     return rc
 
 
@@ -204,15 +210,32 @@ def strategy_tmpfs_root(lib: ctypes.CDLL) -> bool:
     """
     if not _enter_userns(lib):
         return False
-    if not _report("mount(tmpfs, /newroot)", _mount(lib, b"tmpfs", b"/newroot", 0)):
+    # The mountpoint must exist before the mount, and the container's
+    # root filesystem may be read-only, so it is created under /tmp.
+    newroot = "/tmp/newroot"  # noqa: S108 -- a mountpoint, not a data file
+    try:
+        os.makedirs(f"{newroot}/oldroot", exist_ok=True)
+    except OSError as exc:
+        print(f"  mkdir {newroot}: FAILED {exc}", flush=True)
         return False
-    os.makedirs("/newroot/oldroot", exist_ok=True)
+    if not _report(
+        f"mount(tmpfs, {newroot})",
+        _mount(lib, None, newroot.encode(), 0, fstype=b"tmpfs"),
+    ):
+        return False
+    # After the tmpfs mount the new root is EMPTY, so the "put_old"
+    # directory has to be created INSIDE it.
+    try:
+        os.makedirs(f"{newroot}/oldroot", exist_ok=True)
+    except OSError as exc:
+        print(f"  mkdir {newroot}/oldroot: FAILED {exc}", flush=True)
+        return False
     # pivot_root(new_root, put_old)
     libc = _libc()
     libc.pivot_root.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
     libc.pivot_root.restype = ctypes.c_int
     ctypes.set_errno(0)
-    rc = libc.pivot_root(b"/newroot", b"/newroot/oldroot")
+    rc = libc.pivot_root(newroot.encode(), f"{newroot}/oldroot".encode())
     if rc != 0:
         return _report("pivot_root", rc)
     os.chdir("/")
