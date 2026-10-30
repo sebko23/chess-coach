@@ -115,116 +115,59 @@ The seccomp profile governs *which syscalls* the container may call. A
 second, independent confinement governs *whether a permitted syscall is
 allowed in this context*: the host's AppArmor policy.
 
-**Ubuntu 24.04 and later restrict unprivileged user namespaces by
-default.** A process that creates a user namespace transitions into
-AppArmor's `unprivileged_userns` profile, which grants `userns`,
-`network`, `file rwlkm`, `signal`, `dbus`, `unix`, `mqueue` and
-`ptrace` — but **not `mount`**. The launcher's containment sequence
-needs `mount` inside that namespace, so on such a host the launcher
-fails closed at the mount stage with `EACCES`.
+**Moby v26.1.4's own `docker-default` AppArmor profile — the profile
+every container runs under when AppArmor is enabled on the host —
+contains `deny mount,`.** That rule is a plain `deny`, **not** an
+`audit deny`, so it produces **no** entry in the kernel's audit log: the
+denial is silent. It also outranks any `allow mount` elsewhere in the
+profile.
 
-This was measured on the GitHub-hosted `ubuntu-latest` runner
-(Ubuntu 24.04.5). **Every** mount variant was refused, including a
-brand-new tmpfs with no inheritance involved:
+The consequence for FU-20: the launcher's containment sequence builds
+its own root by mounting a fresh tmpfs, and under `docker-default` the
+container cannot mount at all. The launcher fails closed at the
+`mount_new_root` stage with `EACCES`. **This is not a runner quirk** —
+it applies to every AppArmor-enabled Docker host, which includes the
+supported production deployment.
 
-| Operation | Result on the runner |
-|---|---|
-| `mount("/", MS_REC\|MS_PRIVATE)` | `EACCES` |
-| `mount("/", MS_REC\|MS_SLAVE)` | `EACCES` |
-| `mount("/", MS_BIND)` | `EACCES` |
-| `mount(tmpfs, "/tmp/newroot")` | `EACCES` |
-| `mount("/", MS_REMOUNT\|MS_BIND\|MS_RDONLY)` | `EACCES` |
+`infra/docker/apparmor-fu20.profile` is Moby's own `docker-default` for
+the pinned version — the same version the seccomp profile is derived
+from — with **three** changes and nothing else:
 
-The same strategies all succeed on a host without the restriction.
+| # | Change | Why |
+|---|---|---|
+| 1 | profile renamed to `chess-coach-fu20` | the host's `docker-default` is left untouched and every other container on the host is unaffected |
+| 2 | `deny mount,` → `allow mount,` | the launcher builds its own root |
+| 3 | `allow pivot_root,` added | AppArmor checks `pivot_root` as a **separate** permission from `mount` |
 
-**The denial is the kernel's mount-namespace rule, not the LSM and not
-a missing capability.** Three measurements establish this:
+Every other rule — the `@{PROC}` write denials, the `/sys` exec denials,
+the `ptrace` scoping, the `signal` peer rules — is byte-for-byte
+Moby's. The profile parses cleanly with the real AppArmor parser.
 
-* The AppArmor `DENIED` audit log is **empty** for the denial. A denial
-  by AppArmor always produces an `apparmor="DENIED"` record, so the
-  LSM is not the denyer.
-* The container runs under `docker-default (enforce)`, and the
-  capability sets are **identical** on the runner and on a working
-  machine: `CapPrm` and `CapEff` both become the full
-  `0x000001ffffffffff` after the unshare, `CapBnd` likewise, and
-  `Seccomp: 2` (filter mode) in both.
-* The mount that the launcher operates on is **inherited** from the
-  container's parent mount namespace. A mount inherited into a new
-  mount namespace is *locked* when the creating process lacked
-  `CAP_SYS_ADMIN` in the namespace that owns it. A locked mount cannot
-  have its propagation changed, and the kernel refuses the operation
-  with `EACCES`.
+`scripts/dev/install_fu20_apparmor_profile.sh` installs it, and the CI
+job attaches it to this job's containers with
+`--security-opt apparmor=chess-coach-fu20`. The container still runs as
+UID 1000 with no host `CAP_SYS_ADMIN`, and the shipped seccomp profile
+still governs which syscalls are permitted.
 
-The AppArmor question is closed by two further measurements:
+**The operator-facing requirement:** the container's AppArmor profile
+must permit `mount` and `pivot_root`. A host whose policy denies them
+fails closed at the mount stage with
+`internal.network_isolation_setup_failed` rather than parsing without
+the boundary. That is the intended behaviour.
 
-* The profile **after** the unshare is still `docker-default (enforce)`.
-  On Ubuntu 24.04 a process that creates a user namespace is expected
-  to transition into `unprivileged_userns`, but that transition does not
-  happen here — the container's own profile governs the mount.
-* The AppArmor audit log contains **only `STATUS` records** (profile
-  loads and replaces) and **no `DENIED` record at all**. AppArmor never
-  denied the mount.
+#### How the cause was established
 
-So the LSM is not the denyer, and neither is a missing capability. The
-denial is the **kernel's mount-namespace rule**: a mount inherited into a
-user-namespace-owned mount namespace is locked, and a locked mount's
-propagation cannot be changed.
+Three earlier attributions were measured and **refuted** before the real
+one was found. The measurements that closed it:
 
-### The launcher does not depend on the inherited root
+| Measurement | Result | What it ruled out |
+|---|---|---|
+| AppArmor `DENIED` audit records | **none** | the LSM was not denying anything (a plain `deny` is not audited) |
+| Profile after the unshare | `docker-default (enforce)` | the `unprivileged_userns` transition profile was not the denier |
+| Capability sets (`CapPrm`/`CapEff`/`CapBnd`), `Seccomp`, namespace-ownership | **identical** to a machine where the mount works | not a missing capability, not the PID-namespace-ownership rule |
+| Kernel | `7.0.0-1017-azure`, `apparmor_restrict_unprivileged_userns = 1` | — (a developer kernel has no such knob, which is why it works locally) |
+| Moby v26.1.4 `profiles/apparmor/template.go` | contains `deny mount,` | **this is the cause** |
 
-The original design operated on the container's inherited root, which
-is exactly the mount that may be locked. The launcher now **builds its
-own root** instead:
-
-1. Mount a fresh tmpfs as the sandbox root. It is created inside the
-   launcher's own user and mount namespace, so it is never inherited
-   and never locked.
-2. Recursively bind each top-level entry of the old root into it, so
-   the parser finds the absolute paths it expects
-   (`/usr/local/bin/pdftoppm`, the shared libraries, `/etc/ld.so.cache`).
-3. Bind the artifact path at its **original** absolute path inside the
-   new root, so the parser's argv still resolves after the pivot.
-4. `pivot_root` into the new root and detach the old one: the sandbox
-   has no path back to the host filesystem.
-5. Make the new root's propagation private, then remount the whole
-   tree read-only **except** the artifact path. A mount still locked
-   from the container runtime (`/dev`) is **detached** rather than
-   remounted — the sandbox does not need the host's device nodes, and
-   leaving them reachable would be exactly the exposure the sandbox
-   exists to prevent.
-6. Descriptor hygiene, the 2 GiB `RLIMIT_AS`, then exec.
-
-`/proc` is one of the bound entries, so the parser sees the same
-`/proc` the container provides, showing the sandbox's own pidns and
-netns. Its submounts are locked and cannot be remounted read-only, so
-they are left as the container runtime provides them — the same
-behaviour the original design had.
-
-This removes the dependency on the inherited root entirely: the
-containment sequence no longer requires the host to let a
-user-namespace process modify the mounts it inherits.
-
-**Operational requirement.** The supported Linux deployment therefore
-needs a host AppArmor policy that permits `mount` inside an
-unprivileged user namespace. Two ways to satisfy it:
-
-1. Ship the `unprivileged_userns` profile from AppArmor upstream, which
-   grants broad namespace privileges to unprivileged namespace users.
-2. Ship a narrower profile that grants `userns` and `mount` only.
-
-`infra/docker/apparmor-fu20-ci.profile` is the second form, used by the
-`linux-network-isolation` CI job through
-`--security-opt apparmor=...`. It is **not** `flags=(unconfined)`, does
-not disable AppArmor and grants no capability; the container still runs
-as UID 1000 with no host `CAP_SYS_ADMIN`, and the shipped seccomp
-profile still governs which syscalls are permitted at all.
-
-The production Compose deployment does **not** force this profile: the
-host's AppArmor policy is the operator's to configure. A deployment
-whose policy denies `mount` inside an unprivileged user namespace will
-fail closed at the mount stage, and the PDF route will report
-`internal.network_isolation_setup_failed` rather than parse without
-the boundary.
 
 ## 4. The error taxonomy
 
