@@ -337,13 +337,13 @@ any kind is implemented here.
 
 ## 9. The release-scope closure (2026-10-30)
 
-> **Publication is staged.** The escape-resistance proof was implemented
-> after the first closure commit, so the remote head carried a closure
-> that rested on an unproven property. The live FU-20 status was
-> restored to `PARTIALLY RESOLVED` in the correction push, and the
-> release-scope closure is re-applied **only** after the correction
-> push's CI is green. The closure below describes what the evidence
-> supports once that green run exists.
+> **Publication was staged, and the staging is complete.** The
+> escape-resistance proof was implemented after the first closure
+> commit, so the remote head carried a closure that rested on an
+> unproven property. The live FU-20 status was restored to
+> `PARTIALLY RESOLVED` in the correction push; that push's CI went
+> green; and the closure below is re-applied on the strength of that
+> green run.
 
 FU-20 is **RESOLVED for the named release scope**: A-F11 property 2 for
 the current release — Linux PDF parsing runs with **no network access,
