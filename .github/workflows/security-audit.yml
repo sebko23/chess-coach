@@ -285,3 +285,152 @@ jobs:
         # to users and auditing them would surface noise.
         working-directory: apps/desktop
         run: pnpm audit --audit-level moderate --prod
+
+  # BBF-FU-20-linux-phase1-network-isolation: the A-F11 property-2
+  # (no network access) proof. This job runs the PRODUCTION container
+  # image with the SHIPPED narrow seccomp profile and the deployment's
+  # non-root identity (UID 1000, no host CAP_SYS_ADMIN, not privileged).
+  #
+  # It runs BOTH an unrestricted control and the launcher-restricted
+  # parser against the SAME controlled endpoint. The control MUST
+  # connect; if it does not, the job fails and the restricted result
+  # proves nothing.
+  linux-network-isolation:
+    name: linux network isolation (production container)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build the production image
+        run: docker build -t chess-coach-backend:fu20 -f Dockerfile .
+
+      - name: Verify the shipped seccomp profile is a narrow delta
+        # The profile must differ from the pinned Docker/Moby default
+        # ONLY by the narrow namespace/mount/identity ALLOW rules, and
+        # the dangerous capability-gated operations (bpf,
+        # perf_event_open, fsopen, move_mount) must remain denied to a
+        # non-root process. Do not broaden the profile to make a test
+        # pass.
+        run: |
+          python scripts/dev/verify_seccomp_profile.py \
+            infra/docker/seccomp-backend.json
+
+      - name: Start the controlled reachable endpoint
+        # A real TCP + UDP echo server the restricted and unrestricted
+        # processes both target.
+        run: |
+          docker network create fu20p
+          docker run -d --name fu20p-srv --network fu20p \
+            -v "$PWD/scripts/dev:/srv:ro" \
+            --entrypoint python3 python:3.11-slim-bookworm \
+            /srv/fu20_network_endpoint.py \
+            --tcp-port 18099 --udp-port 18098
+          for _ in $(seq 1 30); do
+            if docker logs fu20p-srv 2>&1 | grep -q SERVER_READY; then break; fi
+            sleep 1
+          done
+          docker logs fu20p-srv 2>&1 | head -3
+
+
+      - name: Install the container-scoped AppArmor profile that may mount
+        # The runner's kernel (7.0.0-1017-azure) has
+        # `kernel.apparmor_restrict_unprivileged_userns = 1`, and the
+        # runner's `docker-default` AppArmor profile carries a plain
+        # `deny mount` rule. The launcher's containment sequence needs
+        # `mount` to build its own root, so the container cannot mount
+        # even a fresh tmpfs inside its own user namespace.
+        #
+        # The denial is SILENT: `deny mount` is not an `audit deny`, so
+        # nothing reaches the audit log -- which is why the earlier
+        # diagnosis saw an empty DENIED log and wrongly suspected the
+        # LSM's transition profile.
+        #
+        # The shipped profile is Moby's own `docker-default` for the
+        # pinned version, with the profile renamed and `deny mount,`
+        # replaced by `allow mount,`. The host's `docker-default` is
+        # left untouched, and the profile is attached ONLY to this
+        # job's containers.
+        run: |
+          sudo bash "$PWD/scripts/dev/install_fu20_apparmor_profile.sh"
+          echo "--- the COMPILED policy: does it grant mount? ---"
+          sudo apparmor_parser --compile /etc/apparmor.d/chess-coach-fu20 2>/dev/null \
+            | tr "\0" "\n" | grep -icE "^mount" || echo "NO MOUNT RULE"
+          echo "--- the profile the container will actually run under ---"
+          docker run --rm --user 1000:1000 --security-opt "apparmor=chess-coach-fu20" \
+            --entrypoint sh chess-coach-backend:fu20 \
+            -c "cat /proc/self/attr/current" 2>&1 | tail -2
+
+      - name: Probe the mount-propagation strategies
+        # The launcher's mount stage must work in the SUPPORTED
+        # deployment. The runner and a developer machine differ, so
+        # this step measures which strategy the runner actually
+        # accepts. It is a diagnostic: it reports, it does not
+        # install a fallback.
+        run: |
+          for s in private slave bind_then_private separate_mountns tmpfs_root remount_ro no_userns no_userns_remount lsm_report cap_status complain_mode ns_owners kernel; do
+            echo "--- $s ---"
+            sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
+            docker run --rm --user 1000:1000 \
+              --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+              --security-opt "apparmor=chess-coach-fu20" \
+              -v "$PWD/scripts/dev:/probe:ro" \
+              --entrypoint python3 chess-coach-backend:fu20 \
+              /probe/probe_mount_strategies.py "$s" 2>&1 | grep -aE "===|rc=|FAILED|lsm:|before:|apparmor=|BEFORE|AFTER|ns id|=>|changed|kernel:|proc/sys" || true
+          done
+
+      - name: Dump the AppArmor audit log after the probe
+        # The complain-mode probe allows every operation and logs the
+        # denials, so the audit log now names the rule that refused the
+        # mount.
+        run: |
+          sudo journalctl -k --no-pager -n 400 2>/dev/null | grep -i "apparmor" | tail -30 || true
+          sudo dmesg 2>/dev/null | grep -i "apparmor" | tail -30 || true
+
+      - name: Run the restricted-versus-unrestricted proof
+        # The proof container is the PRODUCTION image, running as the
+        # deployment's non-root UID 1000, with the SHIPPED seccomp
+        # profile. The package comes from the image's editable install,
+        # so the import path is the real production one.
+        env:
+          FU20_ENDPOINT_HOST: fu20p-srv
+          FU20_ENDPOINT_PORT: "18099"
+        run: |
+          sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
+          docker run --rm --network fu20p --user 1000:1000 \
+            --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+            --security-opt "apparmor=chess-coach-fu20" \
+            -v "$PWD/scripts/dev/verify_linux_network_isolation.py:/proof.py:ro" \
+            -e FU20_ENDPOINT_HOST -e FU20_ENDPOINT_PORT \
+            --entrypoint python3 chess-coach-backend:fu20 \
+            /proof.py /tmp/fu20_result.json
+
+      - name: Run the launcher unit tests in the production container
+        # The launcher tests that need an unprivileged user namespace
+        # only run where the kernel permits one; the production
+        # container with the shipped profile is that place.
+        run: |
+          sudo apparmor_parser -r /etc/apparmor.d/chess-coach-fu20
+          # The production image is a RUNTIME image and carries no
+          # pytest. The launcher unit tests therefore run in a test
+          # image built from the same base, with the same seccomp
+          # profile and the same AppArmor profile attached, and with
+          # the same package layout.
+          docker build -q -t chess-coach-fu20-test \
+            -f "$PWD/scripts/dev/Dockerfile.fu20-test" "$PWD"
+          docker run --rm --user 1000:1000 \
+            --security-opt "seccomp=$PWD/infra/docker/seccomp-backend.json" \
+            --security-opt "apparmor=chess-coach-fu20" \
+            -v "$PWD/tests:/app/tests:ro" \
+            --entrypoint sh chess-coach-fu20-test -c '
+              cd /app
+              python -m pytest tests/unit/test_linux_sandbox.py -q \
+                --no-header -p no:cacheprovider
+            '
+
+      - name: Clean up the endpoint and network
+        if: always()
+        run: |
+          docker rm -f fu20p-srv 2>/dev/null || true
+          docker network rm fu20p 2>/dev/null || true

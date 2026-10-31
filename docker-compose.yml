@@ -90,6 +90,20 @@ services:
       # directory also lets the desktop (running outside Docker)
       # auto-discover the backend via ./data/runtime/backend.json.
       - ./data:/data
+    # BBF-FU-20-linux-phase1-network-isolation: the PDF parser runs in a
+    # user+network+mount namespace (A-F11 property 2). Docker's DEFAULT
+    # seccomp profile allows unshare/clone/mount/setns only under
+    # CAP_SYS_ADMIN, which this non-root service does not have, so the
+    # default profile would deny the namespace and the launcher would fail
+    # closed (which is correct, but makes PDF parsing unusable).
+    #
+    # This profile is Docker's default with three narrow ALLOW rules
+    # prepended for exactly the namespace/mount/identity syscalls the
+    # launcher needs. It does NOT grant CAP_SYS_ADMIN, does NOT enable
+    # privileged: true, and does NOT relax bpf/perf_event_open or the
+    # mount-namespace escape syscalls.
+    security_opt:
+      - seccomp=./infra/docker/seccomp-backend.json
     environment:
       # Pin the dev token so curl can use Bearer devtoken123
       # without re-reading backend.json. The gateway uses this as
