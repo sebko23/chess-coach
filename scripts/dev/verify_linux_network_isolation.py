@@ -17,6 +17,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 CONTROL_HOST = os.environ.get("FU20_ENDPOINT_HOST", "127.0.0.1")
 UDP_PORT = int(os.environ.get("FU20_ENDPOINT_UDP_PORT", "18098"))
@@ -187,7 +188,7 @@ def _read_status(status_fd: int, timeout: float = 30.0) -> str:
     return lines[0] if lines else ""
 
 
-def run_control() -> dict:
+def run_control() -> dict[str, Any]:
     """Run the probe WITHOUT the launcher."""
     with tempfile.TemporaryDirectory() as tmp:
         script = Path(tmp) / "probe.py"
@@ -198,10 +199,11 @@ def run_control() -> dict:
         )
     if not cp.stdout.strip():
         return {"ok": False, "err": cp.stderr.strip()[:400]}
-    return json.loads(cp.stdout.strip())
+    parsed: dict[str, Any] = json.loads(cp.stdout.strip())
+    return parsed
 
 
-def run_restricted(artifact_dir: Path) -> dict:
+def run_restricted(artifact_dir: Path) -> dict[str, Any]:
     """Run the probe THROUGH the production sandbox launcher."""
     from chess_coach.pdf_ocr.linux_sandbox import build_launcher_argv
 
@@ -267,18 +269,38 @@ def main() -> int:
     )
     setup_ok = restricted.get("status_line", "").startswith("OK")
 
+    # The namespace-escape resistance is asserted from the launcher's
+    # own MEASURED result, not inferred from the denial. The launcher
+    # opens the parent network namespace before the unshare, attempts to
+    # re-enter it from inside the established sandbox -- with the
+    # namespaces, the identity mapping and the mounts already in force
+    # -- and reports the outcome on the status channel.
+    #
+    # The attempt must be REFUSED (EPERM): a process may only join a
+    # namespace it holds CAP_SYS_ADMIN over, and the sandbox holds it
+    # only in the user namespace it created.
+    status_line = restricted.get("status_line", "")
+    escape_refused = "escape_refused=1" in status_line
+    escape_errno = ""
+    for token in status_line.split():
+        if token.startswith("escape_errno="):
+            escape_errno = token.split("=", 1)[1]
+
     results["verdict"] = {
         "control_connected": control_connected,
         "restricted_denied": restricted_denied,
         "setup_reported_ok": setup_ok,
         "valid_test": control_connected,
         "netns_differs": probe.get("netns") != control.get("netns"),
+        "escape_refused": escape_refused,
+        "escape_errno": escape_errno,
     }
     print("=== VERDICT ===")
     print(json.dumps(results["verdict"], indent=2), flush=True)
 
     out_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    return 0 if (control_connected and restricted_denied and setup_ok) else 1
+    ok = control_connected and restricted_denied and setup_ok and escape_refused
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

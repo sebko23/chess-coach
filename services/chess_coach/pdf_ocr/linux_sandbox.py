@@ -501,6 +501,77 @@ def _remount_tree_read_only(lib: ctypes.CDLL, writable: Path | None = None) -> N
         )
 
 
+def _open_parent_netns() -> int:
+    """Open the CURRENT network namespace before it is replaced.
+
+    The descriptor is taken BEFORE the unshare, so it refers to the
+    network namespace the launcher was started in -- the parent
+    namespace. It is the handle an escape attempt would use.
+
+    It is deliberately NOT inherited by the parser: the descriptor
+    hygiene stage closes it. It exists so the escape attempt can be
+    made and its result reported, which is what establishes that the
+    escape is refused rather than merely assumed.
+    """
+    try:
+        return os.open("/proc/self/ns/net", os.O_RDONLY | os.O_CLOEXEC)
+    except OSError as exc:
+        err = getattr(exc, "errno", None) or 0
+        raise _fail(
+            "escape_probe",
+            "could not open the parent network namespace",
+            errno=err,
+            errno_name=errno.errorcode.get(err, ""),
+        ) from exc
+
+
+def _attempt_namespace_escape(
+    netns_fd: int,
+    lib: ctypes.CDLL | None = None,
+) -> dict[str, object]:
+    """Try to re-enter the parent network namespace. Report what happened.
+
+    The attempt is made from INSIDE the sandbox, after the namespace,
+    mapping, mount, descriptor and memory-limit stages have all
+    succeeded -- so it runs with the process's actual effective
+    capability contract, not with an assumed one.
+
+    The kernel refuses the attempt because the caller holds
+    ``CAP_SYS_ADMIN`` in the user namespace it created, but NOT in the
+    user namespace that owns the parent network namespace: a process may
+    only join a namespace it has CAP_SYS_ADMIN over. The expected
+    outcome is therefore ``EPERM``.
+
+    The result is returned rather than raised: a successful escape
+    would be a containment failure, and the caller decides what to do
+    with it.
+    """
+    # The libc handle is REUSED from the caller. After the pivot the new
+    # root does not carry /etc/ld.so.cache, so looking the library up
+    # again here would fail for a reason unrelated to the escape.
+    if lib is None:
+        lib = _libc()
+    # setns(int fd, int nstype) -- the ORDER matters. Passing the
+    # descriptor as the second argument (as a void_p) makes the kernel
+    # read a namespace type where it expects a descriptor, and it
+    # reports EBADF: a descriptor error, NOT the privilege refusal the
+    # test is about. With the correct order the kernel reaches its
+    # capability check and reports EPERM, which is the real answer.
+    #
+    # The test asserts EPERM specifically, so a swapped-argument
+    # regression fails the test rather than passing it vacuously.
+    lib.setns.argtypes = [ctypes.c_int, ctypes.c_int]
+    lib.setns.restype = ctypes.c_int
+    ctypes.set_errno(0)
+    rc = lib.setns(netns_fd, CLONE_NEWNET)
+    err = ctypes.get_errno() or 0
+    return {
+        "rc": rc,
+        "errno": err,
+        "errno_name": errno.errorcode.get(err, ""),
+        "escaped": rc == 0,
+    }
+
 def _private_mount_propagation(lib: ctypes.CDLL) -> None:
     ctypes.set_errno(0)
     rc = lib.mount(b"none", b"/", None, MS_REC | MS_PRIVATE, None)
@@ -622,7 +693,7 @@ def sandbox_prepare(
     *,
     limit_bytes: int = MEMORY_CAP_BYTES,
     preserve_fds: frozenset[int] = frozenset(),
-) -> None:
+) -> dict[str, object]:
     """Establish the whole sandbox policy. Raises on any stage failure.
 
     Every stage is checked; the first failure raises
@@ -631,6 +702,10 @@ def sandbox_prepare(
     ``preserve_fds`` names descriptors that belong to the launcher's own
     control plane (the status channel) and must survive the descriptor
     hygiene stage.
+
+    Returns the escape-attempt result: the attempt to re-enter the
+    parent network namespace from inside the established sandbox. A
+    successful escape is a containment failure and is reported as one.
     """
     # The deployment identity MUST be captured BEFORE the unshare: once
     # CLONE_NEWUSER is active the UID map is still empty, so `os.getuid()`
@@ -639,6 +714,12 @@ def sandbox_prepare(
     # writer may only map the uid it actually held in the parent namespace.
     uid = os.getuid()
     gid = os.getgid()
+
+    # The parent network namespace handle is taken BEFORE the unshare,
+    # so it refers to the namespace the launcher was started in. It is
+    # what the escape attempt uses; it is closed by the descriptor
+    # hygiene stage and never reaches the parser.
+    parent_netns_fd = _open_parent_netns()
 
     lib = _libc()
     _unshare(lib)
@@ -673,8 +754,16 @@ def sandbox_prepare(
     # The root tree is made read-only except for the artifact path.
     _remount_tree_read_only(lib, writable=artifact_dir)
     _verify_filesystem_policy(artifact_dir)
+    # The escape attempt runs BEFORE the descriptor hygiene stage,
+    # because it needs the parent-namespace handle, and it runs with
+    # the process's real effective capability contract in force -- the
+    # namespaces, the identity mapping and the mounts are all already
+    # established. The handle is closed by the hygiene stage below, so
+    # it never reaches the parser.
+    escape = _attempt_namespace_escape(parent_netns_fd, lib)
     _reject_inherited_sockets(preserve_fds)
     _apply_memory_cap(limit_bytes)
+    return escape
 
 
 # --------------------------------------------------------------------------
@@ -755,7 +844,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return SETUP_FAILURE_EXIT
 
     try:
-        sandbox_prepare(
+        escape = sandbox_prepare(
             artifact_dir,
             limit_bytes=limit_bytes,
             preserve_fds=frozenset({status_fd}),
@@ -789,6 +878,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_status(status_fd, f"{STATUS_SETUP_FAILURE} unexpected\x00{exc!r}")
         return SETUP_FAILURE_EXIT
 
+    # Every containment stage succeeded. The escape attempt is part of
+    # the containment policy: a SUCCESSFUL escape would mean the
+    # boundary does not hold, so it is reported on the status channel
+    # and treated as a setup failure.
+    if escape.get("escaped"):
+        _write_status(
+            status_fd,
+            f"{STATUS_SETUP_FAILURE} namespace_escape\x00"
+            f"the sandbox re-entered the parent network namespace "
+            f"[{escape.get('errno_name') or escape.get('errno')}]",
+        )
+        return SETUP_FAILURE_EXIT
+
     # Every containment stage succeeded. Tell the gateway, then close the
     # status channel and exec the parser.
     #
@@ -807,7 +909,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # reported on it.
     with contextlib.suppress(OSError):
         os.set_inheritable(status_fd, False)
-    _write_status(status_fd, STATUS_OK)
+    # The OK line reports the measured escape-attempt outcome, so the
+    # gateway and the CI job read a MEASUREMENT rather than an
+    # assumption. The line still starts with the STATUS_OK prefix, so
+    # the gateway's prefix parsing is unchanged.
+    _write_status(
+        status_fd,
+        f"{STATUS_OK} escape_refused={int(not escape.get('escaped'))} "
+        f"escape_errno={escape.get('errno_name') or escape.get('errno')}",
+    )
     try:
         os.execv(parser_argv[0], parser_argv)  # noqa: S606  -- intentional: the parser exec
     except OSError as exc:

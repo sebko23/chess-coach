@@ -1634,7 +1634,7 @@ Investigation-first BBF would:
 - `docs/02_modules/module-decomposition.md` § A-F7 (subprocess sandbox spec)
 ## FU-20 — A-F11 property 2 (network isolation) has no implementation or test
 
-**Status:** **RESOLVED for the named release scope (2026-10-30)** — *Linux network isolation enforced fail closed, Windows PDF parsing explicitly refused*. The 2026-10-18 state (PR #163 and PR #164, feature commits `190a0c27` under merge `4c11159c` and `913652c3` under merge `fa0bfd73`, BBF-FU-20-impl + BBF-FU-20-impl-windows) is **preserved as history below** and was **not** a proven implementation: its Linux path fell back to proxy stripping when `unshare` failed, its Windows path was unreachable after FU-22 B2, and its 3 tests proved only that `unshare` was *requested*. The 2026-10-29 Linux Phase 1 implementation (`BBF-FU-20-linux-phase1-network-isolation`) replaced it with a **fail-closed** combined user/network/mount namespace launcher, and the release-scope closure landed on 2026-10-30 after the production-container CI proof went green. **The Windows AppContainer network isolation remains open as a separately approved follow-up** — it is *not* part of this closure. See the *2026-10-29 Linux Phase 1* and *2026-10-30 release-scope closure* records below.
+**Status:** **PARTIALLY RESOLVED.** *Linux network isolation enforced fail closed, Windows PDF parsing explicitly refused, and the namespace-escape resistance measured — the release-scope closure is re-applied only after the correction push's CI is green.* The 2026-10-30 closure commit was **premature**: it rested on the namespace-escape resistance, which was then an explicit not-established item. That proof is now implemented and measured (`EPERM`, `escaped = False`), and the closure is restored in a separate push once the correction push's CI is green. See the *2026-10-30 release-scope closure* record below. The 2026-10-18 state (PR #163 and PR #164, feature commits `190a0c27` under merge `4c11159c` and `913652c3` under merge `fa0bfd73`, BBF-FU-20-impl + BBF-FU-20-impl-windows) is **preserved as history below** and was **not** a proven implementation: its Linux path fell back to proxy stripping when `unshare` failed, its Windows path was unreachable after FU-22 B2, and its 3 tests proved only that `unshare` was *requested*. The 2026-10-29 Linux Phase 1 implementation (`BBF-FU-20-linux-phase1-network-isolation`) replaced it with a **fail-closed** combined user/network/mount namespace launcher, and the release-scope closure landed on 2026-10-30 after the production-container CI proof went green. **The Windows AppContainer network isolation remains open as a separately approved follow-up** — it is *not* part of this closure. See the *2026-10-29 Linux Phase 1* and *2026-10-30 release-scope closure* records below.
 
 **Historical state (superseded 2026-10-29 by `BBF-FU-20-linux-phase1-network-isolation`).** **PARTIALLY RESOLVED 2026-10-18 via squash-merge of PR #163 and PR #164** (feature commits `190a0c27` (under merge `4c11159c`) and `913652c3` (under merge `fa0bfd73`), BBF-FU-20-impl + BBF-FU-20-impl-windows). The Linux path is complete: `set_network_isolation_preexec()` in `services/chess_coach/pdf_ocr/subprocess_runner.py` calls `os.setsid()` to create a new session, then `unshare(CLONE_NEWNET)` via ctypes to enter a fresh network namespace (no loopback, no localhost, no DNS, no outbound TCP/UDP). The Windows path is best-effort: strips proxy env vars (`http_proxy`, `https_proxy`, `all_proxy`, `no_proxy` and their uppercase variants) since the `pywin32` module does not expose `SetInformationJobObject` for `JobObjectNetRateControlInformation`. 3 new tests added to `tests/unit/test_subprocess_runner.py` (7 passed, 2 skipped on Windows). CI: 15/15 green on main (`fa0bfd73`). *Correction (2026-10-29): the "Linux path is complete" claim was **not proven** — the `unshare` failure path fell back to proxy-environment stripping (defense in depth, never network denial), the tests proved only that `os.setsid()` ran and that `unshare` was requested, and the Windows proxy-stripping branch became unreachable after FU-22 B2 because the Windows launch inherits the parent environment and never invokes the network helper.*
 
@@ -1650,6 +1650,13 @@ Investigation-first BBF would:
 - Brief: `docs/16_audit/BBF-FU-20-linux-phase1-network-isolation.md`.
 
 **2026-10-30 release-scope closure — FU-20 RESOLVED for the named scope.**
+*Publication note (2026-10-30, after review):* the first closure commit
+was **premature** — it rested on the namespace-escape resistance, which
+was then recorded as not established. The escape proof is now
+implemented and measured, the live status above was restored to
+`PARTIALLY RESOLVED` in the correction push, and this closure is
+re-applied in a **separate** push once the correction push's CI is
+green. The evidence below is what the closure rests on.
 *Scope closed:* A-F11 property 2 for the current release — **Linux** PDF
 parsing runs with **no network access, enforced fail closed**, and
 **Windows** PDF parsing is **explicitly refused** because no
@@ -1668,6 +1675,7 @@ profile, UID 1000, `linux-network-isolation` CI job):*
 | Identity | uid 1000 preserved |
 | Root filesystem | read-only (`EROFS`) with the artifact path writable |
 | Memory cap | 2 GiB `RLIMIT_AS` applied before exec |
+| Namespace-escape resistance | the attempt to re-enter the parent network namespace is **refused** with `EPERM` (`escaped = False`), measured from inside the established sandbox under the process's real effective capability contract |
 | Launcher unit suite in the container | **22 passed, 0 skipped** |
 
 *Error taxonomy (distinct, per the directive):* the Windows refusal is a
@@ -3103,7 +3111,7 @@ properties 2-4 are unimplemented.
 | # | Test name | Today |
 |---|---|---|
 | 1 | `test_pdf_parsing_runs_in_separate_subprocess` | **PASS** — real test (catches regression) |
-| 2 | `test_subprocess_cannot_initiate_outbound_network` | **SKIP** — capability-gated; FU-20 implemented (PRs #163/#164), Windows is best-effort only |
+| 2 | `test_subprocess_cannot_initiate_outbound_network` | **PASS (Linux, production container)** — the outbound-network denial is proven end-to-end by `scripts/dev/verify_linux_network_isolation.py` in the `linux-network-isolation` CI job, which runs the production container as UID 1000 with the shipped seccomp and AppArmor profiles against a controlled reachable endpoint, with an unrestricted control in the same job that must connect for the denial result to be valid. The namespace-escape resistance is proven by the same job: the launcher opens the parent network namespace before the `unshare`, attempts to re-enter it from inside the established sandbox, and the kernel refuses with `EPERM`. *Historical row (superseded 2026-10-30 by `BBF-FU-20-linux-phase1-network-isolation`):* **SKIP** — capability-gated; FU-20 implemented (PRs #163/#164), Windows is best-effort only. |
 | 3 | `test_subprocess_filesystem_writes_restricted_to_artifact_dir` | **SKIP** — pending FU-21 |
 | 4 | `test_subprocess_respects_2gb_memory_cap` | **PASS** — FU-22-impl, PR #145 (row previously said "SKIP — pending FU-20"; both the status and the FU number were wrong — FU-20 is network isolation, and this test passes today) |
 

@@ -188,6 +188,63 @@ requires_namespace = pytest.mark.skipif(
 )
 
 
+@requires_namespace
+def test_parent_namespace_escape_is_refused(tmp_path: Path) -> None:
+    """The sandbox must not be able to re-enter the parent netns.
+
+    This is the escape-resistance property, and it is MEASURED, not
+    inferred from the network denial.
+
+    The launcher opens the parent network namespace BEFORE the unshare,
+    so the handle refers to the namespace the launcher was started in.
+    After the namespaces, the identity mapping and the mounts are
+    established -- so the attempt runs under the process's real
+    effective capability contract -- it attempts to re-enter that
+    namespace.
+
+    The kernel must refuse it: a process may only join a namespace in
+    which it holds CAP_SYS_ADMIN, and the sandbox holds it only in the
+    user namespace the sandbox itself created.
+
+    The probe runs in a SUBPROCESS because the setup pivots the root
+    filesystem, which would otherwise replace the test runner's own
+    view of the filesystem.
+    """
+    probe = (
+        "import json, sys\n"
+        "from chess_coach.pdf_ocr import linux_sandbox\n"
+        "from pathlib import Path\n"
+        "result = linux_sandbox.sandbox_prepare(Path(sys.argv[1]))\n"
+        "print(json.dumps(result))\n"
+    )
+    script = tmp_path / "escape_probe.py"
+    script.write_text(probe, encoding="utf-8")
+    artifact = tmp_path / "artifact"
+    artifact.mkdir()
+
+    cp = subprocess.run(
+        [sys.executable, str(script), str(artifact)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert cp.returncode == 0, cp.stderr
+    import json
+
+    data = json.loads(cp.stdout.strip().splitlines()[-1])
+
+    # The attempt was made and it was refused.
+    assert data["rc"] != 0, "the sandbox re-entered the parent network namespace"
+    assert data["escaped"] is False
+    # EPERM is the privilege refusal. Anything else -- EBADF, EINVAL --
+    # would mean the attempt never reached the kernel's capability
+    # check, which would make the test vacuous.
+    assert data["errno_name"] == "EPERM", (
+        f"the escape attempt failed with {data['errno_name']}, not the "
+        "expected privilege refusal; the attempt may not have been made"
+    )
+
+
 def test_setup_error_carries_the_failing_stage() -> None:
     """A setup failure names the exact stage that failed."""
     err = NetworkIsolationSetupError("boom", stage="mount_root_read_only")
@@ -325,7 +382,13 @@ def test_a_mapping_failure_aborts_before_the_mounts(
     class _StubLibc:
         @staticmethod
         def unshare(_flags: int) -> int:
-            ran.append("unshare")
+            return 0
+
+        @staticmethod
+        def setns(_fd: int, _nstype: int) -> int:
+            # A successful escape. The launcher treats that as a
+            # containment failure, so the stub makes that path
+            # reachable.
             return 0
 
     monkeypatch.setattr(linux_sandbox, "_libc", lambda: _StubLibc())
@@ -362,6 +425,13 @@ def test_mount_failure_is_a_setup_failure(monkeypatch: pytest.MonkeyPatch) -> No
         def mount(*_args: object) -> int:
             return -1
 
+        @staticmethod
+        def setns(_fd: int, _nstype: int) -> int:
+            # A successful escape. The launcher treats that as a
+            # containment failure, so the stub makes that path
+            # reachable.
+            return 0
+
     monkeypatch.setattr(linux_sandbox, "_libc", lambda: _StubLibc())
     monkeypatch.setattr(linux_sandbox, "_map_identity", lambda _u, _g: None)
     monkeypatch.setattr(linux_sandbox.ctypes, "set_errno", lambda _v: None)
@@ -382,6 +452,13 @@ def test_memory_cap_failure_is_a_setup_failure(
     class _StubLibc:
         @staticmethod
         def unshare(_flags: int) -> int:
+            return 0
+
+        @staticmethod
+        def setns(_fd: int, _nstype: int) -> int:
+            # A successful escape. The launcher treats that as a
+            # containment failure, so the stub makes that path
+            # reachable.
             return 0
 
     monkeypatch.setattr(linux_sandbox, "_libc", lambda: _StubLibc())
@@ -510,7 +587,6 @@ def test_non_standard_descriptors_are_closed() -> None:
 # The memory cap
 # --------------------------------------------------------------------------
 @requires_namespace
-@requires_namespace
 def test_memory_cap_is_applied_inside_the_namespace(tmp_path: Path) -> None:
     """The 2 GiB RLIMIT_AS is in force after the setup completes.
 
@@ -549,7 +625,6 @@ def test_memory_cap_is_applied_inside_the_namespace(tmp_path: Path) -> None:
 
 
 @requires_namespace
-@requires_namespace
 def test_the_namespace_has_no_usable_interface(tmp_path: Path) -> None:
     """The new network namespace exposes loopback only."""
     probe = (
@@ -585,7 +660,6 @@ def test_the_namespace_has_no_usable_interface(tmp_path: Path) -> None:
     assert data["uid"] == os.getuid()
 
 
-@requires_namespace
 @requires_namespace
 def test_root_filesystem_is_read_only_and_artifact_is_writable(
     tmp_path: Path,
@@ -650,6 +724,13 @@ def test_unshare_is_called_exactly_once(
         @staticmethod
         def unshare(flags: int) -> int:
             calls.append(flags)
+            return 0
+
+        @staticmethod
+        def setns(_fd: int, _nstype: int) -> int:
+            # A successful escape. The launcher treats that as a
+            # containment failure, so the stub makes that path
+            # reachable.
             return 0
 
     monkeypatch.setattr(linux_sandbox, "_libc", lambda: _StubLibc())

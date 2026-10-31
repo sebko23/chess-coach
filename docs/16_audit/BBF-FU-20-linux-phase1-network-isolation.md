@@ -313,13 +313,37 @@ any kind is implemented here.
 2. **Local (non-container) Linux execution fails closed.** The boundary
    needs the shipped seccomp profile; the launcher reports the failing
    stage rather than degrading.
-3. **The namespace-escape-resistance measurement is a residual gap.** The
-   `setns` escape attempt must be proven under the effective capability
-   contract; the CI job covers descendants and inherited-socket
-   non-bypass, and the escape attempt is recorded as an explicit
-   not-established item rather than assumed.
+3. **The namespace-escape resistance is now MEASURED, not assumed.**
+   The launcher opens the parent network namespace **before** the
+   `unshare` — so the handle refers to the namespace the launcher was
+   started in, not the container's PID-1 namespace — and then attempts
+   `setns(CLONE_NEWNET)` back into it **from inside the established
+   sandbox**, with the namespaces, the identity mapping and the mounts
+   already in force. The attempt runs under the process's **real
+   effective capability contract**.
+
+   Measured result: `rc = -1`, `errno = EPERM`, `escaped = False`. The
+   kernel refuses the attempt because a process may only join a
+   namespace in which it holds `CAP_SYS_ADMIN`, and the sandbox holds
+   it only in the user namespace the sandbox itself created.
+
+   A **successful** escape is a **setup failure** named
+   `namespace_escape`, and the parser is not executed. The status
+   channel reports the measurement (`OK escape_refused=1
+   escape_errno=EPERM`), the CI job's pass condition includes
+   `escape_refused`, and the unit test requires **specifically**
+   `EPERM` — so a descriptor error (`EBADF`) or an argument error
+   (`EINVAL`) fails the test rather than passing vacuously.
 
 ## 9. The release-scope closure (2026-10-30)
+
+> **Publication is staged.** The escape-resistance proof was implemented
+> after the first closure commit, so the remote head carried a closure
+> that rested on an unproven property. The live FU-20 status was
+> restored to `PARTIALLY RESOLVED` in the correction push, and the
+> release-scope closure is re-applied **only** after the correction
+> push's CI is green. The closure below describes what the evidence
+> supports once that green run exists.
 
 FU-20 is **RESOLVED for the named release scope**: A-F11 property 2 for
 the current release — Linux PDF parsing runs with **no network access,
@@ -340,6 +364,7 @@ profile and the shipped AppArmor profile at UID 1000:
 | Identity | uid 1000 preserved |
 | Root filesystem | read-only (`EROFS`), artifact path writable |
 | Memory cap | 2 GiB `RLIMIT_AS` applied before exec |
+| Namespace-escape resistance | the attempt to re-enter the parent network namespace is **refused** with `EPERM` (`escaped = False`) |
 | Launcher unit suite in the container | **22 passed, 0 skipped** |
 
 The error taxonomy stays distinct, as the directive required: the Windows
