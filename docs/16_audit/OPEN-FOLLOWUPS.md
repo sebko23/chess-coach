@@ -1646,7 +1646,7 @@ Investigation-first BBF would:
 - **Windows is now explicitly unsupported.** PDF parsing is refused **before** any parser process or Job Object target is created, with a typed `NetworkIsolationUnsupportedError` (HTTP **501**, ADR-0002 code `internal.not_implemented`). The Windows Job Object backend enforces the **memory** cap, not network isolation; Job network-rate control is throttling, never isolation; proxy stripping is defense in depth, never isolation. AppContainer with the no-internet-client capability is the preferred Windows mechanism and remains a **separately approved follow-up**.
 - **Deployment policy.** `infra/docker/seccomp-backend.json` is Docker's default profile (pinned Moby/Docker 26.1.4) plus three narrow ALLOW rules for exactly the namespace/mount/identity syscalls the launcher needs. The backend keeps running as non-root UID 1000 with **no host `CAP_SYS_ADMIN`**, **no `privileged: true`**, and no broad seccomp relaxation. `scripts/dev/verify_seccomp_profile.py` proves the profile is a narrow delta and that `bpf`, `perf_event_open`, `fsopen`, `move_mount` and the other dangerous capability-gated operations remain denied to a non-root process.
 - **Proof.** `scripts/dev/verify_linux_network_isolation.py` runs in the **production container** as UID 1000 with the **shipped profile** against a controlled reachable endpoint, with an unrestricted control in the same job that must connect for the denial result to be valid. Measured: the namespace exposes loopback only, an outbound connection is refused with `ENETUNREACH`, the identity mapping preserves uid 1000, capabilities are confined to the new user namespace, root is read-only (`EROFS`) with the artifact path writable, and the 2 GiB `RLIMIT_AS` is read back.
-- **Out of scope for this phase.** Windows AppContainer, Windows Firewall, Job network-rate control, and any proxy-only behaviour are explicitly **not** implemented. The namespace-escape-resistance measurement is recorded as an explicit not-established item rather than assumed.
+- **Out of scope for this phase.** Windows AppContainer, Windows Firewall, Job network-rate control, and any proxy-only behaviour are explicitly **not** implemented. *The namespace-escape-resistance measurement was, at this point, an explicit not-established item rather than assumed; it was subsequently implemented and measured — see the 2026-10-30 release-scope closure below.*
 - Brief: `docs/16_audit/BBF-FU-20-linux-phase1-network-isolation.md`.
 
 **2026-10-30 release-scope closure — FU-20 RESOLVED for the named scope.**
@@ -1676,7 +1676,7 @@ profile, UID 1000, `linux-network-isolation` CI job):*
 | Root filesystem | read-only (`EROFS`) with the artifact path writable |
 | Memory cap | 2 GiB `RLIMIT_AS` applied before exec |
 | Namespace-escape resistance | the attempt to re-enter the parent network namespace is **refused** with `EPERM` (`escaped = False`), measured from inside the established sandbox under the process's real effective capability contract |
-| Launcher unit suite in the container | **22 passed, 0 skipped** |
+| Launcher unit suite in the container | **23 passed, 0 skipped** |
 
 *Error taxonomy (distinct, per the directive):* the Windows refusal is a
 **platform-capability** boundary — HTTP **501**, `internal.not_implemented`;
@@ -1695,9 +1695,7 @@ remain denied to UID 1000.
 *Still open, and deliberately not closed by this record:* **Windows
 network isolation** (AppContainer with the no-internet-client capability)
 remains a **separately approved follow-up**. Windows PDF parsing is
-**refused**, not isolated — this record does not claim otherwise. The
-**namespace-escape-resistance** measurement remains an explicit
-not-established item rather than an assumed property.
+**refused**, not isolated — this record does not claim otherwise.
 
 **Identified:** 2026-08-13, during the FU-19 / A-F11 BBF session.
 Per `docs/08_security/security-strategy.md` §A-F11 Implementation (as of 2026-08-13)

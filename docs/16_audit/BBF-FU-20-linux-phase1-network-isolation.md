@@ -268,7 +268,7 @@ the containment boundary and not to an unreachable endpoint.
 ### Launcher unit tests in the same container
 
 `tests/unit/test_linux_sandbox.py` runs in the production container with
-the shipped profile at UID 1000: **22 passed, 0 failed**. It covers the
+the shipped profile at UID 1000: **23 passed, 0 skipped**. It covers the
 error taxonomy, the controlled argv protocol, per-stage mapping failures
 (`setgroups_denial` / `uid_map` / `gid_map` each report their own stage),
 the transactional abort before the mounts, the descriptor sweep in a forked
@@ -365,7 +365,7 @@ profile and the shipped AppArmor profile at UID 1000:
 | Root filesystem | read-only (`EROFS`), artifact path writable |
 | Memory cap | 2 GiB `RLIMIT_AS` applied before exec |
 | Namespace-escape resistance | the attempt to re-enter the parent network namespace is **refused** with `EPERM` (`escaped = False`) |
-| Launcher unit suite in the container | **22 passed, 0 skipped** |
+| Launcher unit suite in the container | **23 passed, 0 skipped** |
 
 The error taxonomy stays distinct, as the directive required: the Windows
 refusal is a **platform-capability** boundary (HTTP **501**,
@@ -376,7 +376,6 @@ refusal is a **platform-capability** boundary (HTTP **501**,
 **Deliberately not closed by this record.** Windows network isolation
 (AppContainer with the no-internet-client capability) remains a
 **separately approved follow-up**; Windows PDF parsing is *refused*, not
-isolated. The namespace-escape-resistance measurement remains an explicit
-not-established item (section 8). FU-21's and FU-22's statuses are
-unchanged, and the original FU-20 entry and the PR #163/#164 history are
-preserved as labelled history.
+isolated. FU-21's and FU-22's statuses are unchanged, and the original
+FU-20 entry and the PR #163/#164 history are preserved as labelled
+history.
