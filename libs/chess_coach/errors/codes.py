@@ -22,6 +22,10 @@ class ErrorCode(StrEnum):
     # ----- generic -----
     INTERNAL = "internal.unexpected"
     NOT_IMPLEMENTED = "internal.not_implemented"
+    #: A containment/sandbox setup stage failed, so the parser was never
+    #: executed. Distinct from a malformed PDF, a missing tool, a parser
+    #: failure, a timeout, and a memory-limit hit.
+    NETWORK_ISOLATION_SETUP_FAILED = "internal.network_isolation_setup_failed"
     BAD_REQUEST = "client.bad_request"
     NOT_FOUND = "client.not_found"
     UNAUTHORIZED = "client.unauthorized"

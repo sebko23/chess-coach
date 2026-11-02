@@ -37,7 +37,9 @@ from ...pdf_ocr import predict_fen
 # not /app). The relative form works in both because
 # `chess_coach.pdf_ocr` is installed as a top-level package via
 # the editable install (`uv pip install --system -e .`).
+from ...pdf_ocr.linux_sandbox import NetworkIsolationSetupError
 from ...pdf_ocr.subprocess_runner import (
+    NetworkIsolationUnsupportedError,
     UnsupportedParserPlatformError,
     run_pdftoppm_in_subprocess,
 )
@@ -254,6 +256,28 @@ async def import_pdf(
             detail=f"PDF parsing exceeded the {PARSER_TIMEOUT_SECONDS}s budget; "
             "the file may be malicious or pathological. Rejected per A-F11.",
         ) from None
+    except NetworkIsolationUnsupportedError:
+        # BBF-FU-20-linux-phase1-network-isolation: this platform has no
+        # proven A-F11 no-network boundary (Windows: the Job Object backend
+        # enforces the memory cap, not network isolation). The refusal
+        # happens BEFORE any parser process or Job Object target is created,
+        # so nothing ran. It is distinct from a malformed PDF (400), a
+        # missing tool (422), a timeout (504), a memory-limit hit (422),
+        # and a Linux namespace setup failure (500).
+        raise
+    except NetworkIsolationSetupError as exc:
+        # BBF-FU-20-linux-phase1-network-isolation: a containment setup
+        # stage failed on Linux, so the parser was never executed. This is
+        # an internal server-side failure, NOT a client error and NOT a
+        # malformed PDF: 500 makes it distinguishable from every 4xx
+        # outcome. The ADR-0002 code is
+        # `internal.network_isolation_setup_failed`.
+        logger.error("pdf_import %s: sandbox setup failed: %s", import_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail="PDF parsing could not be started: the sandbox setup "
+            "failed. No parser process was run.",
+        ) from exc
     except UnsupportedParserPlatformError:
         # BBF-FU-22-windows-contract-correction: the host platform
         # cannot enforce the A-F11 memory cap, so the parser was never

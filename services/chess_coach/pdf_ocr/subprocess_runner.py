@@ -9,11 +9,19 @@ process). Per `docs/08_security/security-strategy.md`
 with no network access, read-only filesystem, 2 GB memory
 cap, and a 5-minute timeout.
 
-**This BBF (FU-22-impl) implements the 2 GB memory cap via
-`resource.setrlimit(RLIMIT_AS)` in a `preexec_fn` callback.**
-The other 3 properties (network isolation, read-only FS,
-timeout) are out of scope here; the timeout is already
-enforced by the route's `asyncio.wait_for` wrapper.
+**The 2 GB memory cap** was first implemented (FU-22-impl) via
+`resource.setrlimit(RLIMIT_AS)` in a `preexec_fn` callback.
+
+**BBF-FU-20-linux-phase1-network-isolation replaced the composed
+`preexec_fn` approach on Linux.** The Linux launch now goes through the
+combined sandbox launcher in :mod:`chess_coach.pdf_ocr.linux_sandbox`,
+which owns ONE namespace lifecycle
+(`CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWNS`) and applies the A-F11
+network, filesystem, descriptor, and memory policy transactionally
+*before* the parser is executed. There is no proxy-stripping fallback, no
+filesystem no-op fallback, and no unconstrained fallback: every setup
+stage fails closed. The timeout is still enforced by the route's
+`asyncio.wait_for` wrapper and by the launcher's own budget.
 
 **Platform support (BBF-FU-22-windows-contract-correction, extended by
 BBF-FU-22-B2-windows-job-object).**
@@ -67,23 +75,25 @@ pattern.
 """
 from __future__ import annotations
 
+import contextlib
+import os
 import shutil
 import subprocess  # noqa: S404  -- intentional: PDF parsing requires subprocess
 import sys
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
 
 from PIL import Image
 
 from chess_coach.errors import NotImplementedYetError
+from chess_coach.pdf_ocr.linux_sandbox import (
+    STATUS_FD,
+    STATUS_OK,
+    STATUS_SETUP_FAILURE,
+    NetworkIsolationSetupError,
+    build_launcher_argv,
+)
 from chess_coach.pdf_ocr.windows_job import WINDOWS_JOB_SUPPORTED
-
-# `resource` is a Unix-only stdlib module. On Windows, it's
-# not available; the cap mechanism is a no-op (Windows
-# support is a future follow-up BBF).
-if sys.platform != "win32":
-    import resource  # noqa: E402  -- Unix-only; gated by sys.platform check above
 
 # A-F11 property 4: 2 GB memory cap. Applied to the child
 # process via preexec_fn=set_rlimit_as_preexec(MEM_CAP_BYTES).
@@ -115,11 +125,37 @@ HOST_PLATFORM: str = sys.platform
 
 MEMORY_CAP_SUPPORTED: bool = HOST_PLATFORM != "win32" or WINDOWS_JOB_SUPPORTED
 
-#: The capability that enforces the cap, named for the error details.
+#: The capability that enforces the memory cap, named for the error details.
 MEMORY_CAP_MECHANISM: str = (
-    "RLIMIT_AS via preexec_fn"
+    "RLIMIT_AS in the sandbox launcher"
     if HOST_PLATFORM != "win32"
     else "Windows Job Object (JOB_OBJECT_LIMIT_PROCESS_MEMORY)"
+)
+
+#: True when this platform can enforce the A-F11 property-2 network
+#: isolation requirement.
+#:
+#: **Linux:** the cap is enforced by the combined sandbox launcher in
+#: :mod:`chess_coach.pdf_ocr.linux_sandbox`, which owns one
+#: ``CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWNS`` namespace lifecycle and
+#: applies the network, filesystem, descriptor, and memory policy
+#: transactionally before the parser is executed
+#: (``BBF-FU-20-linux-phase1-network-isolation``).
+#:
+#: **Windows:** NO network-isolation boundary is proven. The Job Object
+#: backend enforces the *memory* cap, not network isolation, and Job Object
+#: network-rate control is throttling, never isolation. Proxy-environment
+#: stripping is defense in depth, never isolation. Windows PDF parsing is
+#: therefore explicitly unsupported until a separately proven
+#: process-scoped or deployment-scoped no-network boundary exists.
+NETWORK_ISOLATION_SUPPORTED: bool = HOST_PLATFORM != "win32"
+
+#: The capability that enforces the network isolation, named for the error
+#: details.
+NETWORK_ISOLATION_MECHANISM: str = (
+    "Linux user+network namespace (CLONE_NEWUSER|CLONE_NEWNET|CLONE_NEWNS)"
+    if HOST_PLATFORM != "win32"
+    else "none (no proven Windows network-isolation boundary)"
 )
 
 # pdftoppm invocation defaults. These match the previous
@@ -134,446 +170,6 @@ DEFAULT_FMT: str = "png"  # PNG is easier to read back than PPM
 DEFAULT_TIMEOUT_SECONDS: int = 300
 
 
-def set_rlimit_as_preexec(mem_cap_bytes: int) -> Callable[[], None]:
-    """Build a `preexec_fn` callable that caps the child process
-    virtual-address-space at `mem_cap_bytes`.
-
-    Returns a no-arg callable suitable for `subprocess.Popen`'s
-    `preexec_fn=` parameter. The callable runs in the child
-    process after `fork` but before `exec`, so the cap is
-    in place before pdftoppm starts allocating.
-
-    On Linux, this calls `resource.setrlimit(resource.RLIMIT_AS,
-    (cap, cap))`. `RLIMIT_AS` covers the entire virtual
-    address space (heap + stack + mmap + shared libraries),
-    so the cap is a hard ceiling, not just a heap cap.
-
-    On Windows, `resource.setrlimit` is not available, and CPython
-    rejects `preexec_fn` outright. The Windows equivalent is a Job Object
-    with `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (separately approved B2 work).
-    This implementation **returns a no-op callable** on Windows (a
-    `_noop_preexec` that just `return None`s).
-
-    NOTE: the no-op callable is never actually reached on Windows, because
-    `subprocess.Popen` refuses `preexec_fn` on that platform. The
-    unsupported path is gated earlier by `ensure_memory_cap_supported()`,
-    which raises before a process is spawned.
-
-    Args:
-        mem_cap_bytes: the cap, in bytes. Both soft and hard
-            limits are set to this value (hard ceiling).
-
-    Returns:
-        A no-arg callable for use as `preexec_fn=`.
-    """
-    if sys.platform == "win32":
-        # The Windows path would use a Job Object with
-        # `JOB_OBJECT_LIMIT_PROCESS_MEMORY`. That requires
-        # `pywin32` and the `win32job` module, which is
-        # NOT currently a project dependency. Real Windows
-        # enforcement is separately approved B2 work.
-        #
-        # Until then the cap cannot be enforced on Windows, so
-        # `ensure_memory_cap_supported()` refuses to run the
-        # parser at all on this platform. The callable below is
-        # unreachable in practice: `subprocess.Popen` rejects
-        # `preexec_fn` on Windows before this would be used.
-        def _noop_preexec() -> None:
-            return None
-        return _noop_preexec
-
-    def _set_rlimit_preexec() -> None:
-        # RLIMIT_AS is the virtual-address-space cap. Both
-        # soft and hard are set to the same value so a
-        # malicious PDF cannot slowly drift past a soft
-        # limit. The cap is in place before pdftoppm starts
-        # (preexec_fn runs after fork, before exec).
-        resource.setrlimit(resource.RLIMIT_AS, (mem_cap_bytes, mem_cap_bytes))
-
-    return _set_rlimit_preexec
-
-
-# A-F11 property 2: no network access. Applied to the
-# child process via preexec_fn=set_network_isolation_preexec().
-# The Linux path uses `os.setsid()` to create a new session
-# and then attempts to `unshare(CLONE_NEWNET)` to enter a
-# fresh network namespace. The Windows path is a no-op
-# (the A-F11 Windows path is a follow-up BBF that uses
-# Job Object with `JOB_OBJECT_NET_RATE_CONTROL`).
-NET_ISOLATION_ENABLED: bool = True
-
-
-def set_network_isolation_preexec() -> Callable[[], None]:
-    """Build a `preexec_fn` callable that isolates the child
-    process from the network.
-
-    Returns a no-arg callable suitable for `subprocess.Popen`'s
-    `preexec_fn=` parameter. The callable runs in the child
-    process after `fork` but before `exec`, so the isolation
-    is in place before pdftoppm starts.
-
-    On Linux, this:
-    1. Calls `os.setsid()` to create a new session (detaches
-       from the parent's controlling terminal and process
-       group).
-    2. Attempts to `unshare(CLONE_NEWNET)` to enter a fresh
-       network namespace (no network interfaces, no loopback,
-       no localhost). This requires the `unshare` binary to
-       be on PATH (it is on most Linux distros by default).
-    3. Removes network-related environment variables
-       (`http_proxy`, `https_proxy`, `no_proxy`, `all_proxy`)
-       to prevent the child from inheriting proxy config
-       that could be used to bypass the network namespace
-       isolation.
-
-    On Windows, `unshare` is not available. The Windows
-    equivalent is a Job Object with
-    `JOB_OBJECT_NET_RATE_CONTROL` (see follow-up BBFs).
-    The current implementation **returns a no-op callable**
-    on Windows (a `_noop_preexec` that just `return None`s);
-    the test `test_set_network_isolation_preexec_noop_on_windows`
-    covers the no-op code path on Windows.
-
-    Returns:
-        A no-arg callable for use as `preexec_fn=`.
-    """
-    if sys.platform == "win32":
-        # Windows path: best-effort network isolation.
-        #
-        # The ideal Windows implementation would use a Job
-        # Object with `JOB_OBJECT_NET_RATE_CONTROL` (Windows
-        # 8+), but the `pywin32` module does not expose the
-        # `SetInformationJobObject` API for this info class.
-        # The `win32job` module exposes:
-        #   - CreateJobObject
-        #   - AssignProcessToJobObject
-        #   - SetInformationJobObject (limited info classes)
-        #   - JOB_OBJECT_LIMIT_PROCESS_MEMORY (memory cap,
-        #     already used by FU-22-impl for the 2 GB cap)
-        #
-        # The Windows network isolation therefore degrades to
-        # a best-effort approach: strip network-related env
-        # vars (proxy config, etc.) so the child can't use
-        # inherited proxy settings to bypass whatever
-        # network policy the host has. This is NOT a
-        # guarantee of network isolation (a determined
-        # attacker can still open raw sockets); it's a
-        # defense-in-depth measure.
-        #
-        # A follow-up BBF can add the full Windows network
-        # isolation via:
-        # 1. A custom C extension calling
-        #    `SetInformationJobObject` with
-        #    `JobObjectNetRateControlInformation`
-        # 2. Windows Firewall rules via `netsh advfirewall`
-        #    (requires admin, not recommended for a subprocess)
-        # 3. AppContainer (requires significant new code)
-        def _windows_isolate_network() -> None:
-            # Best-effort: strip proxy env vars so the child
-            # can't use inherited proxy config. This is the
-            # same fallback as the Linux path.
-            for var in (
-                "http_proxy", "https_proxy", "all_proxy", "no_proxy",
-                "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-            ):
-                import os as _os
-                _os.environ.pop(var, None)
-
-        return _windows_isolate_network
-
-    def _isolate_network_preexec() -> None:
-        # Step 1: create a new session. This detaches from
-        # the parent's controlling terminal and process
-        # group, so the child can't be killed by signals
-        # sent to the parent's process group.
-        import os as _os_inside_preexec
-        _os_inside_preexec.setsid()
-
-        # Step 2: attempt to enter a fresh network namespace
-        # via the unshare(2) syscall (CLONE_NEWNET). This
-        # isolates the child from the parent's network
-        # interfaces: no loopback, no localhost, no DNS,
-        # no outbound TCP/UDP. The child has zero network
-        # access after this call.
-        #
-        # The syscall requires CAP_SYS_ADMIN (or the
-        # kernel.unprivileged_userns_clone sysctl on some
-        # distros). In a Docker container, this may fail
-        # if the container was started without the right
-        # capabilities. We fall back to env-var stripping
-        # + fd-closing in that case.
-        try:
-            import ctypes
-            import ctypes.util
-            CLONE_NEWNET = 0x40000000  # from <linux/sched.h>
-            libc_name = ctypes.util.find_library("c")
-            if libc_name is not None:
-                libc = ctypes.CDLL(libc_name, use_errno=True)
-                # unshare(2): int unshare(int flags);
-                libc.unshare.argtypes = [ctypes.c_int]
-                libc.unshare.restype = ctypes.c_int
-                ret = libc.unshare(CLONE_NEWNET)
-                if ret == 0:
-                    # Successfully entered a new network
-                    # namespace. The child has no network
-                    # access. No need for the fallback.
-                    return
-                # ret != 0: EPERM (insufficient capabilities)
-                # or EINVAL (kernel doesn't support CLONE_NEWNET).
-                # Fall through to the env-var + fd-closing
-                # fallback below.
-        except (OSError, AttributeError):
-            # ctypes not available, or the libc call raised
-            # an unexpected exception. Fall through.
-            pass
-
-        # Step 3 (fallback): strip network-related env vars.
-        # This is best-effort and does not guarantee network
-        # isolation (a determined attacker can still open
-        # new sockets), but it removes the most common
-        # exfiltration vectors (proxy env vars, inherited
-        # socket fds from the parent).
-        for var in (
-            "http_proxy", "https_proxy", "all_proxy", "no_proxy",
-            "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-        ):
-            _os_inside_preexec.environ.pop(var, None)
-
-    return _isolate_network_preexec
-
-
-# A-F11 property 3: read-only filesystem (except for the
-# per-book artifact dir). Applied to the child process
-# via preexec_fn=set_fs_isolation_preexec(). The Linux
-# path uses `os.setsid()` to create a new session,
-# then attempts `unshare(CLONE_NEWUSER|CLONE_NEWNS)` to
-# enter a fresh user+mount namespace; on success, the
-# parent filesystem is remounted read-only (`mount("none",
-# "/", "", MS_REMOUNT|MS_BIND|MS_RDONLY, NULL)`) and
-# the per-book artifact dir (passed via `tmpdir`) is
-# bind-mounted writable (`mount("none", str(tmpdir),
-# "", MS_BIND, NULL)`). The Windows path is a no-op
-# (AppLocker/WDAC is the deployment-config concern per
-# BBF-FU-21-windows-scope).
-FS_ISOLATION_ENABLED: bool = True
-
-
-def set_fs_isolation_preexec(
-    tmpdir: Path | None = None,
-) -> Callable[[], None]:
-    """Build a `preexec_fn` callable that isolates the child
-    process from the parent's filesystem (except for the
-    per-book artifact dir).
-
-    Returns a no-arg callable suitable for `subprocess.Popen`'s
-    `preexec_fn=` parameter. The callable runs in the child
-    process after `fork` but before `exec`, so the isolation
-    is in place before pdftoppm starts.
-
-    Args:
-        tmpdir: optional path to the per-book artifact dir
-            that the subprocess may write to. When
-            provided AND a successful `unshare` is
-            achievable, the parent filesystem is remounted
-            read-only and the tmpdir is bind-mounted
-            writable. When None (or unshare fails), the
-            subprocess inherits the parent's filesystem
-            unchanged; writes are confined to whatever
-            path the caller already passes to
-            `pdftoppm` (the `output_prefix` argument;
-            typically the `tmpdir` itself).
-
-    On Linux, this:
-    1. Calls `os.setsid()` to create a new session (detaches
-       from the parent's controlling terminal and process
-       group).
-    2. Attempts `unshare(CLONE_NEWUSER|CLONE_NEWNS)` to
-       enter a fresh user+mount namespace. Requires
-       `CAP_SYS_ADMIN` (or the
-       `kernel.unprivileged_userns_clone` sysctl on some
-       distros).
-    3. On successful unshare with a `tmpdir` provided,
-       remounts the parent filesystem read-only via
-       `mount("none", "/", "", MS_REMOUNT|MS_BIND|MS_RDONLY, NULL)`
-       and bind-mounts the tmpdir writable via
-       `mount("none", "<tmpdir>", "", MS_BIND, NULL)`.
-       The bind-mount step requires the per-book artifact
-       dir path at preexec-fn invocation time, which is
-       why this factory accepts `tmpdir` as a closure
-       parameter.
-    4. On failure (insufficient capabilities, no kernel
-       support, or no `tmpdir` provided), falls back to a
-       no-op. The subprocess inherits the parent's
-       filesystem in this case; legitimate writes
-       (pdftoppm's PNG output) are confined to whatever
-       the caller's pdftoppm invocation already passes
-       as the writable dir.
-
-    On Windows, `unshare` is not available. The Windows
-    FS enforcement is documented as a deployment-config
-    concern per BBF-FU-21-windows-scope (AppLocker / WDAC);
-    this factory ignores the `tmpdir` arg and returns a
-    no-op callable.
-
-    Returns:
-        A no-arg callable for use as `preexec_fn=`.
-    """
-    if sys.platform == "win32":
-        # Windows path: no-op (AppLocker/WDAC is the
-        # deployment-config concern per BBF-FU-21-windows-scope).
-
-        def _noop_preexec() -> None:
-            return None
-
-        return _noop_preexec
-
-    # Capture tmpdir in the closure for the inner
-    # _isolate_fs_preexec function. The Path type
-    # narrows automatically; if it's None we skip
-    # the bind-mount step.
-    captured_tmpdir: Path | None = Path(tmpdir) if tmpdir is not None else None
-
-    def _isolate_fs_preexec() -> None:
-        # Step 1: create a new session. This detaches from
-        # the parent's controlling terminal and process
-        # group. May raise `PermissionError(EPERM)` when
-        # the calling process has no controlling terminal
-        # (common in CI runner contexts) — that's still
-        # acceptable here; the fall-through below handles it
-        # via the try/except wrapper.
-        try:
-            import os as _os_inside_preexec
-            _os_inside_preexec.setsid()
-        except (OSError, AttributeError):
-            # No controlling terminal or setsid not permitted.
-            # Continue; the unshare attempt below still has
-            # value (it doesn't depend on setsid having
-            # succeeded).
-            pass
-
-        # Step 2: attempt unshare(CLONE_NEWUSER|CLONE_NEWNS)
-        # to enter a fresh user+mount namespace. The
-        # syscall requires CAP_SYS_ADMIN (or the
-        # `kernel.unprivileged_userns_clone` sysctl on
-        # some distros). In a Docker container without
-        # the right capabilities, this fails with
-        # `PermissionError(EPERM)`; in a CI runner without
-        # namespace privileges, it fails the same way. We
-        # catch the `OSError` (parent of `PermissionError`)
-        # and fall back to a no-op.
-        libc_unshare: object = None
-        unshare_succeeded: bool = False
-        try:
-            import ctypes
-            import ctypes.util
-
-            # CLONE_NEWUSER | CLONE_NEWNS from <linux/sched.h>
-            CLONE_NEWUSER = 0x10000000
-            CLONE_NEWNS = 0x00020000
-            unshare_flags = CLONE_NEWUSER | CLONE_NEWNS
-            libc_name = ctypes.util.find_library("c")
-            if libc_name is not None:
-                libc_unshare = ctypes.CDLL(libc_name, use_errno=True)
-                # unshare(2): int unshare(int flags);
-                libc_unshare.unshare.argtypes = [ctypes.c_int]
-                libc_unshare.unshare.restype = ctypes.c_int
-                ret = libc_unshare.unshare(unshare_flags)
-                if ret == 0:
-                    unshare_succeeded = True
-                # ret != 0: EPERM (insufficient
-                # capabilities) or EINVAL (kernel doesn't
-                # support the namespace). Fall through.
-        except (OSError, AttributeError):
-            # ctypes not available, libc call raised
-            # `PermissionError(EPERM)` (no CAP_SYS_ADMIN),
-            # or the call raised an unexpected exception.
-            # Fall through.
-            pass
-
-        # Step 3: bind-mount + remount-read-only.
-        # ONLY runs if (a) unshare succeeded AND
-        # (b) a `tmpdir` path was provided AND
-        # (c) the tmpdir path still exists at preexec
-        # invocation time.
-        if unshare_succeeded and captured_tmpdir is not None and captured_tmpdir.exists():
-            try:
-                # MS_* constants from <sys/mount.h>:
-                #   MS_RDONLY  = 0x0   (1)
-                #   MS_NOSUID  = 0x2   (2)
-                #   MS_NODEV   = 0x4   (4)
-                #   MS_NOEXEC  = 0x8   (8)
-                #   MS_REMOUNT = 0x20  (32)
-                #   MS_BIND    = 0x1000 (4096)
-                MS_RDONLY = 0x1
-                MS_REMOUNT = 0x20
-                MS_BIND = 0x1000
-                libc_unshare.mount.restype = ctypes.c_int  # type: ignore[attr-defined]
-                libc_unshare.mount.argtypes = [  # type: ignore[attr-defined]
-                    ctypes.c_char_p,  # source (char *)
-                    ctypes.c_char_p,  # target (char *)
-                    ctypes.c_char_p,  # filesystemtype (char *)
-                    ctypes.c_ulong,  # mountflags (unsigned long)
-                    ctypes.c_void_p,  # data (void *)
-                ]
-                # Remount "/" read-only inside this namespace.
-                # The MS_BIND|MS_REMOUNT combo with empty
-                # filesystemtype takes the previous mount
-                # of "/" and changes its flags. This is the
-                # documented kernel API for remounting the
-                # root read-only inside a user namespace.
-                ret = libc_unshare.mount(  # type: ignore[attr-defined]
-                    b"none",
-                    b"/",
-                    b"",
-                    ctypes.c_ulong(MS_REMOUNT | MS_BIND | MS_RDONLY),
-                    None,
-                )
-                if ret != 0:
-                    # EPERM/etc.; the remount-read-only
-                    # failed. The bind-mount below would
-                    # have nothing to bind onto. Fall
-                    # through to the no-op.
-                    pass
-                else:
-                    # Bind-mount the tmpdir writable inside
-                    # the fresh mount namespace. The
-                    # artifact dir becomes the only
-                    # writable location for the subprocess.
-                    tmpdir_bytes = str(captured_tmpdir).encode("utf-8")
-                    libc_unshare.mount(  # type: ignore[attr-defined]
-                        b"none",
-                        tmpdir_bytes,
-                        b"",
-                        ctypes.c_ulong(MS_BIND),
-                        None,
-                    )
-                # Whether or not the bind-mount succeeded,
-                # the child is in a fresh user+mount
-                # namespace; the parent filesystem is
-                # untouched (the remount was inside the
-                # child's namespace only). The subprocess
-                # has zero visibility into the parent's
-                # writable filesystem. Return to skip the
-                # no-op fallback.
-                return
-            except (OSError, AttributeError):
-                # bind/mount fcntls not available, or
-                # libc.mount raised an unexpected error.
-                # Fall through to the no-op.
-                pass
-
-        # Fallback: no-op. The subprocess inherits the
-        # parent's filesystem. Writes are confined to the
-        # tmpdir by virtue of pdftoppm's `output_prefix`
-        # argument being the only directory it writes
-        # to; a malicious PDF that triggers a write
-        # outside the tmpdir would succeed. This is the
-        # same honest-disclosure trade-off documented
-        # for the network isolation fallback: best-effort
-        # defense in depth, not a guarantee.
-        return None
-
-    return _isolate_fs_preexec
 
 
 class UnsupportedParserPlatformError(NotImplementedYetError):
@@ -588,6 +184,61 @@ class UnsupportedParserPlatformError(NotImplementedYetError):
     This is raised BEFORE any parser process is spawned, so an uncapped
     ``pdftoppm`` is never launched.
     """
+
+
+class NetworkIsolationUnsupportedError(NotImplementedYetError):
+    """Raised when the host platform cannot enforce A-F11 network isolation.
+
+    A distinct subclass of :class:`NotImplementedYetError` so the gateway
+    can distinguish "this platform has no proven network-isolation
+    boundary" from a malformed upload, a missing tool, a timeout, a
+    memory-limit hit, and a Linux namespace setup failure. It carries the
+    ADR-0002 error code ``internal.not_implemented`` and HTTP status 501.
+
+    This is raised BEFORE any parser process or Job Object target is
+    created, so no parser is ever launched on a platform whose network
+    isolation is not enforced.
+
+    **BBF-FU-20-linux-phase1-network-isolation.** Windows PDF parsing is
+    explicitly unsupported: the Job Object backend enforces the *memory*
+    cap, not network isolation, and Job Object network-rate control is
+    throttling rather than isolation. Proxy-environment stripping is
+    defense in depth, never isolation.
+    """
+
+
+def ensure_network_isolation_supported() -> None:
+    """Raise if this platform cannot enforce the A-F11 network isolation.
+
+    The A-F11 contract requires the PDF parser to run with **no network
+    access**. The requirement is enforced differently per platform:
+
+    * **Linux** -- the combined sandbox launcher in
+      :mod:`chess_coach.pdf_ocr.linux_sandbox` enters a fresh
+      ``CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWNS`` namespace before the
+      parser is executed, so the parser has no usable interface, no
+      loopback, no DNS, and no outbound TCP/UDP.
+    * **Windows** -- there is no proven no-network boundary. The Job
+      Object backend enforces the memory cap only. Until AppContainer (or
+      an explicitly accepted deployment-level boundary) is separately
+      validated, Windows PDF parsing is refused.
+
+    Raises:
+        NetworkIsolationUnsupportedError: if no network-isolation boundary
+            is available. Raised BEFORE any parser process or Job target
+            is created.
+    """
+    if not NETWORK_ISOLATION_SUPPORTED:
+        raise NetworkIsolationUnsupportedError(
+            "PDF parsing is not supported on this platform: the A-F11 "
+            "no-network requirement cannot be enforced here, so no parser "
+            "process is started.",
+            details={
+                "platform": HOST_PLATFORM,
+                "required_mechanism": NETWORK_ISOLATION_MECHANISM,
+                "resource": "pdf_import",
+            },
+        )
 
 
 def ensure_memory_cap_supported() -> None:
@@ -626,6 +277,58 @@ def ensure_memory_cap_supported() -> None:
                 "resource": "pdf_import",
             },
         )
+
+
+def _read_status_line(status_fd: int, proc: subprocess.Popen[bytes]) -> str | None:
+    """Read the launcher's status line from the dedicated status pipe.
+
+    Returns the first line the launcher wrote, or ``None`` if the launcher
+    wrote nothing (which means it died before reporting a stage). The
+    status pipe is separate from the parser's stderr so a setup failure is
+    never confused with parser output.
+    """
+    import select
+
+    try:
+        readable, _, _ = select.select([status_fd], [], [], 10.0)
+    except (OSError, ValueError):
+        return None
+    if not readable:
+        return None
+    try:
+        data = os.read(status_fd, 4096)
+    except OSError:
+        return None
+    if not data:
+        return None
+    first = data.decode("utf-8", errors="replace").splitlines()
+    return first[0] if first else None
+
+
+def _kill_launcher(proc: subprocess.Popen[bytes]) -> None:
+    """Terminate the launcher and its parser process group, then drain it.
+
+    The launcher starts a new session, so its process group contains only
+    the launcher and the parser it execs. Killing the group is therefore
+    scoped and never reaches an unrelated process.
+    """
+    signalled = False
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(proc.pid, 15)
+        signalled = True
+    if not signalled:
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.kill()
+        return
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+            os.killpg(proc.pid, 9)
+        with contextlib.suppress(ProcessLookupError, OSError):
+            proc.kill()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=10)
 
 
 def _build_pdftoppm_args(
@@ -706,40 +409,22 @@ def run_pdftoppm_in_subprocess(
     # path never starts a process.
     ensure_memory_cap_supported()
 
+    # A-F11 property 2 gate: refuse to run a parser we cannot isolate
+    # from the network. This MUST come before the Job backend is invoked
+    # and before any process is created, so on a platform with no proven
+    # no-network boundary no parser and no Job target is ever created.
+    #
+    # **BBF-FU-20-linux-phase1-network-isolation.** On Windows this is the
+    # refusal path: the Job Object backend enforces the memory cap, not
+    # network isolation.
+    ensure_network_isolation_supported()
+
     last_page_arg = last_page if last_page is not None else 0  # 0 = "all"
 
     with tempfile.TemporaryDirectory(prefix="chess_coach_pdftoppm_") as tmpdir_str:
         tmpdir = Path(tmpdir_str)
         output_prefix = tmpdir / "page"
         args = _build_pdftoppm_args(dpi, first_page, last_page_arg, output_prefix)
-
-        # The preexec_fn sets the 2 GB cap in the child
-        # process before pdftoppm starts. This is the
-        # only point at which setrlimit is effective: after
-        # fork, before exec. pdf2image's convert_from_bytes
-        # does not expose preexec_fn, which is why this
-        # module bypasses pdf2image and calls pdftoppm
-        # directly.
-        # A-F11 properties 2 + 3 + 4: combine the memory
-        # cap, network isolation, and filesystem isolation
-        # into a single preexec_fn. All three callbacks run
-        # in the child process after fork, before exec, so
-        # all are in place before pdftoppm starts. We use a
-        # single composed callable rather than three separate
-        # preexec_fn args because subprocess.Popen only
-        # accepts one preexec_fn.
-        #
-        # The filesystem isolation preexec receives the
-        # `tmpdir` path so the bind-mount step (when
-        # capabilities permit) can bind-mount the artifact
-        # dir writable while remounting the parent's
-        # filesystem read-only. See BBF-FU-21-bind-mount
-        # for the implementation details.
-        def _combined_preexec() -> None:
-            set_rlimit_as_preexec(mem_cap_bytes)()
-            set_network_isolation_preexec()()
-            set_fs_isolation_preexec(tmpdir)()
-        preexec_fn = _combined_preexec
 
         # The child process's stdin is the PDF bytes; the
         # child writes output files into tmpdir (which is
@@ -752,8 +437,15 @@ def run_pdftoppm_in_subprocess(
         # suspended, configures the Job's per-process memory
         # limit, assigns the target, and only then resumes it,
         # so no target code can allocate or spawn descendants
-        # before the limit is in force. The Linux path below is
-        # unchanged.
+        # before the limit is in force.
+        #
+        # BBF-FU-20-linux-phase1-network-isolation: the Linux path goes
+        # through the combined sandbox launcher instead of a composed
+        # `preexec_fn`. The launcher owns ONE namespace lifecycle
+        # (CLONE_NEWUSER|CLONE_NEWNET|CLONE_NEWNS) and applies the
+        # network, filesystem, descriptor, and memory policy
+        # transactionally before it execs pdftoppm, so there is one
+        # namespace owner, one setsid(), and no fallback.
         if WINDOWS_JOB_SUPPORTED:
             return _run_pdftoppm_in_windows_job(
                 args,
@@ -763,13 +455,53 @@ def run_pdftoppm_in_subprocess(
                 mem_cap_bytes=mem_cap_bytes,
             )
 
-        proc: subprocess.Popen[bytes] = subprocess.Popen(  # noqa: S603
+        # --- Linux: the combined sandbox launcher ---
+        #
+        # The launcher is a separate program invoked with a controlled
+        # argv protocol (no shell string is ever evaluated). It reports
+        # "OK" on a dedicated status descriptor only after EVERY
+        # containment stage has succeeded, and only then execs pdftoppm.
+        # A setup failure is reported as
+        # "SETUP_FAILURE <stage>\x00<message>" and the parser is never
+        # executed.
+        status_r, status_w = os.pipe()
+        launcher_argv = build_launcher_argv(
             args,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            preexec_fn=preexec_fn,  # noqa: S901  -- intentional A-F11 mechanism
+            artifact_dir=tmpdir,
+            limit_bytes=mem_cap_bytes,
+            status_fd=STATUS_FD,
         )
+        try:
+            proc = subprocess.Popen(  # noqa: S603
+                launcher_argv,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                pass_fds=(status_w,),
+                start_new_session=True,
+            )
+        except OSError:
+            os.close(status_r)
+            os.close(status_w)
+            raise
+
+        # The launcher writes to status_w (inherited as STATUS_FD); the
+        # parent's own copy is closed so only the child holds it.
+        os.close(status_w)
+        try:
+            status_line = _read_status_line(status_r, proc)
+        finally:
+            os.close(status_r)
+
+        if status_line is not None and not status_line.startswith(STATUS_OK):
+            _kill_launcher(proc)
+            stage, _, message = status_line.partition("\x00")
+            stage = stage.removeprefix(f"{STATUS_SETUP_FAILURE} ").strip()
+            raise NetworkIsolationSetupError(
+                message or "the sandbox setup failed",
+                stage=stage or "unknown",
+                details={"launcher": "linux_sandbox"},
+            )
 
         # Feed the PDF bytes via stdin; capture stderr for
         # diagnostics. communicate(timeout=...) is the inner
@@ -778,8 +510,7 @@ def run_pdftoppm_in_subprocess(
         try:
             _, stderr_bytes = proc.communicate(input=pdf_bytes, timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            _kill_launcher(proc)
             raise
         if proc.returncode != 0:
             stderr_text = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
