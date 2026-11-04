@@ -26,6 +26,16 @@ no side-effects; β is anything that persists, indexes, or remembers"):
     wildcards, no inheritance. This is the smallest design that
     satisfies the FU-11 boundary statement.
 
+BBF-FU-11 remediation (2026-11-04): for a WRITE, the scope must be
+present on the REQUEST's bearer credential, not merely on the
+configured active credential. Both the configured credential AND the
+request credential must carry the exact required scope. A request
+presenting only the secret (``Bearer secret``) against a configured
+``secret:BOOKS_WRITE`` is rejected. See
+:func:`_check_bearer_with_scope` for the full rationale. Read-only
+routes (``required_scope=None``) are unchanged: a plain configured
+secret and a scoped configured secret both authenticate.
+
 Token format:
 
   - ``"devtoken123"`` → secret=``devtoken123``, scope=None (read-only)
@@ -105,14 +115,36 @@ def _check_bearer_with_scope(
     If ``required_scope`` is None, this is equivalent to
     :func:`_check_bearer` (any token whose secret matches is accepted,
     regardless of scope). If ``required_scope`` is a non-empty string,
-    the active token MUST be of the form ``"secret:<required_scope>"``
+    the REQUEST's bearer credential MUST itself carry exactly that scope
     (or the request is rejected with 401).
 
-    The :func:`_check_bearer` check (secret-only) is run first; this
-    means a wrong-secret request fails with "Invalid bearer token" even
-    when the scope is also wrong. This is intentional — it avoids
-    leaking the presence of a scope to a caller who doesn't have the
-    secret.
+    Two independent requirements must both hold for a scoped write:
+
+    1. **The configured active credential must be scoped.** The operator
+       configures ``secret:BOOKS_WRITE``; a plain configured secret is
+       read-only and can never authorize a write.
+    2. **The request's own bearer credential must carry the scope.** The
+       scope suffix is read from the REQUEST header, not inherited from
+       the configured credential. A request presenting only the secret
+       (``Bearer secret``) against a scoped active credential is
+       REJECTED — the caller must present the scoped credential it was
+       issued.
+
+    Rationale for (2): the configured credential describes what the
+    deployment is capable of; the request credential describes what this
+    caller is asserting. Requiring the scope on the request is what
+    makes the scope meaningful per-request rather than a property of the
+    deployment's configuration. Reading the scope off the active token
+    (the prior behavior) made the request's own credential irrelevant
+    to authorization, so any caller who knew the secret could write.
+
+    The secret comparison runs first; a wrong-secret request fails with
+    "Invalid bearer token" even when the scope is also wrong. This is
+    intentional — it avoids leaking the presence of a scope to a caller
+    who does not have the secret.
+
+    Scope matching is exact-match. No scope chains, no wildcards, no
+    inheritance, no empty-scope equivalence.
     """
     if _active_token is None:
         return
@@ -127,7 +159,7 @@ def _check_bearer_with_scope(
     # request's secret-side must match. We split BOTH sides on the
     # LAST colon (the writer of the active token, and the caller
     # who knows the full token, may both include the scope).
-    request_secret, _request_scope = _parse_token(value)
+    request_secret, request_scope = _parse_token(value)
     active_secret, active_scope = _parse_token(_active_token)
     if not hmac.compare_digest(request_secret, active_secret):
         raise UnauthorizedError("Invalid bearer token.")
@@ -137,7 +169,11 @@ def _check_bearer_with_scope(
         return  # read-only-equivalent: any scope (or no scope) is OK
     if active_scope != required_scope:
         raise UnauthorizedError(
-            f"Token does not have required scope: {required_scope!r}"
+            f"Configured credential does not have required scope: {required_scope!r}"
+        )
+    if request_scope != required_scope:
+        raise UnauthorizedError(
+            f"Request credential does not have required scope: {required_scope!r}"
         )
 
 

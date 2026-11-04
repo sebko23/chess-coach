@@ -134,8 +134,10 @@ class TestCheckBearerWithScope:
 
     def test_scope_match_passes(self) -> None:
         set_active_token("devtoken123:BOOKS_WRITE")
-        # No raise.
-        _check_bearer_with_scope("Bearer devtoken123", "BOOKS_WRITE")
+        # No raise. BBF-FU-11 remediation (2026-11-04): the REQUEST's
+        # own credential must carry the scope, not just the configured
+        # one.
+        _check_bearer_with_scope("Bearer devtoken123:BOOKS_WRITE", "BOOKS_WRITE")
 
     # --- 4. required_scope=None (read-only-equivalent) ---------------
 
@@ -155,8 +157,8 @@ class TestCheckBearerWithScope:
 
     def test_case_insensitive_scheme_passes(self) -> None:
         set_active_token("devtoken123:BOOKS_WRITE")
-        _check_bearer_with_scope("bearer devtoken123", "BOOKS_WRITE")
-        _check_bearer_with_scope("BEARER devtoken123", "BOOKS_WRITE")
+        _check_bearer_with_scope("bearer devtoken123:BOOKS_WRITE", "BOOKS_WRITE")
+        _check_bearer_with_scope("BEARER devtoken123:BOOKS_WRITE", "BOOKS_WRITE")
 
     # --- 6. auth disabled -------------------------------------------
 
@@ -189,6 +191,92 @@ class TestCheckBearerWithScope:
         with pytest.raises(UnauthorizedError, match="PROFILE_WRITE"):
             _check_bearer_with_scope("Bearer devtoken123", "PROFILE_WRITE")
 
+    # --- 8. the REQUEST credential must carry the scope (FU-11 remediation) ---
+
+    def test_scoped_active_token_but_unscoped_request_rejected(self) -> None:
+        """The core remediation case.
+
+        The configured credential is scoped, but the REQUEST presents
+        only the secret. Prior behavior accepted this, which made the
+        request's own credential irrelevant to authorization: any
+        caller who knew the secret could write.
+        """
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Request credential"):
+            _check_bearer_with_scope("Bearer devtoken123", "BOOKS_WRITE")
+
+    def test_unscoped_request_rejected_for_every_required_scope(self) -> None:
+        """A required scope the CONFIGURED credential does not carry is
+        rejected on that check, before the request's own scope is
+        considered. Either way the write is refused."""
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Configured credential"):
+            _check_bearer_with_scope("Bearer devtoken123", "PROFILE_WRITE")
+
+    def test_scope_only_request_credential_rejected(self) -> None:
+        """``:BOOKS_WRITE`` carries a scope but no secret."""
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Invalid bearer token"):
+            _check_bearer_with_scope("Bearer :BOOKS_WRITE", "BOOKS_WRITE")
+
+    def test_empty_request_credential_rejected(self) -> None:
+        """``Bearer`` with an empty value carries no credential at all."""
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Bearer"):
+            _check_bearer_with_scope("Bearer ", "BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Bearer"):
+            _check_bearer_with_scope("Bearer", "BOOKS_WRITE")
+
+    def test_empty_scope_request_credential_rejected(self) -> None:
+        """``secret:`` is an empty scope, which is NOT the required scope."""
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Request credential"):
+            _check_bearer_with_scope("Bearer devtoken123:", "BOOKS_WRITE")
+
+    def test_wrong_scope_in_request_credential_rejected(self) -> None:
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Request credential"):
+            _check_bearer_with_scope("Bearer devtoken123:PROFILE_WRITE", "BOOKS_WRITE")
+
+    def test_scope_chain_in_request_credential_rejected(self) -> None:
+        """A scope chain is refused.
+
+        The token is split on the LAST colon, so
+        ``devtoken123:BOOKS_WRITE:EXTENDED`` yields the secret
+        ``devtoken123:BOOKS_WRITE``, which does not match the
+        configured secret. The request is therefore refused at the
+        secret check — fail-closed, and it never reaches the scope
+        check as if the chain were valid.
+        """
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Invalid bearer token"):
+            _check_bearer_with_scope(
+                "Bearer devtoken123:BOOKS_WRITE:EXTENDED", "BOOKS_WRITE"
+            )
+
+    def test_wildcard_in_request_credential_rejected(self) -> None:
+        set_active_token("devtoken123:BOOKS_WRITE")
+        with pytest.raises(UnauthorizedError, match="Request credential"):
+            _check_bearer_with_scope("Bearer devtoken123:*", "BOOKS_WRITE")
+
+    def test_unscoped_configured_credential_rejects_scoped_request(self) -> None:
+        """A plain configured secret can never authorize a write, even
+        when the request presents a scope."""
+        set_active_token("devtoken123")
+        with pytest.raises(UnauthorizedError, match="Configured credential"):
+            _check_bearer_with_scope("Bearer devtoken123:BOOKS_WRITE", "BOOKS_WRITE")
+
+    def test_no_scope_required_accepts_plain_and_scoped_credentials(self) -> None:
+        """Read-only routes stay backward compatible: both a plain
+        configured secret and a scoped configured secret authenticate,
+        and the request may carry any scope (or none)."""
+        set_active_token("devtoken123")
+        _check_bearer_with_scope("Bearer devtoken123", None)
+        _check_bearer_with_scope("Bearer devtoken123:BOOKS_WRITE", None)
+        set_active_token("devtoken123:BOOKS_WRITE")
+        _check_bearer_with_scope("Bearer devtoken123", None)
+        _check_bearer_with_scope("Bearer devtoken123:BOOKS_WRITE", None)
+
 
 # -----------------------------------------------------------------------
 # require_bearer_with_scope (async FastAPI dep)
@@ -205,9 +293,9 @@ class TestRequireBearerWithScopeDep:
     @pytest.mark.asyncio
     async def test_dep_passes_with_correct_scope(self) -> None:
         set_active_token("devtoken123:BOOKS_WRITE")
-        # No raise.
+        # No raise. The request carries the scope (FU-11 remediation).
         await require_bearer_with_scope(
-            "BOOKS_WRITE", authorization="Bearer devtoken123"
+            "BOOKS_WRITE", authorization="Bearer devtoken123:BOOKS_WRITE"
         )
 
     @pytest.mark.asyncio

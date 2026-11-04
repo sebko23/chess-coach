@@ -63,17 +63,29 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
+from starlette.responses import Response
 
 from chess_coach.errors.codes import ErrorCode
+from chess_coach.errors.exceptions import MalformedBookError
 from chess_coach.gateway.auth import (
     require_bearer,
     require_bearer_with_scope,
+)
+from chess_coach.protocol_types import ErrorDetail, ErrorResponse
+from chess_coach.repertoire.book_storage import (
+    MalformedBookBytesError,
+    entry_count_from_size,
+    resolve_book_path,
 )
 from chess_coach.repertoire.polyglot_writer import (
     BookEntry,
@@ -89,20 +101,11 @@ logger = logging.getLogger(__name__)
 # BBF-FU-11 decision brief and the BBF-FU-11a auth.py module docstring.
 BOOKS_WRITE_SCOPE = "BOOKS_WRITE"
 
-# Polyglot entry size, per the writer's constant. Hard-coded here so
-# the GET metadata path doesn't need to import the writer's private
-# constant. (The writer's ENTRY_SIZE = 16 is a public-looking constant
-# but moving it to a shared location would be scope creep for this BBF.)
-_POLYGLOT_ENTRY_SIZE = 16
-
 # Player-name validation: reject any name that contains characters
 # which would let a caller traverse the books_dir filesystem. The α
 # route uses these names as DB identifiers, but the β route uses
 # them as filesystem path components, so the validation is stricter.
 _PLAYER_NAME_RE = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
-
-router = APIRouter(prefix="/v1/repertoire", tags=["repertoire", "book"])
-
 
 # --- FastAPI dep wrappers ----------------------------------------------------
 
@@ -184,6 +187,69 @@ class DeleteBookResponse(BaseModel):
     reason: str | None = None
 
 
+# --- deterministic 400 mapping (narrow, endpoint-specific) ------------------
+
+# The approved BBF-FU-11 brief requires an out-of-range weight to be
+# HTTP 400. Pydantic's boundary validation rejects it first and the
+# gateway's global ``RequestValidationError`` handler returns 422.
+#
+# The global handler is NOT changed — that would alter the validation
+# status for every unrelated route. Instead this router uses a custom
+# ``APIRoute`` subclass (``route_class``) that catches the
+# ``RequestValidationError`` raised while solving THIS router's
+# request body and renders it as 400. The mapping is therefore scoped
+# by construction to the three book endpoints.
+#
+# The error CODE stays ``client.validation_error`` — only the HTTP
+# status is remapped, so the machine-readable contract is unchanged.
+class _BookRoute(APIRoute):
+    """An ``APIRoute`` that maps request-validation failures to HTTP 400.
+
+    Every other route keeps the gateway's global 422 behaviour.
+    """
+
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
+        original_handler = super().get_route_handler()
+
+        async def custom_route_handler(request: Request) -> Response:
+            try:
+                return await original_handler(request)
+            except RequestValidationError as exc:
+                return _book_validation_error_response(request, exc)
+
+        return custom_route_handler
+
+
+def _book_validation_error_response(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Render a request-validation failure on the book routes as HTTP 400.
+
+    Narrow by construction: only the book router's route class uses
+    this, so no other endpoint's validation status changes.
+    """
+    request_id = getattr(request.state, "request_id", None)
+    return JSONResponse(
+        content=ErrorResponse(
+            error=ErrorDetail(
+                code=ErrorCode.VALIDATION_ERROR.value,
+                message="Invalid request payload for the book endpoint.",
+                details={"errors": len(exc.errors())},
+                retriable=False,
+                request_id=request_id if isinstance(request_id, str) else None,
+            )
+        ).model_dump(mode="json"),
+        status_code=400,
+    )
+
+
+router = APIRouter(
+    prefix="/v1/repertoire",
+    tags=["repertoire", "book"],
+    route_class=_BookRoute,
+)
+
+
 # --- helpers -----------------------------------------------------------------
 
 
@@ -227,7 +293,27 @@ def _books_dir(request: Request) -> Path:
 
 
 def _book_path(books: Path, player: str) -> Path:
-    return books / f"{player}.bin"
+    """Return the canonical, symlink-safe destination path for ``player``.
+
+    BBF-FU-11 remediation (2026-11-04): this is the SINGLE resolver
+    used by PUT, GET, DELETE and the recommendations fallback. It
+    delegates to :func:`resolve_book_path`, which validates the player
+    component, canonicalises the books root, and rejects a destination
+    whose pre-existing symlink escapes the root.
+
+    Raises ``HTTPException(400)`` when the path is not resolvable
+    safely.
+    """
+    try:
+        return resolve_book_path(books, player)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": ErrorCode.BAD_REQUEST.value,
+                "message": str(exc),
+            },
+        ) from exc
 
 
 def _file_size_and_mtime(path: Path) -> tuple[int, float]:
@@ -243,20 +329,14 @@ def _file_size_and_mtime(path: Path) -> tuple[int, float]:
 def _entry_count_from_size(size_bytes: int) -> int:
     """Number of Polyglot entries implied by the file size.
 
-    Each entry is 16 bytes (8-byte key + 2-byte move + 2-byte weight +
-    4-byte learn). An empty book is 0 bytes = 0 entries. A file
-    whose size is not a multiple of 16 is malformed; we surface this
-    as 0 (caller may want to flag it) and rely on the writer's
-    16-byte invariant to prevent new malformations.
+    BBF-FU-11 remediation (2026-11-04): a malformed file is NEVER
+    reported as an empty book. A size that is not a multiple of the
+    16-byte entry size raises :class:`MalformedBookError`; the caller
+    maps that to a deterministic 4xx response.
+
+    An empty book is 0 bytes = 0 entries, which IS a valid size.
     """
-    if size_bytes % _POLYGLOT_ENTRY_SIZE != 0:
-        logger.warning(
-            "Book file size %d is not a multiple of %d; treating as 0 entries.",
-            size_bytes,
-            _POLYGLOT_ENTRY_SIZE,
-        )
-        return 0
-    return size_bytes // _POLYGLOT_ENTRY_SIZE
+    return entry_count_from_size(size_bytes)
 
 
 # --- endpoints ---------------------------------------------------------------
@@ -375,11 +455,27 @@ async def get_book(
                 "message": f"No book stored for player: {resolved!r}.",
             },
         ) from exc
+    try:
+        entry_count = _entry_count_from_size(size_bytes)
+    except MalformedBookBytesError as exc:
+        # BBF-FU-11 remediation (2026-11-04): a corrupt stored file is
+        # NOT an empty book. Surface a distinct, deterministic 4xx with
+        # its own error code rather than fabricating entry_count=0.
+        logger.warning(
+            "book.get: player=%s has a malformed stored book (size=%d)",
+            resolved,
+            size_bytes,
+        )
+        raise MalformedBookError(
+            message=(
+                f"Stored book for player {resolved!r} is malformed: {exc}"
+            )
+        ) from exc
     last_modified = datetime.fromtimestamp(mtime_epoch, tz=UTC).isoformat()
     return GetBookResponse(
         player=resolved,
         size_bytes=size_bytes,
-        entry_count=_entry_count_from_size(size_bytes),
+        entry_count=entry_count,
         last_modified=last_modified,
     )
 

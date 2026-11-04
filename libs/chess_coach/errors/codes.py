@@ -34,6 +34,12 @@ class ErrorCode(StrEnum):
     RATE_LIMITED = "client.rate_limited"
     PAYLOAD_TOO_LARGE = "client.payload_too_large"
     UNSUPPORTED_VERSION = "client.unsupported_version"
+    #: A stored Polyglot book's bytes are not a valid Polyglot book
+    #: (its length is not a multiple of the 16-byte entry size). The
+    #: stored file is corrupt, not absent — it must never be reported
+    #: as an empty book. Distinct from BAD_REQUEST (a malformed
+    #: REQUEST) and from NOT_FOUND (no book stored).
+    MALFORMED_BOOK = "client.malformed_book"
 
     # ----- server state -----
     SERVER_UNAVAILABLE = "server.unavailable"
