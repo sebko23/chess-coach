@@ -70,6 +70,7 @@ from chess_coach.engine_orch.pool import EnginePool
 from chess_coach.errors.codes import ErrorCode
 from chess_coach.gateway.engine_availability import require_engine_available
 from chess_coach.protocol_types.analysis import AnalysisRequest
+from chess_coach.repertoire.book_storage import resolve_book_path
 
 from ..auth import require_bearer
 from ..route_guard import route_guard
@@ -275,8 +276,22 @@ async def get_recommendations(
         # caller's explicit polyglot_book_path (above) still takes
         # precedence; we only substitute when it's None.
         if polyglot_book_path is None:
-            stored_path = books_dir_path / f"{resolved}.bin"
-            if stored_path.is_file():
+            # BBF-FU-11 remediation (2026-11-04): use the SAME canonical,
+            # symlink-safe resolver as PUT/GET/DELETE. The previous
+            # inline `books_dir_path / f"{resolved}.bin"` bypassed the
+            # route's validation and would follow a pre-existing
+            # symlink out of the books directory.
+            try:
+                stored_path = resolve_book_path(books_dir_path, resolved)
+            except ValueError as exc:
+                logger.warning(
+                    "recommendations: refusing stored-book lookup for "
+                    "player=%s: %s",
+                    resolved,
+                    exc,
+                )
+                stored_path = None
+            if stored_path is not None and stored_path.is_file():
                 polyglot_book_path = str(stored_path)
                 logger.info(
                     "recommendations: using stored book for player=%s path=%s",

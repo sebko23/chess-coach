@@ -76,6 +76,19 @@ class NotFoundError(ChessCoachError):
     http_status = 404
 
 
+class MalformedBookError(ChessCoachError):
+    """A stored Polyglot book's bytes are not a valid Polyglot book.
+
+    BBF-FU-11 remediation (2026-11-04). The stored file is CORRUPT,
+    not absent — it must never be reported as an empty book. Distinct
+    from :class:`BadRequestError` (a malformed REQUEST) and from
+    :class:`NotFoundError` (no book stored).
+    """
+
+    code = ErrorCode.MALFORMED_BOOK
+    http_status = 422
+
+
 class ConflictError(ChessCoachError):
     code = ErrorCode.CONFLICT
     http_status = 409

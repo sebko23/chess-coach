@@ -9,18 +9,31 @@ needed for the round-trip story (chess-coach-built repertoires can be
 exported to other tools) and for the β (FU-11) persistent-book future
 work.
 
-Polyglot format spec (public, used by Chessbase, Arena, Scid, etc.):
-  - 4-byte magic number ``0xB19B0BCC`` (big-endian uint32)
-  - Repeated 16-byte entries (entry order doesn't matter; readers do
-    binary search on the 8-byte key):
+Polyglot format spec (public, used by Chessbase, Arena, Scid, etc. —
+https://hgm.nubati.net/book_format.html):
+
+  - A Polyglot book is a **headerless series of 16-byte entries**. There
+    is NO separate file header in the public format.
+  - Each 16-byte entry is:
       - 8-byte key: Polyglot zobrist hash of the position
-        (``chess.polyglot.zobrist_hash``) — note this is the position
-        hash only, NOT (position hash, move, weight, learn) as the
-        FU-7 ledger entry wording suggested
-      - 2-byte move: from_square (high byte) | to_square (low byte)
+        (``chess.polyglot.zobrist_hash``) — the position hash only,
+        NOT (position hash, move, weight, learn) as the FU-7 ledger
+        entry wording suggested
+      - 2-byte move: the move encoding
       - 2-byte weight: book weight (0..65535)
       - 4-byte learn: engine learning data (depth + eval); we default
         to 0 for hand-curated books
+  - All integers are stored **highest byte first** (big-endian),
+    regardless of size.
+  - The entries are ordered by key, lowest key first.
+
+There is NO 4-byte magic number at the start of the file. An earlier
+revision of this module's prose described one, which contradicted both
+the public format and this implementation; the prose is corrected here.
+(There IS a widely-quoted 0xB19B0BCC identifier in some Polyglot
+spec discussions, but it is not a file header in the format this
+writer targets, and adding one breaks the format and the reader's
+binary search.)
 
 Important python-chess library quirk (discovered during the §1.3
 discipline's P2d implementation, then corrected again after the first
@@ -62,11 +75,21 @@ from __future__ import annotations
 import struct
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
 import chess
 from chess.polyglot import zobrist_hash
 
+from .book_storage import atomic_replace_bytes
+
 # Polyglot format constants.
+#
+# The public format is a HEADERLESS series of 16-byte entries; there is
+# no file header. ``MAGIC`` is retained only as a named constant for
+# callers that reference the widely-quoted Polyglot identifier — it is
+# NOT written to the file and must NOT be prepended as a header.
+# See the module docstring for why a synthetic header breaks the
+# format and the reader's binary search.
 MAGIC: int = 0xB19B0BCC
 ENTRY_STRUCT: str = ">QHHI"  # big-endian: 8-byte key, 2-byte move, 2-byte weight, 4-byte learn
 ENTRY_SIZE: int = 16
@@ -144,34 +167,36 @@ def write_polyglot_book(entries: Iterable[BookEntry], path: str) -> int:
     which is larger than typical real keys, breaking the sort
     invariant and causing ``find_all`` to return zero hits.
 
-    The "magic" 0xB19B0BCC value mentioned in some Polyglot spec
-    docs is a file-format identifier, but the reader library ignores
-    it. Real Polyglot books written by Chessbase/Arena/Scid also do
-    not have a separate magic header in this position.
-
     For an empty book, the file is 0 bytes. The library's
     ``find_all`` returns an empty iterator for a 0-byte file
     (handled by the ``_EmptyMmap`` fallback in the library's
     ``__init__``).
 
-    The caller is responsible for any backup or atomic-rename
-    semantics. The function does NOT consult the OS-native secret
-    store, does NOT validate that ``path`` is within any sandbox;
-    the route layer adds path-validation / sandboxing on top.
+    The write is ATOMIC (BBF-FU-11 remediation, 2026-11-04). The
+    complete book bytes are built and validated FIRST, then written to
+    a temporary file in the destination's directory, fsynced, and
+    moved onto the destination with :func:`os.replace`. An interrupted
+    or failed write therefore cannot destroy the previous valid book.
+    The destination is replaced as a directory entry, so a pre-existing
+    symlink at the destination is replaced rather than followed.
+
+    The function does NOT consult the OS-native secret store and does
+    NOT validate that ``path`` is within any sandbox; the route layer
+    adds path-validation / sandboxing on top.
     """
     entries = list(entries)
     if not entries:
-        # Empty book: write a 0-byte file. The library's _EmptyMmap
-        # fallback handles this correctly (find_all returns nothing).
-        with open(path, "wb") as f:
-            pass
+        # Empty book: a 0-byte file. The library's _EmptyMmap fallback
+        # handles this correctly (find_all returns nothing).
+        atomic_replace_bytes(Path(path), b"")
         return 0
     # Sort entries by zobrist hash so bisect_key_left works. Compute
     # the key up front so we don't re-parse the Board multiple times
     # (the sort key and the encoded entry both need the zobrist hash
     # of the position).
     keyed = sorted(entries, key=lambda e: zobrist_hash(chess.Board(e.fen)))
+    # Build the COMPLETE payload before touching the destination: a
+    # validation error must leave any previous book untouched.
     blob = b"".join(_build_entry_bytes(e) for e in keyed)
-    with open(path, "wb") as f:
-        f.write(blob)
+    atomic_replace_bytes(Path(path), blob)
     return len(blob)
