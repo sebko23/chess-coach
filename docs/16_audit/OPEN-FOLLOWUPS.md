@@ -355,11 +355,30 @@ status field lag was bookkeeping).
 
 **Status:** **PARTIAL** — α shipped 2026-10-12 via BBF-FU-11c
 (commit `ee292874`, branch `bbf-fu-11c`). The α route
-opt-in to stored per-player book is on `main`. Tier 2+
-(persistent support; full `.bin` import/export) remains
-deferred to the Phase 2 trigger. This BBF-doc-drift-flip
-documents the partial state; the Tier 2+ work is its own
-follow-up.
+opt-in to stored per-player book is on `main`.
+
+**Relationship to FU-11 (updated 2026-11-04).** The two are distinct
+paths, and the β half is now closed:
+
+- **α (this entry's shipped part)** — the per-call
+  `polyglot_book_path` field on
+  `POST /v1/repertoire/{player}/recommendations`. The caller supplies
+  the path on each individual request; the server reads it for that one
+  request and discards it. Per-call, stateless, no side effects. This
+  is unchanged.
+- **β (FU-11, closed 2026-11-04 for the α-ext scope)** — server-managed
+  PERSISTENT book state: `PUT`/`GET`/`DELETE` on
+  `/v1/repertoire/{player}/book`, with the stored-book fallback in the
+  recommendations route when no explicit per-call path is supplied. The
+  explicit path still wins over the stored book, and the stored book
+  still wins over engine-only. See FU-11's entry and the `## Resolved`
+  section for the evidence.
+
+What remains genuinely open in this entry is the **full `.bin`
+import/export** surface beyond the α-ext shape: a multi-book library,
+an indexing layer, a combine algorithm, a user-identity model, a CLI
+management surface, backup automation and Phase 8 packaging support
+are all explicitly out of scope and are NOT claimed as delivered.
 
 **Identified:** Masterboard design-reference brief, 2026-08-06, during a
 side-quest analysis of `https://github.com/IntermezzoSoftware/Masterboard`.
@@ -818,9 +837,18 @@ side-effects**; β is anything that persists, indexes, or remembers.
 real Phase 2 trigger point, not a continuation of this field." This
 entry is that note.
 
-**Status:** OPEN. Logged as Phase 2 trigger. Not blocking α. Do not
-implement until α is shipped and the protocol surface from α has
-been observed in production for at least one release cycle.
+**Status:** **RESOLVED for the approved α-ext scope (2026-11-04)** —
+see the release-scope closure record in the `## Resolved` section below.
+The β shape that shipped is the **α-ext** one approved by
+`docs/16_audit/BBF-FU-11-polyglot-persistent-book-decision.md`: one
+active Polyglot book per player, served by `PUT`/`GET`/`DELETE` on
+`/v1/repertoire/{player}/book`, with the stored-book fallback in the
+recommendations route.
+
+**Historical state (superseded 2026-11-04).** OPEN. Logged as Phase 2
+trigger. Not blocking α. Do not implement until α is shipped and the
+protocol surface from α has been observed in production for at least
+one release cycle.
 
 **α implementation pointer (for when β is picked up):** FU-7 lives at
 `services/chess_coach/gateway/routes/repertoire_recommendations.py` —
@@ -3521,6 +3549,86 @@ original line range in the file (above) so the full historical context is reacha
 The convention for closed entries: keep the original `## FU-NN` heading and finding text
 unchanged in the upper section, but change the `**Status:**` line and add a brief
 `**Resolution:**` line. Entries here document the disposition for future readers.
+
+### FU-11 — RESOLVED for the approved α-ext scope, fixed by the FU-11 remediation
+
+**Original entry:** lines 795-856 (above).
+**Resolution:** Resolved 2026-11-04 by the FU-11 remediation branch
+`bbf-fu11-polyglot-book-remediation` (commits `ce4e0c19` and `941c22de`),
+based on final-main tree `df3ed9bffc95b009c7cc656d2ec009aaa8556760`. The
+approved product shape is the **α-ext** one from
+`docs/16_audit/BBF-FU-11-polyglot-persistent-book-decision.md`: one active
+Polyglot book per player, served by `PUT`/`GET`/`DELETE` on
+`/v1/repertoire/{player}/book`, with the stored-book fallback in the
+recommendations route.
+
+*What was corrected.* FU-11a/b/c were substantially implemented, but the
+landed implementation did not satisfy every approved acceptance criterion and
+did not prove all safety properties required for a persistent writable
+resource. Eight blockers were corrected:
+
+1. **Write-scope request semantics.** The scope supplied in the request header
+   was parsed and discarded; only the globally configured active credential was
+   checked, so `Bearer secret` was accepted for a write whenever the configured
+   token was scoped. A write now requires the REQUEST's own bearer credential to
+   carry the exact `BOOKS_WRITE` scope. Both the configured credential and the
+   request credential must be scoped; the match is exact (no chains, no
+   wildcards, no inheritance, no empty-scope equivalence). Read-only routes are
+   unchanged.
+2. **Deterministic 400 validation mapping.** An out-of-range weight had been
+   accepted as "400 or 422". The book router now uses a router-scoped
+   `APIRoute` subclass that maps request-validation failures to exactly HTTP
+   400, leaving the gateway's global 422 behaviour untouched for every other
+   route. The error code stays `client.validation_error`.
+3. **Atomic replacement.** The writer opened the live target with `wb` and
+   wrote directly, so an interrupted write could destroy the previous valid
+   book. The complete payload is now built and validated first, written to a
+   unique temporary file in the destination's directory, flushed and fsynced,
+   and swapped onto the destination with `os.replace`. Any failure removes the
+   temporary artifact and preserves the previous bytes. Because the replacement
+   is a directory-entry swap, a pre-existing symlink at the destination is
+   replaced rather than followed.
+4. **Canonical containment and symlink safety.** One shared canonical resolver
+   (`resolve_book_path`) is now used by PUT, GET, DELETE and the
+   recommendations fallback, which previously constructed its own path and
+   bypassed the route's validation entirely. It validates the player
+   component, canonicalises the books root, and rejects a destination whose
+   pre-existing symlink resolves outside that root. The `"default"` →
+   `"ebassti"` canonical mapping is preserved.
+5. **Malformed stored-file metadata.** GET derived `entry_count` from the file
+   size and reported 0 entries when the size was not a multiple of 16, which
+   described a corrupt book as an empty one. A malformed stored file now
+   produces a deterministic 4xx with the typed `client.malformed_book` code.
+   GET still never returns binary content.
+6. **End-to-end registration proof.** The integration fixture mounted the book
+   router directly, which did not prove the gateway serves these routes. The
+   real application factory's OpenAPI schema now proves PUT, GET and DELETE at
+   `/v1/repertoire/{player}/book`.
+7. **Polyglot format documentation and interoperability proof.** The writer's
+   prose described a "4-byte magic number" that the implementation does not
+   write and the public format does not define. The prose now describes the
+   canonical headerless series of 16-byte entries (8-byte key, 2-byte move,
+   2-byte weight, 4-byte learn; all integers highest byte first; entries
+   ordered by key), per `https://hgm.nubati.net/book_format.html`. NO synthetic
+   header was added, and the big-endian layout, key calculation, move encoding,
+   weight and learn ranges, key sorting and the empty-book representation are
+   all preserved. Interoperability is proved by an INDEPENDENT parser written
+   from the public specification, not by a `python-chess` self-round-trip.
+8. **Ledger closure.** This record, and the correction of the stale "do not
+   implement" prose, are the eighth item.
+
+*Evidence.* The targeted FU-11 suite passes (94 passed, 4 skipped on Windows;
+the 4 skips are the real-symlink assertions, which are covered by an
+additional host-independent test and pass in a Linux container at UID 1000 —
+28 passed, 0 skipped). The 28-test remediation suite, the corrected
+`tests/unit/test_auth_scope.py` and `tests/unit/test_polyglot_writer.py` (46
+passed) are green. `ruff` is clean on every touched file and `mypy --strict`
+reports no issues in the changed repertoire modules.
+
+*What this does NOT claim.* No multi-book library, indexing layer, combine
+algorithm, user-identity model, CLI management surface, backup automation or
+Phase 8 packaging support is delivered or claimed. FU-7's remaining
+full `.bin` import/export surface is unchanged and still open.
 
 ### FU-28 — RESOLVED, fixed by PR #110
 
