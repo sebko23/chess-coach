@@ -15,6 +15,7 @@ the writer compose.
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from pathlib import Path
@@ -66,6 +67,7 @@ def atomic_replace_bytes(destination: Path, payload: bytes) -> int:
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     tmp_path: Path | None = None
+    fd: int | None = None
     try:
         fd, tmp_name = tempfile.mkstemp(
             dir=str(destination.parent),
@@ -73,7 +75,14 @@ def atomic_replace_bytes(destination: Path, payload: bytes) -> int:
             suffix=".tmp",
         )
         tmp_path = Path(tmp_name)
+        # ``os.fdopen`` takes ownership of ``fd``: on success the file
+        # is closed when the context manager exits, and on failure the
+        # context manager closes it too. Opening it by hand instead
+        # would leak the descriptor on the failure path, and on
+        # Windows a leaked descriptor keeps the file locked so the
+        # temporary artifact cannot be removed.
         with os.fdopen(fd, "wb") as handle:
+            fd = None  # ownership transferred to the context manager
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
@@ -82,13 +91,17 @@ def atomic_replace_bytes(destination: Path, payload: bytes) -> int:
         os.replace(tmp_path, destination)
         tmp_path = None  # ownership transferred by the rename
     finally:
+        if fd is not None:
+            # The fdopen never happened (or never took ownership):
+            # close the descriptor so the temporary file is not left
+            # locked.
+            with contextlib.suppress(OSError):
+                os.close(fd)
         if tmp_path is not None:
             # Failure path: remove the temporary artifact. The previous
             # destination bytes were never touched.
-            try:
+            with contextlib.suppress(OSError):
                 tmp_path.unlink()
-            except OSError:
-                pass
     return len(payload)
 
 
