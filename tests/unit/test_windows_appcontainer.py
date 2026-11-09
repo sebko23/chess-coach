@@ -18,14 +18,12 @@ they assert the decisions the production code makes.
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
 import pytest
 
-from chess_coach.pdf_ocr import windows_appcontainer as wa
 from chess_coach.pdf_ocr import subprocess_runner as sr
-
+from chess_coach.pdf_ocr import windows_appcontainer as wa
 
 # ---------------------------------------------------------------------------
 # The product-owned package identity

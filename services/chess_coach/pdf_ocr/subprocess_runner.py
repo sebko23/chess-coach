@@ -527,7 +527,10 @@ def run_pdftoppm_in_subprocess(
         # parser runs inside an AppContainer, so the PDF is passed by FILE
         # PATH rather than stdin. The input is staged in the artifact
         # directory, which the product SID is granted access to.
-        windows_appcontainer = WINDOWS_JOB_SUPPORTED and windows_appcontainer_is_enabled()
+        # One gate, not two independently maintained ones:
+        # _network_isolation_available() is the single authority on whether
+        # a no-network boundary exists on this host.
+        windows_appcontainer = _network_isolation_available() and WINDOWS_JOB_SUPPORTED
         input_path: Path | None = None
         if windows_appcontainer:
             input_path = tmpdir / "input.pdf"
@@ -795,8 +798,21 @@ def _run_pdftoppm_in_windows_appcontainer(
     # profile-resident parser is unlaunchable inside the container.
     try:
         staged = stage_parser()
-    except AppContainerUnsupportedError:
-        raise
+    except AppContainerUnsupportedError as exc:
+        # The parser cannot be staged at all -- for example it is not
+        # installed.  That is the retained 501 refusal, NOT a setup
+        # failure, and it must not fall through to the route's generic
+        # handler (which would report 422).
+        raise NetworkIsolationUnsupportedError(
+            exc.message,
+            details={
+                "platform": HOST_PLATFORM,
+                "required_mechanism": network_isolation_mechanism(),
+                "resource": "pdf_import",
+                "launcher": "windows_appcontainer",
+                **exc.details,
+            },
+        ) from exc
     except AppContainerSetupError as exc:
         raise NetworkIsolationSetupError(
             "could not stage the PDF parser for the AppContainer",
@@ -832,10 +848,21 @@ def _run_pdftoppm_in_windows_appcontainer(
             stdout_path=stdout_path,
             stderr_path=stderr_path,
         )
-    except AppContainerUnsupportedError:
-        # The backend cannot be used here at all: the retained 501
-        # refusal, not a setup failure.
-        raise
+    except AppContainerUnsupportedError as exc:
+        # The backend cannot be used here at all -- for example the parser
+        # is not installed, so it cannot be staged.  That is the retained
+        # 501 refusal, NOT a setup failure, and it must not fall through
+        # to the route's generic handler (which would report 422).
+        raise NetworkIsolationUnsupportedError(
+            exc.message,
+            details={
+                "platform": HOST_PLATFORM,
+                "required_mechanism": network_isolation_mechanism(),
+                "resource": "pdf_import",
+                "launcher": "windows_appcontainer",
+                **exc.details,
+            },
+        ) from exc
     except (AppContainerVerificationError, AppContainerSetupError) as exc:
         # A containment setup failure: the parser was NEVER executed.
         raise NetworkIsolationSetupError(

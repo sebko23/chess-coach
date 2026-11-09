@@ -112,6 +112,10 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover -- import for type checking only
+    from .windows_appcontainer import CapabilitySet, HandlePolicy
 
 __all__ = [
     "WindowsJobError",
@@ -1152,7 +1156,7 @@ def run_in_appcontainer_job(
     stderr_path: Path | None = None,
     package_sid: str | None = None,
     expected_package_sid: str | None = None,
-    handle_policy: object | None = None,
+    handle_policy: HandlePolicy | None = None,
 ) -> ContainedProcessResult:
     """Run ``argv`` inside an AppContainer **and** a Job Object.
 
@@ -1231,15 +1235,12 @@ def run_in_appcontainer_job(
         WindowsJobSetupError: the Job lifecycle failed.
     """
     from .windows_appcontainer import (
-        AppContainerSetupError,
-        AppContainerVerificationError,
-        DEFAULT_HANDLE_POLICY,
         PRODUCT_PACKAGE_SID,
+        AppContainerSetupError,
         assert_verified,
         build_launch_plan,
         parse_sid_string,
         register_profile,
-        select_capabilities,
         verify_token,
     )
 
@@ -1283,7 +1284,14 @@ def run_in_appcontainer_job(
     if not profile_is_registered(expected_sid):
         register_profile(sid_string=expected_sid)
 
+    # The SID allocation is only needed to populate the
+    # SECURITY_CAPABILITIES attribute, so it is released once
+    # CreateProcessW has returned.  It is tracked so the finally block
+    # frees it on every path, including the failure paths.
+    from .windows_appcontainer import free_sid
+
     package_sid_pointer = parse_sid_string(expected_sid)
+    sid_allocation = package_sid_pointer
     workdir = Path(tempfile.mkdtemp(prefix="chess_coach_appcontainer_"))
     try:
         # --- 1. the standard handles the parser may inherit ----------------
@@ -1320,6 +1328,25 @@ def run_in_appcontainer_job(
         permitted = policy.permitted_handles(
             stdout=stdout_handle or None, stderr=stderr_handle or None,
         )
+        # B1 (fail-closed): the production policy REQUIRES a populated
+        # allowlist.  An empty allowlist is indistinguishable, to the
+        # attribute-list builder, from "no allowlist requested" -- and
+        # omitting the attribute while bInheritHandles stays TRUE lets
+        # EVERY inheritable parent handle cross into the child.  That is
+        # exactly the bypass shape, so an empty allowlist is a setup
+        # failure, never a silent downgrade.
+        if policy.use_explicit_allowlist and not permitted:
+            raise AppContainerSetupError(
+                "the parser launch requires the stdout and stderr handles so "
+                "the explicit inherited-handle allowlist can be populated; an "
+                "empty allowlist would let every inheritable handle cross "
+                "into the child",
+                details={
+                    "stage": "handle_policy",
+                    "stdout_path": str(stdout_path) if stdout_path else None,
+                    "stderr_path": str(stderr_path) if stderr_path else None,
+                },
+            )
         attribute_list, keepalive = _build_appcontainer_attribute_list(
             k32,
             capabilities=capabilities,
@@ -1340,6 +1367,11 @@ def run_in_appcontainer_job(
                 },
             )
         _configure_job(k32, job, limit_bytes=limit_bytes)
+        # The Job handle is owned by the _Handles record, so it is closed
+        # deterministically in the finally block.  Without this the Job
+        # handle (and the kill-on-close backstop it carries) leaked on
+        # every launch.
+        handles.job = job
 
         raw_port = k32.CreateIoCompletionPort(_INVALID_HANDLE_VALUE, None, None, 1)
         port = int(raw_port) if raw_port else 0
@@ -1351,6 +1383,7 @@ def run_in_appcontainer_job(
                     "stage": "completion_port_creation",
                 },
             )
+        handles.port = port
         _associate_completion_port(k32, job, port)
 
         # --- 4. create the target SUSPENDED with the attribute list --------
@@ -1524,6 +1557,12 @@ def run_in_appcontainer_job(
                 k32.DeleteProcThreadAttributeList(attribute_list)
             except Exception as exc:  # pragma: no cover - defensive
                 cleanup_errors.append(f"delete_attribute_list: {exc}")
+        # The SID allocation is released on every path, including the
+        # failure paths, so a launch never leaks it.
+        try:
+            free_sid(sid_allocation)
+        except Exception as exc:  # pragma: no cover - defensive
+            cleanup_errors.append(f"free_sid: {exc}")
         try:
             _remove_workdir(workdir)
         except OSError as exc:  # pragma: no cover - defensive
@@ -1535,11 +1574,11 @@ def run_in_appcontainer_job(
 def _build_appcontainer_attribute_list(
     k32: ctypes.CDLL,
     *,
-    capabilities: object,
+    capabilities: CapabilitySet,
     package_sid_pointer: ctypes.c_void_p,
     handle_list: Sequence[int],
     include_handle_list: bool = True,
-) -> tuple[ctypes.Array, list[object]]:
+) -> tuple[ctypes.Array[ctypes.c_char], list[object]]:
     """Build the ``PROC_THREAD_ATTRIBUTE_LIST`` for an AppContainer launch.
 
     The list carries two attributes:
@@ -1561,6 +1600,14 @@ def _build_appcontainer_attribute_list(
     """
     from .windows_appcontainer import AppContainerSetupError
 
+    # An explicitly requested allowlist that is EMPTY is refused: applying
+    # it would mean "no handle list at all", which with bInheritHandles=TRUE
+    # lets every inheritable parent handle cross into the child.
+    if include_handle_list and not handle_list:
+        raise AppContainerSetupError(
+            "the inherited-handle allowlist was requested but is empty",
+            details={"stage": "attribute_list"},
+        )
     use_list = bool(include_handle_list and handle_list)
     count = 2 if use_list else 1
     size = ctypes.c_size_t(0)
@@ -1578,6 +1625,17 @@ def _build_appcontainer_attribute_list(
 
     caps = _SECURITY_CAPABILITIES()
     caps.AppContainerSid = package_sid_pointer
+    if capabilities.sids:
+        # The production set is empty by construction (build_launch_plan
+        # refuses a network-capable set).  Rather than silently dropping a
+        # non-empty set, refuse it here too.
+        raise AppContainerSetupError(
+            "a non-empty capability set must never be used for the parser",
+            details={
+                "stage": "attribute_list",
+                "capabilities": list(capabilities.sids),
+            },
+        )
     caps.CapabilityCount = 0
     caps.Capabilities = None
     keep.append(caps)

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -42,6 +41,11 @@ def product_profile():
 # ---------------------------------------------------------------------------
 # The staging tree
 # ---------------------------------------------------------------------------
+
+
+# The FILESYSTEM half of the cleanup (the staging tree and the package
+# folder) is platform independent and is tested everywhere.  The REGISTRY
+# half exists only on Windows, so those tests are gated.
 
 
 def test_cleanup_removes_an_owned_staging_tree(tmp_path):
@@ -103,6 +107,7 @@ def test_cleanup_reports_an_absent_staging_tree_as_preserved(tmp_path):
 @pytest.mark.skipif(sys.platform != "win32", reason="the mapping key is Windows-only")
 def test_cleanup_removes_the_product_mapping(product_profile):  # noqa: F811
     """The product mapping is removed when it is ours."""
+    wa.invalidate_registration_cache()
     assert wa.profile_is_registered()
     report = wa.cleanup_owned_state()
     assert report.ok, report.errors
@@ -135,6 +140,9 @@ def test_cleanup_preserves_a_mapping_with_a_foreign_moniker():
         ["add", REG + BS + foreign_sid + BS + "Children"],
     ):
         wa._run_reg(step)
+    # The control mapping was created directly with reg.exe, so the
+    # registration cache must be invalidated before it is consulted.
+    wa.invalidate_registration_cache(foreign_sid)
     try:
         assert wa.profile_is_registered(foreign_sid)
         # The cleanup is asked to remove the PRODUCT state only. The
@@ -146,6 +154,7 @@ def test_cleanup_preserves_a_mapping_with_a_foreign_moniker():
         # And when the cleanup IS pointed at the foreign identity but is
         # told to expect the PRODUCT moniker, the moniker mismatch
         # preserves it.
+        wa.invalidate_registration_cache(foreign_sid)
         report = wa.cleanup_owned_state(
             sid_string=foreign_sid, moniker=wa.PRODUCT_PACKAGE_MONIKER,
         )
@@ -180,7 +189,6 @@ def test_cleanup_never_touches_another_identitys_mapping():
 
 def _mapping_sids() -> list[str]:
     """The SIDs currently registered in the per-user mappings key."""
-    import subprocess
 
     rc, out, _ = wa._run_reg(["query", wa._APP_CONTAINER_MAPPINGS_REG])
     if rc != 0:
@@ -241,7 +249,6 @@ def test_cleanup_only_removes_the_product_package_folder(tmp_path, monkeypatch):
 
 def test_staging_marks_the_directory_as_owned(tmp_path, monkeypatch):
     """A staged parser directory carries the ownership marker."""
-    import shutil
 
     source = tmp_path / "source"
     source.mkdir()
@@ -256,7 +263,6 @@ def test_staging_marks_the_directory_as_owned(tmp_path, monkeypatch):
 
 def test_staging_is_idempotent(tmp_path):
     """Staging twice reuses the already-staged tree."""
-    import shutil
 
     source = tmp_path / "source"
     source.mkdir()

@@ -38,6 +38,7 @@ the socket, and cannot be satisfied by a dead endpoint.
 """
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import json
 import os
@@ -66,7 +67,12 @@ POPPLER_VERSION = "26.09.0"
 
 #: The staged root used by the tests. It is outside the user profile
 #: because an AppContainer token cannot traverse the user profile.
-STAGING_ROOT = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "ChessCoachTests"
+#: The CI job stages its pinned Poppler under a sibling directory, so
+#: the lookup honours CHESS_COACH_APPCONTAINER_STAGING_ROOT first.
+STAGING_ROOT = Path(
+    os.environ.get("CHESS_COACH_APPCONTAINER_STAGING_ROOT")
+    or Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "ChessCoachTests"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +127,7 @@ class _Endpoint:
         while not self._stop:
             try:
                 conn, addr = self.srv.accept()
-            except (socket.timeout, OSError):
+            except (TimeoutError, OSError):
                 continue
             try:
                 conn.settimeout(3.0)
@@ -131,7 +137,7 @@ class _Endpoint:
                         break
                     self.received.append((addr, data))
                     conn.sendall(b"ECHO:" + data)
-            except (socket.timeout, OSError):
+            except (TimeoutError, OSError):
                 pass
             finally:
                 conn.close()
@@ -144,10 +150,8 @@ class _Endpoint:
 
     def close(self) -> None:
         self._stop = True
-        try:
+        with contextlib.suppress(OSError):
             self.srv.close()
-        except OSError:
-            pass
 
 
 def _lan_ip() -> str:
@@ -204,7 +208,8 @@ public static class Fu20Enforcement
             if (n < 0) return "SEND-FAILED:winerr=" + Marshal.GetLastWin32Error();
             byte[] buf = new byte[64];
             int g = recv(new IntPtr(h), buf, buf.Length, 0);
-            if (g < 0) return "SENT-OK(" + n + "):RECV-FAILED:winerr=" + Marshal.GetLastWin32Error();
+            if (g < 0) return "SENT-OK(" + n + "):RECV-FAILED:"
+                + Marshal.GetLastWin32Error();
             return "USED:sent=" + n + ":recv=" + g;
         } catch (Exception e) { return "ERR:" + e.GetType().Name + ":" + e.Message; }
     }
@@ -213,7 +218,8 @@ public static class Fu20Enforcement
     static extern bool OpenProcessToken(IntPtr h, uint access, out IntPtr token);
 
     [DllImport("advapi32.dll", SetLastError=true)]
-    static extern bool GetTokenInformation(IntPtr token, int cls, IntPtr info, int len, out int ret);
+    static extern bool GetTokenInformation(IntPtr token, int cls,
+        IntPtr info, int len, out int ret);
 
     [DllImport("kernel32.dll")]
     static extern IntPtr GetCurrentProcess();
@@ -446,7 +452,6 @@ def test_the_launcher_refuses_to_resume_a_mismatched_token(product_profile, stag
         "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
         "Bypass", "-File", str(probe), "-OutFile", str(out_file),
     ]
-    marker = stage / "ran.txt"
     with pytest.raises(wa.AppContainerVerificationError):
         wj.run_in_appcontainer_job(
             argv,
@@ -538,42 +543,41 @@ def test_restriction_survives_child_and_grandchild(product_profile, stage):
     probe = _write_probe(stage)
     target = _lan_ip()
     ps_exe = os.path.join(
-        os.environ.get("SystemRoot", r"C:\Windows"),
+        os.environ.get("SYSTEMROOT", r"C:\Windows"),
         "System32", "WindowsPowerShell", "v1.0", "powershell.exe",
     )
 
     def _chain(label, restricted):
         """Run the three-generation chain; return each generation's result."""
-        out_file = stage / ("chain_%s.json" % label)
-        child_out = stage / ("chain_%s_child.json" % label)
-        grand_out = stage / ("chain_%s_grand.json" % label)
+        out_file = stage / f"chain_{label}.json"
+        child_out = stage / f"chain_{label}_child.json"
+        grand_out = stage / f"chain_{label}_grand.json"
         for stale in (out_file, child_out, grand_out):
             if stale.exists():
                 stale.unlink()
-        script = stage / ("descend_%s.ps1" % label)
+        script = stage / f"descend_{label}.ps1"
         script.write_text(
             "$ErrorActionPreference='Continue'\n"
-            "$ps = '%s'\n" % ps_exe
-            + "$child = '%s'\n" % probe
-            + "$childOut = '%s'\n" % child_out
-            + "$grandOut = '%s'\n" % grand_out
+            f"$ps = '{ps_exe}'\n"
+            + f"$child = '{probe}'\n"
+            + f"$childOut = '{child_out}'\n"
+            + f"$grandOut = '{grand_out}'\n"
             + "$childArgs = @('-NoProfile','-NonInteractive','-ExecutionPolicy',"
-              "'Bypass','-File',$child,'-Target','%s','-Port',%d,"
-              "'-OutFile',$childOut)\n" % (target, endpoint.port)
+              f"'Bypass','-File',$child,'-Target','{target}','-Port',{endpoint.port},"
+              "'-OutFile',$childOut)\n"
             + "$childProc = [System.Diagnostics.Process]::Start($ps, $childArgs)\n"
             + "$childProc.WaitForExit()\n"
             + "$grandArgs = @('-NoProfile','-NonInteractive','-ExecutionPolicy',"
-              "'Bypass','-File',$child,'-Target','%s','-Port',%d,"
-              "'-OutFile',$grandOut)\n" % (target, endpoint.port)
+              f"'Bypass','-File',$child,'-Target','{target}','-Port',{endpoint.port},"
+              "'-OutFile',$grandOut)\n"
             + "$grandProc = [System.Diagnostics.Process]::Start($ps, $grandArgs)\n"
             + "$grandProc.WaitForExit()\n"
             + "$results = @()\n"
             + "foreach ($f in @($childOut, $grandOut)) {"
               "  if (Test-Path $f) { "
               "$results += (Get-Content $f -Raw | ConvertFrom-Json) } }\n"
-            + "[System.IO.File]::WriteAllText('%s', "
-              "($results | ConvertTo-Json -Compress), [System.Text.Encoding]::UTF8)\n"
-              % out_file,
+            + f"[System.IO.File]::WriteAllText('{out_file}', "
+              "($results | ConvertTo-Json -Compress), [System.Text.Encoding]::UTF8)\n",
             encoding="utf-8",
             newline="\r\n",
         )
@@ -596,7 +600,7 @@ def test_restriction_survives_child_and_grandchild(product_profile, stage):
                 cwd=str(stage),
             )
             assert proc.returncode == 0, proc.stderr
-        assert out_file.exists(), "the %s chain produced no report" % label
+        assert out_file.exists(), f"the {label} chain produced no report"
         payload = json.loads(out_file.read_text(encoding="utf-8-sig"))
         if isinstance(payload, dict):
             payload = [payload]
@@ -606,20 +610,20 @@ def test_restriction_survives_child_and_grandchild(product_profile, stage):
         # --- the UNRESTRICTED positive control: every generation connects --
         control = _chain("control", False)
         assert len(control) == 2, (
-            "the unrestricted chain produced %d generation results, "
-            "expected 2 (child and grandchild)" % len(control)
+            f"the unrestricted chain produced {len(control)} generation results, "
+            "expected 2 (child and grandchild)"
         )
         for entry in control:
             assert entry.get("connect") == "CONNECTED", (
                 "the unrestricted control generation did not connect, so the "
-                "denial result below proves nothing: %s" % entry.get("connect")
+                f"denial result below proves nothing: {entry.get('connect')}"
             )
 
         # --- the RESTRICTED chain: every generation is denied ---------------
         restricted = _chain("restricted", True)
         assert len(restricted) == 2, (
-            "the restricted chain produced %d generation results, "
-            "expected 2 (child and grandchild)" % len(restricted)
+            f"the restricted chain produced {len(restricted)} generation results, "
+            "expected 2 (child and grandchild)"
         )
         for entry in restricted:
             assert entry.get("connect") != "CONNECTED", (
@@ -794,19 +798,46 @@ def test_the_production_limit_is_two_gibibytes():
 # ---------------------------------------------------------------------------
 
 
-def _stage_poppler(tmp_path: Path) -> Path | None:
-    """Stage the pinned Poppler, or return ``None`` when it is absent."""
+def _find_poppler() -> Path | None:
+    """Locate the Poppler build the tests must use.
+
+    The staged copy under the AppContainer staging root wins over
+    ``PATH``: CI stages a pinned Poppler there, and PATH is only a
+    fallback for a developer machine.
+    """
     import shutil
 
+    program_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
+    for root in (STAGING_ROOT, program_data / "ChessCoachCI"):
+        candidate = root / "poppler" / "pdftoppm.exe"
+        if candidate.exists():
+            return candidate
     found = shutil.which("pdftoppm")
-    if not found:
+    if found:
+        return Path(found)
+    return None
+
+
+def _stage_poppler(tmp_path: Path) -> Path | None:
+    """Stage the pinned Poppler, or return ``None`` when it is absent.
+
+    The staged copy is the one the AppContainer will execute, so the
+    minimum-access ACL is applied to it.  When the located build is
+    ALREADY the staged tree (the CI case, and a repeat run), it is used in
+    place rather than copied onto itself.
+    """
+    import shutil
+
+    located = _find_poppler()
+    if located is None:
         return None
-    source = Path(found).parent
+    source = located.parent
     target = STAGING_ROOT / "poppler"
     target.mkdir(parents=True, exist_ok=True)
-    for item in source.iterdir():
-        if item.is_file():
-            shutil.copy2(item, target / item.name)
+    if source.resolve() != target.resolve():
+        for item in source.iterdir():
+            if item.is_file():
+                shutil.copy2(item, target / item.name)
     wa.grant_minimum_access(tuple(p for p in target.iterdir() if p.is_file()))
     return target / ("pdftoppm.exe" if os.name == "nt" else "pdftoppm")
 
@@ -815,7 +846,13 @@ def test_real_poppler_runs_under_the_restricted_token(product_profile, stage):
     """The real Poppler workload succeeds inside the AppContainer."""
     executable = _stage_poppler(stage)
     if executable is None:
-        pytest.skip("pdftoppm is not installed on this runner")
+        # Poppler is REQUIRED for this proof.  Skipping here would let
+        # the job go green without ever running the real workload,
+        # which is exactly the claim the job makes.
+        pytest.fail(
+            "pdftoppm was not found: the real Poppler workload must run, "
+            "not be skipped"
+        )
 
     pdf = stage / "input.pdf"
     _minimal_pdf(pdf)
@@ -847,10 +884,13 @@ def test_the_parser_fails_closed_without_the_product_acl(product_profile, stage)
     """
     import shutil
 
-    found = shutil.which("pdftoppm")
-    if not found:
-        pytest.skip("pdftoppm is not installed on this runner")
-    source = Path(found).parent
+    located = _find_poppler()
+    if located is None:
+        pytest.fail(
+            "pdftoppm was not found: the fail-closed ACL control must run "
+            "against the real parser, not be skipped"
+        )
+    source = located.parent
 
     # A copy with the product-SID grant REMOVED and inheritance broken so
     # the inherited ALL APPLICATION PACKAGES entry cannot confer access.

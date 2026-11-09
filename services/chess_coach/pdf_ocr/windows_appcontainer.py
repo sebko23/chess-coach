@@ -81,9 +81,9 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
 #: The package moniker owned by this product.
 PRODUCT_PACKAGE_MONIKER = "ChessCoach.PdfParser_8wekyb3d8bbwe"
@@ -256,9 +256,18 @@ def sid_to_string(sid_ptr: int | None) -> str | None:
     """
     if not sid_ptr:
         return None
-    raw = ctypes.string_at(ctypes.cast(sid_ptr, ctypes.c_void_p), 8 + 6 + 8 * 4)
+    # Read the count byte first, then exactly that many subauthorities.
+    # Reading a fixed 46 bytes truncated a long SID (16 subauthorities)
+    # to 8, which would have silently produced a wrong identity.
+    header = ctypes.string_at(ctypes.cast(sid_ptr, ctypes.c_void_p), 8)
+    count = header[1]
+    if count > 15:
+        # SECURITY_MAX_SID_SIZE is 68 bytes = 15 subauthorities.
+        count = 15
+    raw = ctypes.string_at(
+        ctypes.cast(sid_ptr, ctypes.c_void_p), 8 + count * 4,
+    )
     revision = raw[0]
-    count = raw[1]
     authority = int.from_bytes(raw[2:8], "big")
     subs = [
         int.from_bytes(raw[8 + i * 4:12 + i * 4], "little") for i in range(count)
@@ -269,9 +278,13 @@ def sid_to_string(sid_ptr: int | None) -> str | None:
 def parse_sid_string(sid_string: str) -> ctypes.c_void_p:
     """Parse a SID string into a SID pointer.
 
+    The caller owns the allocation and must release it with
+    :func:`free_sid` once it is no longer needed.
+
     Raises:
         AppContainerSetupError: the string is not a valid SID.
     """
+    validate_application_package_sid(sid_string)
     adv = _load_advapi32()
     adv.ConvertStringSidToSidW.restype = ctypes.c_int
     adv.ConvertStringSidToSidW.argtypes = [
@@ -289,6 +302,30 @@ def parse_sid_string(sid_string: str) -> ctypes.c_void_p:
             },
         )
     return sid
+
+
+def free_sid(sid_ptr: ctypes.c_void_p | None) -> None:
+    """Release a SID allocated by :func:`parse_sid_string`.
+
+    ``ConvertStringSidToSidW`` allocates with ``LocalAlloc``, so the
+    allocation must be released with ``LocalFree``.  Doing it here keeps
+    the per-launch leak out of the launch path.
+    """
+    if not sid_ptr:
+        return
+    try:
+        kernel32 = _load_kernel32()
+        kernel32.LocalFree.restype = ctypes.c_void_p
+        kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+        kernel32.LocalFree(ctypes.cast(sid_ptr, ctypes.c_void_p))
+    except Exception:  # pragma: no cover - defensive
+        # A failure to release the SID must never mask the launch outcome,
+        # but it is worth recording.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "could not release the package SID allocation", exc_info=True,
+        )
 
 
 def validate_product_sid(sid_string: str = PRODUCT_PACKAGE_SID) -> tuple[int, ...]:
@@ -502,13 +539,14 @@ def _run_reg(args: Sequence[str]) -> tuple[int, str, str]:
     import subprocess
 
     try:
-        proc = subprocess.run(
-            ["reg", *args],
+        proc = subprocess.run(  # noqa: S603 -- fixed system binary
+            [r"C:\Windows\System32\reg.exe", *args],
             capture_output=True,
             text=True,
             errors="replace",
             timeout=120,
             check=False,
+            # The arguments are built from module constants, never user input.
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise AppContainerSetupError(
@@ -518,10 +556,42 @@ def _run_reg(args: Sequence[str]) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout or "", proc.stderr or ""
 
 
+#: Cache of the registration check, keyed by SID.
+#:
+#: The check spawns ``reg.exe``, and a subprocess launch costs Win32
+#: handles in this process (measured: ~3 handles per 10 ``subprocess.run``
+#: calls).  The registration is this application's own state and cannot
+#: change while the process runs, so the answer is cached.  Every code path
+#: that CHANGES the registration invalidates the cache.
+_REGISTRATION_CACHE: dict[str, bool] = {}
+
+
 def profile_is_registered(sid_string: str = PRODUCT_PACKAGE_SID) -> bool:
-    """Whether the AppContainer mapping for ``sid_string`` exists."""
+    """Whether the AppContainer mapping for ``sid_string`` exists.
+
+    The answer is cached per SID, because the check spawns ``reg.exe`` and
+    a subprocess launch costs Win32 handles in this process.  The cache is
+    invalidated whenever the registration is changed.
+    """
+    cached = _REGISTRATION_CACHE.get(sid_string)
+    if cached is not None:
+        return cached
     rc, out, _ = _run_reg(["query", f"{_APP_CONTAINER_MAPPINGS_REG}\\{sid_string}"])
-    return rc == 0
+    registered = rc == 0
+    _REGISTRATION_CACHE[sid_string] = registered
+    return registered
+
+
+def invalidate_registration_cache(sid_string: str | None = None) -> None:
+    """Forget a cached registration check.
+
+    Called by every routine that changes the registration, so the next
+    check re-reads the registry.
+    """
+    if sid_string is None:
+        _REGISTRATION_CACHE.clear()
+    else:
+        _REGISTRATION_CACHE.pop(sid_string, None)
 
 
 def register_profile(
@@ -593,6 +663,7 @@ def register_profile(
                 },
             ) from exc
 
+    invalidate_registration_cache(sid_string)
     if not profile_is_registered(sid_string):
         raise AppContainerSetupError(
             "the AppContainer profile registration could not be verified",
@@ -686,9 +757,17 @@ def cleanup_owned_state(
     preserved: list[str] = []
     errors: list[str] = []
 
+    # The cleanup CHANGES the registration, so the cached check is stale.
+    invalidate_registration_cache(sid_string)
+
     # --- 1. the AppContainer mapping ------------------------------------
+    # The mapping lives in the Windows registry.  On a non-Windows host it
+    # cannot exist, so it is reported as absent rather than failing -- the
+    # FILESYSTEM half of the cleanup below is platform independent.
     mapping_key = f"{_APP_CONTAINER_MAPPINGS_REG}\\{sid_string}"
-    if profile_is_registered(sid_string):
+    if sys.platform != "win32":
+        preserved.append(f"appcontainer-mapping:{sid_string} (not a Windows host)")
+    elif profile_is_registered(sid_string):
         existing_moniker = _mapping_moniker(sid_string)
         if existing_moniker is None:
             preserved.append(f"appcontainer-mapping:{sid_string}")
@@ -740,6 +819,10 @@ def cleanup_owned_state(
     else:
         preserved.append(f"package-folder:{package} (absent)")
 
+    # The cleanup CHANGED the registration, so the cached check is stale
+    # again -- after the removal, not only before it.
+    invalidate_registration_cache(sid_string)
+
     return CleanupReport(
         removed=tuple(removed),
         preserved=tuple(preserved),
@@ -788,13 +871,21 @@ def grant_minimum_access(
     _require_windows()
     for path in paths:
         perms = "RX" if read_only else "M"
+        # The inheritance flags only mean anything on a DIRECTORY.  On a
+        # FILE, `icacls /grant *SID:(OI)(CI)(RX)` returns success and adds
+        # NO ACE, so the grant silently does nothing and the parser cannot
+        # load its DLLs (STATUS_DLL_NOT_FOUND).  A file therefore gets the
+        # plain right, and a directory keeps the inheritable form.
+        is_dir = path.is_dir()
+        right = f"*{sid_string}:(OI)(CI)({perms})" if is_dir else f"*{sid_string}:({perms})"
         cmd = [
-            "icacls", str(path), "/grant", f"*{sid_string}:(OI)(CI)({perms})",
+            "icacls", str(path), "/grant", right,
         ]
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: S603 -- fixed system binary
                 cmd, capture_output=True, text=True, errors="replace",
                 timeout=120, check=False,
+                # The paths are the product's own staging directories.
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise AppContainerSetupError(
@@ -811,6 +902,35 @@ def grant_minimum_access(
                     "message": (proc.stderr or proc.stdout).strip()[:400],
                 },
             )
+        # `icacls` reports success even when it adds no ACE, so the grant
+        # is verified by reading the ACL back.  A grant that did not land
+        # is a setup failure, not a silent no-op that shows up later as a
+        # confusing parser exit code.
+        try:
+            check = subprocess.run(  # noqa: S603 -- fixed system binary
+                [r"C:\Windows\System32\icacls.exe", str(path)],
+                capture_output=True, text=True,
+                errors="replace", timeout=120, check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise AppContainerSetupError(
+                "could not verify the minimum-access ACL",
+                details={
+                    "stage": "acl_grant",
+                    "path": str(path),
+                    "error": str(exc),
+                },
+            ) from exc
+        if sid_string not in (check.stdout or ""):
+            raise AppContainerSetupError(
+                "the minimum-access ACL did not grant the product SID",
+                details={
+                    "stage": "acl_grant",
+                    "path": str(path),
+                    "sid": sid_string,
+                    "message": (check.stdout or check.stderr or "").strip()[:400],
+                },
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -820,7 +940,7 @@ def grant_minimum_access(
 #: The directory the parser is staged into. It is **outside the user
 #: profile**: an AppContainer token cannot traverse the user profile, so a
 #: profile-resident executable is unlaunchable inside the container.
-DEFAULT_STAGING_ROOT = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "ChessCoach"
+DEFAULT_STAGING_ROOT = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "ChessCoach"
 
 #: The environment variable that overrides the staging root. It exists for
 #: CI, where the runner stages Poppler into a directory it controls.
@@ -965,6 +1085,12 @@ class TokenVerification:
 
 
 def _open_process_token(process_handle: int) -> ctypes.c_void_p:
+    """Open the target's token for querying.
+
+    The returned token handle is owned by the CALLER, which must close it
+    with :func:`_close_token` -- otherwise every verification leaks a
+    handle.
+    """
     adv = _load_advapi32()
     adv.OpenProcessToken.restype = ctypes.c_int
     adv.OpenProcessToken.argtypes = [
@@ -984,7 +1110,27 @@ def _open_process_token(process_handle: int) -> ctypes.c_void_p:
     return token
 
 
-def _get_token_buffer(token: ctypes.c_void_p, info_class: int) -> ctypes.Array | None:
+def _close_token(token: ctypes.c_void_p) -> None:
+    """Close a token handle opened by :func:`_open_process_token`."""
+    if not token:
+        return
+    try:
+        kernel32 = _load_kernel32()
+        kernel32.CloseHandle.restype = ctypes.c_int
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle(ctypes.cast(token, ctypes.c_void_p))
+    except Exception:  # pragma: no cover - defensive
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "could not close the process token handle", exc_info=True,
+        )
+
+
+def _get_token_buffer(
+    token: ctypes.c_void_p,
+    info_class: int,
+) -> ctypes.Array[ctypes.c_char] | None:
     adv = _load_advapi32()
     adv.GetTokenInformation.restype = ctypes.c_int
     adv.GetTokenInformation.argtypes = [
@@ -1045,6 +1191,22 @@ def verify_token(
         result.errors.append(exc.message)
         return result
 
+    try:
+        _verify_token_into(result, token, expected_sid, expected_capabilities)
+    finally:
+        # The token handle is closed on EVERY path, including the failure
+        # paths: an unclosed token handle leaked one handle per launch.
+        _close_token(token)
+    return result
+
+
+def _verify_token_into(
+    result: TokenVerification,
+    token: ctypes.c_void_p,
+    expected_sid: str,
+    expected_capabilities: CapabilitySet,
+) -> None:
+    """Fill ``result`` from an already-open token handle."""
     is_app_buf = _get_token_buffer(token, _TOKEN_IS_APP_CONTAINER)
     if is_app_buf is None:
         result.errors.append("could not read TokenIsAppContainer")
@@ -1083,7 +1245,6 @@ def verify_token(
     extra = [s for s in result.capability_sids if s not in granted]
     if extra:
         result.errors.append("the launched token holds capabilities outside the granted set")
-    return result
 
 
 def assert_verified(verification: TokenVerification) -> None:
@@ -1124,7 +1285,7 @@ class AppContainerLaunchPlan:
     handle_policy: HandlePolicy = DEFAULT_HANDLE_POLICY
     staged: StagedParser | None = None
 
-    def security_capabilities(self) -> "object":
+    def security_capabilities(self) -> object:
         """Build the ``SECURITY_CAPABILITIES`` structure for this plan."""
         raise NotImplementedError  # replaced by the Windows-specific builder
 
@@ -1134,14 +1295,22 @@ def build_launch_plan(
     staged: StagedParser | None = None,
     capabilities: CapabilitySet | None = None,
     handle_policy: HandlePolicy | None = None,
+    package_sid: str | None = None,
 ) -> AppContainerLaunchPlan:
     """Build the launch plan, validating every component first.
+
+    ``package_sid`` defaults to the product-owned constant.  It is resolved
+    at CALL time, not at definition time, so the constant the plan is built
+    from is the one that is validated and carried.  Whichever SID is
+    supplied is the one that is VALIDATED and the one that is carried by
+    the plan, so a divergent or malformed SID cannot reach the launch.
 
     Raises:
         AppContainerSetupError: any component is invalid.
     """
     _require_windows()
-    validate_product_sid()
+    sid = package_sid if package_sid is not None else PRODUCT_PACKAGE_SID
+    validate_product_sid(sid)
     caps = capabilities if capabilities is not None else select_capabilities()
     if caps.is_network_capable:
         raise AppContainerSetupError(
@@ -1150,7 +1319,7 @@ def build_launch_plan(
         )
     policy = handle_policy if handle_policy is not None else DEFAULT_HANDLE_POLICY
     return AppContainerLaunchPlan(
-        package_sid=PRODUCT_PACKAGE_SID,
+        package_sid=sid,
         capabilities=caps,
         handle_policy=policy,
         staged=staged,

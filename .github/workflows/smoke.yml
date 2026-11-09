@@ -725,6 +725,11 @@ jobs:
           New-Item -ItemType Directory -Force -Path $target | Out-Null
           Copy-Item -Path (Join-Path $bin.Source.Directory.FullName "*") -Destination $target -Recurse -Force
           & (Join-Path $target "pdftoppm.exe") -v
+          # The staged Poppler must be on PATH: the enforcement suite
+          # locates pdftoppm with shutil.which("pdftoppm"), and without
+          # this the two real-Poppler tests would SKIP, so the job would
+          # go green without ever running the real workload.
+          Add-Content -Path $env:GITHUB_PATH -Value $target
           Write-Host "Staged Poppler $env:POPPLER_VERSION into $target"
 
       - name: Run the Windows AppContainer enforcement tests
