@@ -145,3 +145,18 @@ follow-up.
 Both statements are preserved above with the false one labelled as
 superseded. The correction is of record in
 `docs/16_audit/BBF-FU-22-windows-contract-correction.md`.
+
+## §8. Superseded by the AppContainer implementation (2026-11-09)
+
+The proxy-environment stripping described in §2 is **not** network
+isolation, and this brief's own §2 says so. It was never presented as
+otherwise, and it was removed from the production path when the Linux
+Phase 1 launcher landed.
+
+The Windows no-network boundary that this brief could not provide was
+implemented on 2026-11-09 as a **zero-capability AppContainer** with an
+explicit stdout/stderr-only inherited-handle allowlist, behind the
+opt-in flag `CHESS_COACH_WINDOWS_APPCONTAINER=1`. The default Windows
+behaviour remains the 501 `internal.not_implemented` refusal.
+
+Brief: `docs/16_audit/BBF-FU-20-windows-appcontainer-network-isolation.md`.

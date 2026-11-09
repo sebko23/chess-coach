@@ -95,6 +95,34 @@ from chess_coach.pdf_ocr.linux_sandbox import (
 )
 from chess_coach.pdf_ocr.windows_job import WINDOWS_JOB_SUPPORTED
 
+#: Environment variable that opts the Windows host into the AppContainer
+#: network-isolation backend.
+#:
+#: The backend is **off by default** so that the shipped Windows behaviour
+#: is unchanged until the enablement contract is explicitly reviewed. With
+#: it off, Windows PDF parsing keeps raising the 501
+#: ``internal.not_implemented`` refusal. With it on, the Windows parser
+#: path runs inside an AppContainer with zero network capabilities.
+#:
+#: Why an env var and not a ``GatewaySettings`` field: the flag selects a
+#: containment mechanism, not a deployment setting, and the PDF OCR module
+#: is imported by the shared runner independently of the gateway. The
+#: same pattern is used by ``CHESS_COACH_OCR_BACKEND``.
+ENV_WINDOWS_APPCONTAINER = "CHESS_COACH_WINDOWS_APPCONTAINER"
+
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def windows_appcontainer_is_enabled() -> bool:
+    """Whether the Windows AppContainer isolation backend is opted in.
+
+    Read at call time rather than import time so the flag can be set per
+    process by a deployment or a test without re-importing the module.
+    """
+    if HOST_PLATFORM != "win32":
+        return False
+    return (os.getenv(ENV_WINDOWS_APPCONTAINER) or "").strip().lower() in _TRUTHY
+
 # A-F11 property 4: 2 GB memory cap. Applied to the child
 # process via preexec_fn=set_rlimit_as_preexec(MEM_CAP_BYTES).
 # The hard cap (both soft and hard set to the same value)
@@ -142,21 +170,33 @@ MEMORY_CAP_MECHANISM: str = (
 #: transactionally before the parser is executed
 #: (``BBF-FU-20-linux-phase1-network-isolation``).
 #:
-#: **Windows:** NO network-isolation boundary is proven. The Job Object
-#: backend enforces the *memory* cap, not network isolation, and Job Object
-#: network-rate control is throttling, never isolation. Proxy-environment
-#: stripping is defense in depth, never isolation. Windows PDF parsing is
-#: therefore explicitly unsupported until a separately proven
-#: process-scoped or deployment-scoped no-network boundary exists.
+#: **Windows:** the AppContainer backend in
+#: :mod:`chess_coach.pdf_ocr.windows_appcontainer` provides a real
+#: no-network boundary: the parser runs in an AppContainer with **zero**
+#: network capabilities, so it holds no ``internetClient`` capability and
+#: cannot open a new outbound connection. The Job Object backend enforces
+#: the *memory* cap, not network isolation, and Job Object network-rate
+#: control is throttling, never isolation. Proxy-environment stripping is
+#: defense in depth, never isolation.
+#:
+#: Explicit override for the network-isolation capability.
+#:
+#: On Linux this is ``True``: the namespace boundary always exists. On
+#: Windows it stays ``False``, because the AppContainer boundary is
+#: opt-in and is evaluated at **call time** by
+#: :func:`_network_isolation_available`. This constant must not freeze
+#: that decision at import time, or the opt-in could not be switched on or
+#: off within one process.
+#:
+#: A caller that has already established the platform's capability (a
+#: test double, a deployment probe) may set it to ``True`` to override the
+#: gate explicitly.
 NETWORK_ISOLATION_SUPPORTED: bool = HOST_PLATFORM != "win32"
 
 #: The capability that enforces the network isolation, named for the error
-#: details.
-NETWORK_ISOLATION_MECHANISM: str = (
-    "Linux user+network namespace (CLONE_NEWUSER|CLONE_NEWNET|CLONE_NEWNS)"
-    if HOST_PLATFORM != "win32"
-    else "none (no proven Windows network-isolation boundary)"
-)
+#: details. This is the import-time view;
+#: :func:`network_isolation_mechanism` is the call-time answer.
+NETWORK_ISOLATION_MECHANISM: str = "none (not yet resolved)"
 
 # pdftoppm invocation defaults. These match the previous
 # pdf2image.convert_from_bytes defaults (DPI=200, fmt=ppm)
@@ -218,27 +258,74 @@ def ensure_network_isolation_supported() -> None:
       ``CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWNS`` namespace before the
       parser is executed, so the parser has no usable interface, no
       loopback, no DNS, and no outbound TCP/UDP.
-    * **Windows** -- there is no proven no-network boundary. The Job
-      Object backend enforces the memory cap only. Until AppContainer (or
-      an explicitly accepted deployment-level boundary) is separately
-      validated, Windows PDF parsing is refused.
+    * **Windows** -- the AppContainer backend in
+      :mod:`chess_coach.pdf_ocr.windows_appcontainer` launches the parser
+      in an AppContainer with **zero** network capabilities, so the token
+      holds no ``internetClient`` capability and cannot open a new
+      outbound connection. The Job Object backend enforces the memory cap
+      only; Job Object network-rate control is throttling rather than
+      isolation, and proxy-environment stripping is defense in depth, never
+      isolation.
+
+      The Windows boundary is **opt-in** through
+      ``CHESS_COACH_WINDOWS_APPCONTAINER=1``. While it is off, Windows PDF
+      parsing keeps raising the 501 ``internal.not_implemented`` refusal,
+      exactly as before.
 
     Raises:
         NetworkIsolationUnsupportedError: if no network-isolation boundary
             is available. Raised BEFORE any parser process or Job target
             is created.
     """
-    if not NETWORK_ISOLATION_SUPPORTED:
-        raise NetworkIsolationUnsupportedError(
-            "PDF parsing is not supported on this platform: the A-F11 "
-            "no-network requirement cannot be enforced here, so no parser "
-            "process is started.",
-            details={
-                "platform": HOST_PLATFORM,
-                "required_mechanism": NETWORK_ISOLATION_MECHANISM,
-                "resource": "pdf_import",
-            },
+    if _network_isolation_available():
+        return
+    raise NetworkIsolationUnsupportedError(
+        "PDF parsing is not supported on this platform: the A-F11 "
+        "no-network requirement cannot be enforced here, so no parser "
+        "process is started.",
+        details={
+            "platform": HOST_PLATFORM,
+            "required_mechanism": network_isolation_mechanism(),
+            "resource": "pdf_import",
+        },
+    )
+
+
+def _network_isolation_available() -> bool:
+    """Whether a real no-network boundary is available on this host.
+
+    Evaluated at **call time**, not import time: the Windows opt-in is a
+    per-process environment flag, so the answer can change between calls
+    within one process (a test sets it, a deployment sets it).
+
+    The module-level :data:`NETWORK_ISOLATION_SUPPORTED` constant is
+    honoured as an explicit override. It exists so a caller that has
+    already decided the platform's capability (a test double, a
+    deployment probe) can state it directly, and so the historical
+    contract that the constant reflects the supported-platform state
+    keeps working.
+    """
+    if HOST_PLATFORM != "win32":
+        return True
+    if NETWORK_ISOLATION_SUPPORTED:
+        return True
+    return windows_appcontainer_is_enabled()
+
+
+def network_isolation_mechanism() -> str:
+    """The name of the mechanism that enforces the no-network boundary."""
+    if HOST_PLATFORM != "win32":
+        return (
+            "Linux user+network namespace "
+            "(CLONE_NEWUSER|CLONE_NEWNET|CLONE_NEWNS)"
         )
+    if windows_appcontainer_is_enabled():
+        return (
+            "Windows AppContainer with zero network capabilities "
+            "(PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, product-owned "
+            "package SID, explicit inherited-handle allowlist)"
+        )
+    return "none (no proven Windows network-isolation boundary)"
 
 
 def ensure_memory_cap_supported() -> None:
@@ -336,6 +423,7 @@ def _build_pdftoppm_args(
     first_page: int,
     last_page: int,
     output_prefix: Path,
+    input_path: Path | None = None,
 ) -> list[str]:
     """Build the pdftoppm command-line args.
 
@@ -344,9 +432,19 @@ def _build_pdftoppm_args(
 
         pdftoppm -r <dpi> -png -f <first> -l <last> <input> <output_prefix>
 
-    The input is fed via stdin (the PDF bytes); the output
-    files are written to `<output_prefix>-1.png`,
+    The output files are written to `<output_prefix>-1.png`,
     `<output_prefix>-2.png`, etc. (one file per page).
+
+    ``input_path`` names a PDF file to read. When it is ``None`` the
+    parser reads the PDF from **stdin**, which is the Linux path.
+
+    **BBF-FU-20-windows-appcontainer-network-isolation.** The Windows
+    AppContainer path passes the PDF by **file path**, not stdin. An
+    AppContainer token cannot traverse the user profile, and the parser's
+    stdin cannot be an inherited handle under the production launch shape
+    (``bInheritHandles=TRUE`` with an allowlist that contains only stdout
+    and stderr). The input PDF is therefore staged next to the artifact
+    directory and named on the command line.
     """
     return [
         "pdftoppm",
@@ -354,7 +452,7 @@ def _build_pdftoppm_args(
         "-png",
         "-f", str(first_page),
         "-l", str(last_page),
-        "-",  # read PDF from stdin
+        str(input_path) if input_path is not None else "-",  # "-" reads stdin
         str(output_prefix),
     ]
 
@@ -424,7 +522,19 @@ def run_pdftoppm_in_subprocess(
     with tempfile.TemporaryDirectory(prefix="chess_coach_pdftoppm_") as tmpdir_str:
         tmpdir = Path(tmpdir_str)
         output_prefix = tmpdir / "page"
-        args = _build_pdftoppm_args(dpi, first_page, last_page_arg, output_prefix)
+
+        # BBF-FU-20-windows-appcontainer-network-isolation: on Windows the
+        # parser runs inside an AppContainer, so the PDF is passed by FILE
+        # PATH rather than stdin. The input is staged in the artifact
+        # directory, which the product SID is granted access to.
+        windows_appcontainer = WINDOWS_JOB_SUPPORTED and windows_appcontainer_is_enabled()
+        input_path: Path | None = None
+        if windows_appcontainer:
+            input_path = tmpdir / "input.pdf"
+            input_path.write_bytes(pdf_bytes)
+        args = _build_pdftoppm_args(
+            dpi, first_page, last_page_arg, output_prefix, input_path=input_path,
+        )
 
         # The child process's stdin is the PDF bytes; the
         # child writes output files into tmpdir (which is
@@ -446,6 +556,20 @@ def run_pdftoppm_in_subprocess(
         # network, filesystem, descriptor, and memory policy
         # transactionally before it execs pdftoppm, so there is one
         # namespace owner, one setsid(), and no fallback.
+        #
+        # BBF-FU-20-windows-appcontainer-network-isolation: on Windows the
+        # launch goes through the AppContainer backend, which adds a
+        # zero-capability AppContainer token and an explicit
+        # inherited-handle allowlist on top of the Job containment.
+        if windows_appcontainer:
+            return _run_pdftoppm_in_windows_appcontainer(
+                args,
+                tmpdir=tmpdir,
+                input_path=input_path,
+                timeout_seconds=timeout_seconds,
+                mem_cap_bytes=mem_cap_bytes,
+            )
+
         if WINDOWS_JOB_SUPPORTED:
             return _run_pdftoppm_in_windows_job(
                 args,
@@ -593,6 +717,137 @@ def _run_pdftoppm_in_windows_job(
         # Containment setup failed: the target was never resumed, so no
         # unconstrained parser ran. This is a containment-setup failure,
         # not a parser failure.
+        raise
+
+    if result.returncode != 0:
+        stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        raise RuntimeError(
+            f"pdftoppm exited with code {result.returncode}: {stderr_text[:500]}"
+        )
+
+    png_files = sorted(tmpdir.glob("*.png"))
+    if not png_files:
+        raise RuntimeError(
+            "pdftoppm exited cleanly but produced no PNG files; "
+            "the PDF may be empty or the page range may be out of bounds."
+        )
+    return [Image.open(p) for p in png_files]
+
+
+def _run_pdftoppm_in_windows_appcontainer(
+    args: list[str],
+    *,
+    tmpdir: Path,
+    input_path: Path | None,
+    timeout_seconds: int,
+    mem_cap_bytes: int,
+) -> list[Image.Image]:
+    """Run pdftoppm inside a zero-capability AppContainer.
+
+    **BBF-FU-20-windows-appcontainer-network-isolation.**
+
+    The launch happens through :func:`run_in_appcontainer_job`, which
+    applies, in this order and without resuming the target until every
+    stage has succeeded:
+
+    1. the product-owned AppContainer package identity, with an **empty**
+       capability set (no ``internetClient``);
+    2. a suspended process creation with an explicit inherited-handle
+       allowlist containing only stdout and stderr;
+    3. the Job Object with the per-process memory limit;
+    4. Job assignment;
+    5. a pre-resume verification that the token really is the product
+       AppContainer with no network capability;
+    6. resume.
+
+    The error taxonomy is preserved:
+
+    * a containment **setup** failure (package identity, capabilities,
+      Job, assignment, verification, resume) raises
+      :class:`NetworkIsolationSetupError`, which the route maps to 500
+      ``internal.network_isolation_setup_failed``. The parser was never
+      executed.
+    * an **unsupported** backend raises
+      :class:`NetworkIsolationUnsupportedError`, which the route maps to
+      the retained 501 ``internal.not_implemented`` refusal.
+    * a **parser** failure still raises ``RuntimeError``.
+
+    There is no fallback to an unrestricted parser: a setup failure is
+    never downgraded into "run it anyway".
+    """
+    from chess_coach.pdf_ocr.linux_sandbox import NetworkIsolationSetupError
+    from chess_coach.pdf_ocr.windows_appcontainer import (
+        AppContainerSetupError,
+        AppContainerUnsupportedError,
+        AppContainerVerificationError,
+        grant_minimum_access,
+        stage_parser,
+    )
+    from chess_coach.pdf_ocr.windows_job import (
+        WindowsJobLimitExceededError,
+        WindowsJobSetupError,
+        WindowsJobTimeoutError,
+        run_in_appcontainer_job,
+    )
+
+    # --- 1. stage the parser OUTSIDE the user profile ---------------------
+    # An AppContainer token cannot traverse the user profile, so a
+    # profile-resident parser is unlaunchable inside the container.
+    try:
+        staged = stage_parser()
+    except AppContainerUnsupportedError:
+        raise
+    except AppContainerSetupError as exc:
+        raise NetworkIsolationSetupError(
+            "could not stage the PDF parser for the AppContainer",
+            stage="parser_staging",
+            details={"launcher": "windows_appcontainer", **exc.details},
+        ) from exc
+
+    # --- 2. minimum ACLs for the product SID -----------------------------
+    # The product SID gets read+execute on the staged executable and its
+    # runtime, and modify on the artifact directory that holds the input
+    # PDF and the output PNGs. Nothing else is granted.
+    try:
+        grant_minimum_access(staged.runtime_dirs, read_only=True)
+        grant_minimum_access((tmpdir,), read_only=False)
+    except AppContainerSetupError as exc:
+        raise NetworkIsolationSetupError(
+            "could not apply the minimum-access ACL for the AppContainer",
+            stage="acl_grant",
+            details={"launcher": "windows_appcontainer", **exc.details},
+        ) from exc
+
+    # --- 3. launch inside the AppContainer --------------------------------
+    stdout_path = tmpdir / "stdout.bin"
+    stderr_path = tmpdir / "stderr.bin"
+    argv = [str(staged.executable), *args[1:]]
+
+    try:
+        result = run_in_appcontainer_job(
+            argv,
+            timeout_seconds=timeout_seconds,
+            limit_bytes=mem_cap_bytes,
+            cwd=tmpdir,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+        )
+    except AppContainerUnsupportedError:
+        # The backend cannot be used here at all: the retained 501
+        # refusal, not a setup failure.
+        raise
+    except (AppContainerVerificationError, AppContainerSetupError) as exc:
+        # A containment setup failure: the parser was NEVER executed.
+        raise NetworkIsolationSetupError(
+            exc.message,
+            stage=str(exc.details.get("stage", "appcontainer_setup")),
+            details={"launcher": "windows_appcontainer", **exc.details},
+        ) from exc
+    except WindowsJobLimitExceededError:
+        raise
+    except WindowsJobTimeoutError:
+        raise
+    except WindowsJobSetupError:
         raise
 
     if result.returncode != 0:

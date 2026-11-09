@@ -244,6 +244,22 @@ _INFINITE = 0xFFFFFFFF
 #: ``STARTF_USESTDHANDLES``
 _STARTF_USESTDHANDLES = 0x00000100
 
+#: ``EXTENDED_STARTUPINFO_PRESENT`` — required when a process attribute
+#: list is supplied.
+_EXTENDED_STARTUPINFO_PRESENT = 0x00080000
+
+#: ``CREATE_UNICODE_ENVIRONMENT`` — required when an explicit environment
+#: block is supplied.
+_CREATE_UNICODE_ENVIRONMENT = 0x00000400
+
+#: ``PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`` — the AppContainer
+#: identity of the launched target.
+_PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES = 0x00020009
+
+#: ``PROC_THREAD_ATTRIBUTE_HANDLE_LIST`` — the explicit allowlist of
+#: handles that may be inherited by the launched target.
+_PROC_THREAD_ATTRIBUTE_HANDLE_LIST = 0x00020002
+
 #: Win32 file access / sharing / creation constants for the stdio files.
 _GENERIC_READ = 0x80000000
 _GENERIC_WRITE = 0x40000000
@@ -430,6 +446,36 @@ class _PROCESS_INFORMATION(ctypes.Structure):
         ("hThread", _HANDLE),
         ("dwProcessId", _DWORD),
         ("dwThreadId", _DWORD),
+    ]
+
+
+class _STARTUPINFOEX(ctypes.Structure):
+    """``STARTUPINFOEXW`` — a ``STARTUPINFO`` plus a process attribute list.
+
+    Required for the AppContainer launch: the AppContainer identity and the
+    inherited-handle allowlist are both expressed as process attributes.
+    """
+
+    _fields_ = [
+        ("StartupInfo", _STARTUPINFOW),
+        ("lpAttributeList", _LPVOID),
+    ]
+
+
+class _SECURITY_CAPABILITIES(ctypes.Structure):
+    """``SECURITY_CAPABILITIES`` — the AppContainer identity of a launch.
+
+    ``Capabilities`` is a pointer to an array of capability SIDs and
+    ``CapabilityCount`` its length. The production launch leaves the array
+    empty (``None`` / ``0``), so the token can hold no ``internetClient``
+    capability and therefore cannot open a new outbound connection.
+    """
+
+    _fields_ = [
+        ("AppContainerSid", _HANDLE),
+        ("Capabilities", ctypes.POINTER(_HANDLE)),
+        ("CapabilityCount", _DWORD),
+        ("Reserved", _DWORD),
     ]
 
 
@@ -1092,6 +1138,490 @@ def run_in_windows_job(
             # Cleanup problems are secondary: they are attached to the
             # primary outcome rather than replacing it.
             _attach_cleanup_errors(cleanup_errors)
+
+
+def run_in_appcontainer_job(
+    argv: Sequence[str],
+    *,
+    timeout_seconds: float,
+    limit_bytes: int = JOB_OBJECT_LIMIT_BYTES,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    stdin_path: Path | None = None,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    package_sid: str | None = None,
+    expected_package_sid: str | None = None,
+    handle_policy: object | None = None,
+) -> ContainedProcessResult:
+    """Run ``argv`` inside an AppContainer **and** a Job Object.
+
+    **BBF-FU-20-windows-appcontainer-network-isolation.**
+
+    This is the Windows counterpart of the Linux combined sandbox launcher.
+    It adds two containment layers on top of the Job Object backend that
+    :func:`run_in_windows_job` already provides:
+
+    * **AppContainer with zero network capabilities.** The target's token
+      carries the product-owned AppContainer SID and an empty capability
+      set, so it holds no ``internetClient`` capability and therefore
+      cannot open a new outbound network connection. Measured on a native
+      Windows host: the restricted child timed out on an outbound TCP
+      connect while an unrestricted control in the same run connected.
+
+    * **An explicit inherited-handle allowlist.** The target is created
+      with ``bInheritHandles=TRUE`` and a
+      ``PROC_THREAD_ATTRIBUTE_HANDLE_LIST`` containing exactly the
+      parser's stdout and stderr handles. This is what stops an
+      already-connected socket from crossing into the parser: an
+      AppContainer token does **not** revoke an inherited network handle,
+      so the handle policy — not the container — is the mitigation.
+      Measured: with the populated allowlist the child reported the
+      socket as ``PRESENT ... inheritable=False`` and every send on it
+      failed with ``WSAENOTSOCK`` (10038), while the same socket was
+      usable in the positive control that used no allowlist.
+
+      The **empty** allowlist is never used: it was measured not to
+      provide an empty allowlist, because the child's own standard
+      handles occupy the same handle values.
+
+    The ordering is fixed and fails closed at every stage:
+
+    1. prepare the package identity and the zero-capability set;
+    2. create the target **suspended** with the attribute list;
+    3. create and configure the Job with the per-process memory limit;
+    4. assign the still-suspended target to the Job;
+    5. verify the target's AppContainer identity and capabilities **while
+       it is still suspended**;
+    6. resume only after every stage above has succeeded.
+
+    Any failure in steps 1-5 aborts the launch **without resuming the
+    target**, so no unconstrained parser code ever runs.
+
+    There is no fallback to an unrestricted parser, no firewall rule, no
+    proxy stripping, and no Job rate control used as a substitute for
+    isolation.
+
+    Args:
+        argv: the parser command line.
+        timeout_seconds: wall-clock budget for the target.
+        limit_bytes: the Job's **per-process** memory limit.
+        cwd: the target's working directory.
+        env: the environment for the target.
+        stdin_path: a file to attach as the target's stdin.
+        stdout_path: a file to receive the target's stdout.
+        stderr_path: a file to receive the target's stderr.
+        package_sid: the AppContainer SID to launch under. Defaults to
+            the product-owned SID.
+
+    Returns:
+        A :class:`ContainedProcessResult`.
+
+    Raises:
+        AppContainerUnsupportedError: the AppContainer backend cannot be
+            used on this host.
+        AppContainerSetupError: a containment stage failed; the parser was
+            never executed.
+        AppContainerVerificationError: the launched token did not match
+            the expected AppContainer identity; the parser was never
+            resumed.
+        WindowsJobLimitExceededError: the target was denied or terminated
+            by the Job's per-process memory limit.
+        WindowsJobTimeoutError: the target exceeded its budget.
+        WindowsJobSetupError: the Job lifecycle failed.
+    """
+    from .windows_appcontainer import (
+        AppContainerSetupError,
+        AppContainerVerificationError,
+        DEFAULT_HANDLE_POLICY,
+        PRODUCT_PACKAGE_SID,
+        assert_verified,
+        build_launch_plan,
+        parse_sid_string,
+        register_profile,
+        select_capabilities,
+        verify_token,
+    )
+
+    expected_sid = package_sid or PRODUCT_PACKAGE_SID
+    plan = build_launch_plan()
+    capabilities = plan.capabilities
+    policy = handle_policy if handle_policy is not None else plan.handle_policy
+
+    k32 = _load_kernel32()
+    k32.CreateProcessW.restype = _BOOL
+    k32.CreateProcessW.argtypes = [
+        _LPWSTR, _LPWSTR, _LPVOID, _LPVOID, _BOOL, _DWORD,
+        _LPVOID, _LPWSTR, _LPVOID, _LPVOID,
+    ]
+    k32.InitializeProcThreadAttributeList.restype = _BOOL
+    k32.InitializeProcThreadAttributeList.argtypes = [
+        _LPVOID, _DWORD, _DWORD, ctypes.POINTER(ctypes.c_size_t),
+    ]
+    k32.UpdateProcThreadAttribute.restype = _BOOL
+    k32.UpdateProcThreadAttribute.argtypes = [
+        _LPVOID, _DWORD, _LPVOID, _LPVOID, ctypes.c_size_t, _LPVOID, _LPVOID,
+    ]
+    k32.DeleteProcThreadAttributeList.restype = None
+    k32.DeleteProcThreadAttributeList.argtypes = [_LPVOID]
+
+    handles = _Handles()
+    cleanup_errors: list[str] = []
+    job: int | None = None
+    port: int | None = None
+    assigned = False
+    resumed = False
+    attribute_list = None
+    keepalive: list[object] = []
+
+    # Windows requires an AppContainer SID to be known to the system before
+    # it can back a launched token: an unregistered SID fails at process
+    # creation with ERROR_FILE_NOT_FOUND. Registration is per-user and
+    # needs no administrator rights.
+    from .windows_appcontainer import profile_is_registered
+
+    if not profile_is_registered(expected_sid):
+        register_profile(sid_string=expected_sid)
+
+    package_sid_pointer = parse_sid_string(expected_sid)
+    workdir = Path(tempfile.mkdtemp(prefix="chess_coach_appcontainer_"))
+    try:
+        # --- 1. the standard handles the parser may inherit ----------------
+        security = _SECURITY_ATTRIBUTES()
+        security.nLength = ctypes.sizeof(_SECURITY_ATTRIBUTES)
+        security.bInheritHandle = True
+
+        stdin_handle = 0
+        stdout_handle = 0
+        stderr_handle = 0
+        try:
+            if stdin_path is not None:
+                stdin_handle = _open_inheritable(
+                    k32, stdin_path, access=_GENERIC_READ,
+                    creation=_OPEN_EXISTING, security=security,
+                )
+                handles.stdin_file = stdin_handle
+            if stdout_path is not None:
+                stdout_handle = _open_inheritable(
+                    k32, stdout_path, access=_GENERIC_WRITE,
+                    creation=_CREATE_ALWAYS, security=security,
+                )
+                handles.stdout_file = stdout_handle
+            if stderr_path is not None:
+                stderr_handle = _open_inheritable(
+                    k32, stderr_path, access=_GENERIC_WRITE,
+                    creation=_CREATE_ALWAYS, security=security,
+                )
+                handles.stderr_file = stderr_handle
+        except WindowsJobSetupError:
+            raise
+
+        # --- 2. the attribute list: capabilities + handle allowlist ---------
+        permitted = policy.permitted_handles(
+            stdout=stdout_handle or None, stderr=stderr_handle or None,
+        )
+        attribute_list, keepalive = _build_appcontainer_attribute_list(
+            k32,
+            capabilities=capabilities,
+            package_sid_pointer=package_sid_pointer,
+            handle_list=permitted,
+            include_handle_list=policy.use_explicit_allowlist,
+        )
+
+        # --- 3. the Job is created and configured BEFORE assignment --------
+        raw_job = k32.CreateJobObjectW(None, None)
+        job = int(raw_job) if raw_job else 0
+        if not job:
+            raise AppContainerSetupError(
+                "could not create the Job Object for the AppContainer target",
+                details={
+                    "win32_error": _last_error(),
+                    "stage": "job_creation",
+                },
+            )
+        _configure_job(k32, job, limit_bytes=limit_bytes)
+
+        raw_port = k32.CreateIoCompletionPort(_INVALID_HANDLE_VALUE, None, None, 1)
+        port = int(raw_port) if raw_port else 0
+        if not port:
+            raise AppContainerSetupError(
+                "could not create the I/O completion port",
+                details={
+                    "win32_error": _last_error(),
+                    "stage": "completion_port_creation",
+                },
+            )
+        _associate_completion_port(k32, job, port)
+
+        # --- 4. create the target SUSPENDED with the attribute list --------
+        startup = _STARTUPINFOW()
+        # With EXTENDED_STARTUPINFO_PRESENT the STARTUPINFO's cb field must
+        # be the size of the STARTUPINFOEX, not of the STARTUPINFO.
+        startup.cb = ctypes.sizeof(_STARTUPINFOEX)
+        startup.dwFlags = _STARTF_USESTDHANDLES
+        startup.hStdInput = _HANDLE(stdin_handle or None)
+        startup.hStdOutput = _HANDLE(stdout_handle or None)
+        startup.hStdError = _HANDLE(stderr_handle or None)
+
+        startup_ex = _STARTUPINFOEX()
+        startup_ex.StartupInfo = startup
+        # _LPVOID is already c_void_p, so the attribute buffer's address
+        # is assigned directly; a second ctypes.cast cannot convert to a
+        # pointer type.
+        startup_ex.lpAttributeList = ctypes.addressof(attribute_list)
+
+        command_line = subprocess.list2cmdline(list(argv))
+        process_info = _PROCESS_INFORMATION()
+
+        env_block = None
+        env_block_buf = None
+        if env is not None:
+            env_block_buf = _build_environment_block(env)
+            env_block = ctypes.cast(env_block_buf, _LPVOID)
+
+        flags = _CREATE_SUSPENDED | _EXTENDED_STARTUPINFO_PRESENT | _CREATE_NO_WINDOW
+        if env is not None:
+            flags |= _CREATE_UNICODE_ENVIRONMENT
+
+        created = k32.CreateProcessW(
+            None,
+            command_line,
+            None,
+            None,
+            # bInheritHandles=TRUE is REQUIRED for the explicit handle
+            # allowlist to be honoured. With FALSE, CreateProcessW fails
+            # with ERROR_INVALID_PARAMETER (87) -- measured.
+            bool(policy.inherit_handles),
+            flags,
+            env_block,
+            str(cwd) if cwd is not None else None,
+            ctypes.byref(startup_ex),
+            ctypes.byref(process_info),
+        )
+        del env_block_buf
+        if not created:
+            raise AppContainerSetupError(
+                "could not create the AppContainer target process",
+                details={
+                    "win32_error": _last_error(),
+                    "stage": "process_creation",
+                    "argv": list(argv),
+                    "package_sid": expected_sid,
+                },
+            )
+        handles.process = _handle_to_int(process_info.hProcess)
+        handles.thread = _handle_to_int(process_info.hThread)
+
+        # --- 5. assign the STILL-SUSPENDED target to the Job ---------------
+        if not k32.AssignProcessToJobObject(job, handles.process):
+            assign_error = _last_error()
+            # FAIL CLOSED: the target is suspended and in no Job, so it is
+            # terminated directly. Because it never resumed it cannot have
+            # created descendants or opened a socket.
+            _terminate_process(k32, handles.process)
+            k32.WaitForSingleObject(handles.process, 5000)
+            raise AppContainerSetupError(
+                "could not assign the AppContainer target to the Job Object",
+                details={
+                    "win32_error": assign_error,
+                    "stage": "job_assignment",
+                    "process_id": int(process_info.dwProcessId),
+                    "target_resumed": False,
+                },
+            )
+        assigned = True
+
+        # --- 6. verify the token WHILE THE TARGET IS STILL SUSPENDED -------
+        verification = verify_token(
+            handles.process,
+            expected_sid=expected_package_sid or expected_sid,
+            expected_capabilities=capabilities,
+        )
+        if not verification.ok:
+            # FAIL CLOSED: terminate the suspended target. It has not run a
+            # single instruction, so it cannot have created descendants or
+            # opened a socket.
+            _terminate_process(k32, handles.process)
+            k32.WaitForSingleObject(handles.process, 5000)
+            assert_verified(verification)
+
+        # --- 7. resume ONLY now -------------------------------------------
+        previous_count = k32.ResumeThread(handles.thread)
+        if previous_count == 0xFFFFFFFF:
+            resume_error = _last_error()
+            _terminate_job(k32, job)
+            k32.WaitForSingleObject(handles.process, 5000)
+            raise AppContainerSetupError(
+                "could not resume the AppContainer target's primary thread",
+                details={
+                    "win32_error": resume_error,
+                    "stage": "resume",
+                    "process_id": int(process_info.dwProcessId),
+                    "target_resumed": False,
+                },
+            )
+        resumed = True
+
+        # --- 8. wait for completion (bounded) ------------------------------
+        timeout_ms = max(1, int(timeout_seconds * 1000))
+        wait_result = k32.WaitForSingleObject(handles.process, timeout_ms)
+
+        if wait_result == _WAIT_TIMEOUT:
+            _terminate_job(k32, job)
+            k32.WaitForSingleObject(handles.process, 10000)
+            notifications = _drain_job_notifications(k32, port, timeout_ms=500)
+            violation = _query_limit_violation(k32, job)
+            _raise_timeout(
+                argv=argv,
+                timeout_seconds=timeout_seconds,
+                notifications=notifications,
+                violation=violation,
+                limit_bytes=limit_bytes,
+            )
+
+        # --- 9. collect the outcome ----------------------------------------
+        exit_code = _DWORD()
+        k32.GetExitCodeProcess(handles.process, ctypes.byref(exit_code))
+
+        notifications = _drain_job_notifications(k32, port, timeout_ms=1000)
+        violation = _query_limit_violation(k32, job)
+
+        stdout_bytes = stdout_path.read_bytes() if stdout_path and stdout_path.exists() else b""
+        stderr_bytes = stderr_path.read_bytes() if stderr_path and stderr_path.exists() else b""
+
+        if _JOB_OBJECT_MSG_PROCESS_MEMORY_LIMIT in notifications:
+            raise WindowsJobLimitExceededError(
+                "the target exceeded the Job Object per-process memory limit",
+                details={
+                    "limit_bytes": limit_bytes,
+                    "limit_field": "ProcessMemoryLimit",
+                    "limit_flag": "JOB_OBJECT_LIMIT_PROCESS_MEMORY",
+                    "aggregate_limit_enabled": False,
+                    "job_notifications": list(notifications),
+                    "violation_information": violation,
+                    "exit_code": int(exit_code.value),
+                    "argv": list(argv),
+                },
+            )
+
+        return ContainedProcessResult(
+            returncode=int(exit_code.value),
+            stdout=stdout_bytes,
+            stderr=stderr_bytes,
+            memory_limit_violated=False,
+            job_notifications=tuple(notifications),
+        )
+
+    finally:
+        if assigned and job is not None and not resumed:
+            try:
+                _terminate_job(k32, job)
+            except OSError as exc:  # pragma: no cover - defensive
+                cleanup_errors.append(f"terminate_job_on_abandon: {exc}")
+        cleanup_errors.extend(handles.close_all(k32))
+        if attribute_list is not None:
+            try:
+                k32.DeleteProcThreadAttributeList(attribute_list)
+            except Exception as exc:  # pragma: no cover - defensive
+                cleanup_errors.append(f"delete_attribute_list: {exc}")
+        try:
+            _remove_workdir(workdir)
+        except OSError as exc:  # pragma: no cover - defensive
+            cleanup_errors.append(f"remove_workdir: {exc}")
+        if cleanup_errors:
+            _attach_cleanup_errors(cleanup_errors)
+
+
+def _build_appcontainer_attribute_list(
+    k32: ctypes.CDLL,
+    *,
+    capabilities: object,
+    package_sid_pointer: ctypes.c_void_p,
+    handle_list: Sequence[int],
+    include_handle_list: bool = True,
+) -> tuple[ctypes.Array, list[object]]:
+    """Build the ``PROC_THREAD_ATTRIBUTE_LIST`` for an AppContainer launch.
+
+    The list carries two attributes:
+
+    * ``PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES`` — the AppContainer
+      identity (the product SID) and the capability set (empty in
+      production).
+    * ``PROC_THREAD_ATTRIBUTE_HANDLE_LIST`` — the explicit allowlist of
+      handles that may cross into the child. It is added only when
+      ``include_handle_list`` is true; when it is false, **no** handle list
+      is applied and every inheritable handle in the parent crosses into
+      the child. That is the bypass shape, used only to keep the
+      threat-model fact demonstrable.
+
+    Returns the attribute buffer plus the objects that must stay alive
+    until after ``CreateProcessW`` returns: the ``SECURITY_CAPABILITIES``
+    structure and the handle array. Letting either be garbage-collected
+    early corrupts the attribute list.
+    """
+    from .windows_appcontainer import AppContainerSetupError
+
+    use_list = bool(include_handle_list and handle_list)
+    count = 2 if use_list else 1
+    size = ctypes.c_size_t(0)
+    k32.InitializeProcThreadAttributeList(None, count, 0, ctypes.byref(size))
+    buf = ctypes.create_string_buffer(size.value)
+    if not k32.InitializeProcThreadAttributeList(buf, count, 0, ctypes.byref(size)):
+        raise AppContainerSetupError(
+            "could not initialise the process attribute list",
+            details={
+                "win32_error": _last_error(),
+                "stage": "attribute_list",
+            },
+        )
+    keep: list[object] = []
+
+    caps = _SECURITY_CAPABILITIES()
+    caps.AppContainerSid = package_sid_pointer
+    caps.CapabilityCount = 0
+    caps.Capabilities = None
+    keep.append(caps)
+
+    if not k32.UpdateProcThreadAttribute(
+        buf,
+        0,
+        _PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+        ctypes.byref(caps),
+        ctypes.sizeof(caps),
+        None,
+        None,
+    ):
+        raise AppContainerSetupError(
+            "could not set the AppContainer security capabilities attribute",
+            details={
+                "win32_error": _last_error(),
+                "stage": "attribute_list",
+            },
+        )
+
+    if use_list:
+        handle_array = (ctypes.c_void_p * len(handle_list))(
+            *[int(h) for h in handle_list]
+        )
+        keep.append(handle_array)
+        if not k32.UpdateProcThreadAttribute(
+            buf,
+            0,
+            _PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+            ctypes.byref(handle_array),
+            ctypes.sizeof(handle_array),
+            None,
+            None,
+        ):
+            raise AppContainerSetupError(
+                "could not set the inherited-handle allowlist attribute",
+                details={
+                    "win32_error": _last_error(),
+                    "stage": "attribute_list",
+                },
+            )
+
+    return buf, keep
 
 
 def _build_environment_block(env: dict[str, str]) -> ctypes.Array[ctypes.c_char]:

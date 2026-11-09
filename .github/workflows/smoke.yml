@@ -681,6 +681,120 @@ jobs:
           print('Windows route maps the Job error taxonomy')
           "
 
+  windows-appcontainer-isolation:
+    name: Windows AppContainer network isolation
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install package + test deps
+        run: |
+          python -m pip install --upgrade pip --quiet
+          pip install -e '.[dev]'
+
+      - name: Stage the pinned Poppler outside the user profile
+        # The AppContainer token cannot traverse the user profile, so the
+        # parser and its runtime must live under ProgramData. The version is
+        # pinned to the one the feasibility evidence used, so the CI proof
+        # exercises the same parser build.
+        #
+        # The staging root is passed through CHESS_COACH_APPCONTAINER_STAGING_ROOT
+        # so the runner controls exactly where the parser is staged.
+        env:
+          POPPLER_TAG: "v26.09.0-0"
+          POPPLER_VERSION: "26.09.0"
+          POPPLER_ARCHIVE: "Release-26.09.0-0.zip"
+          STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:STAGING_ROOT" | Out-Null
+          $url = "https://github.com/oschwartz10612/poppler-windows/releases/download/$env:POPPLER_TAG/$env:POPPLER_ARCHIVE"
+          $zip = Join-Path $env:RUNNER_TEMP "poppler.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $extract = Join-Path $env:RUNNER_TEMP "poppler"
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $bin = Get-ChildItem -Path $extract -Recurse -Filter "pdftoppm.exe" | Select-Object -First 1
+          if (-not $bin) { throw "pdftoppm.exe was not found in the Poppler archive" }
+          $target = Join-Path $env:STAGING_ROOT "poppler"
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item -Path (Join-Path $bin.Source.Directory.FullName "*") -Destination $target -Recurse -Force
+          & (Join-Path $target "pdftoppm.exe") -v
+          Write-Host "Staged Poppler $env:POPPLER_VERSION into $target"
+
+      - name: Run the Windows AppContainer enforcement tests
+        # REAL Win32 calls on a REAL Windows runner: no mocked AppContainer
+        # API, no skip, no documentation-only assertion. The suite proves
+        # the token identity and zero capabilities, the network denial
+        # against an unrestricted control in the same run, the three
+        # generation denial, the inherited-socket bypass and the populated
+        # stdout/stderr allowlist that defeats it, the pre-resume Job
+        # assignment, the real Poppler workload, and the cleanup.
+        #
+        # The file is collected explicitly so the job fails loudly if it is
+        # renamed or moved.
+        env:
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: pytest tests/windows/test_windows_appcontainer_enforcement.py -v --no-header
+
+      - name: Run the Windows AppContainer unit and cleanup tests
+        env:
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          pytest tests/unit/test_windows_appcontainer.py -v --no-header
+          pytest tests/unit/test_windows_appcontainer_cleanup.py -v --no-header
+
+      - name: Verify the Windows PDF route maps the AppContainer taxonomy
+        # The route must distinguish a containment SETUP failure (500
+        # internal.network_isolation_setup_failed) from an UNSUPPORTED
+        # platform (501 internal.not_implemented) and from a parser
+        # failure, and the 501 refusal must still be the default.
+        run: |
+          python -c "
+          import inspect
+          from chess_coach.gateway.routes import pdf_ingest
+          src = inspect.getsource(pdf_ingest)
+          assert 'NetworkIsolationUnsupportedError' in src
+          assert 'NetworkIsolationSetupError' in src
+          from chess_coach.pdf_ocr import subprocess_runner as sr
+          from chess_coach.pdf_ocr import windows_appcontainer as wa
+          assert wa.PRODUCT_PACKAGE_SID.startswith('S-1-15-2-')
+          assert wa.select_capabilities().sids == (), 'the parser must hold no capability'
+          assert sr.windows_appcontainer_is_enabled() is False, 'the AppContainer path must be opt-in'
+          assert sr._network_isolation_available() is False
+          try:
+              sr.ensure_network_isolation_supported()
+          except sr.NetworkIsolationUnsupportedError:
+              print('the default Windows refusal is intact')
+          else:
+              raise AssertionError('the default Windows refusal was weakened')
+          print('Windows AppContainer taxonomy and refusal verified')
+          "
+
+      - name: Run the AppContainer cleanup certificate
+        # The application-owned state must be removable, and the cleanup
+        # must be idempotent. This runs the OWNED-state cleanup and then
+        # asserts that a second pass removes nothing.
+        env:
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          python -c "
+          from chess_coach.pdf_ocr import windows_appcontainer as wa
+          first = wa.cleanup_owned_state()
+          print('removed:', first.removed)
+          print('preserved:', first.preserved)
+          assert first.ok, first.errors
+          second = wa.cleanup_owned_state()
+          assert second.ok, second.errors
+          assert not second.removed, 'the cleanup is not idempotent'
+          print('AppContainer cleanup is idempotent')
+          "
+
   mypy:
     name: mypy strict
     runs-on: ubuntu-latest
