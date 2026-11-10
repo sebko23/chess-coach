@@ -1174,21 +1174,22 @@ def test_the_production_entry_point_runs_the_parser_in_the_container(
         b"trailer<</Root 1 0 R>>\n"
     )
 
-    images = sr.run_pdftoppm_in_subprocess(pdf_bytes)
+    try:
+        images = sr.run_pdftoppm_in_subprocess(pdf_bytes)
 
-    assert images, "the production entry point returned no page"
-    for image in images:
-        assert image.size[0] > 0, (
-            f"the production entry point returned an empty page: {image.size}"
-        )
-        assert image.size[1] > 0, (
-            f"the production entry point returned an empty page: {image.size}"
-        )
-        # The image must be fully loaded: it was read out of the temporary
-        # directory, so a lazy image would fail later.
-        assert image.getbbox() is not None, (
-            "the production entry point returned a blank page"
-        )
+        assert images, "the production entry point returned no page"
+        for image in images:
+            assert image.size[0] > 0, (
+                f"the production entry point returned an empty page: {image.size}"
+            )
+            assert image.size[1] > 0, (
+                f"the production entry point returned an empty page: {image.size}"
+            )
+            # The image must be fully loaded: it was read out of the
+            # temporary directory, so a lazy image would fail later.
+            assert image.getbbox() is not None, (
+                "the production entry point returned a blank page"
+            )
 
     # The production path must have granted the staged DIRECTORY, not
     # only the staged files.  The rendered page above does NOT prove it:
@@ -1198,26 +1199,26 @@ def test_the_production_entry_point_runs_the_parser_in_the_container(
     # is asserted directly -- and this is what catches a production
     # caller that drops it.
     #
-    # `stage_parser` stages into `staging_root() / "poppler"`, and the
-    # test points the staging root at `stage / "poppler"`, so the staged
-    # directory is `stage / "poppler" / "poppler"`.
-    staged_directory = staging_root / "poppler"
-    assert staged_directory.exists(), (
-        f"the production path did not stage the parser at "
-        f"{staged_directory}"
-    )
-    acl = subprocess.run(
-        [r"C:\Windows\System32\icacls.exe", str(staged_directory)],
-        capture_output=True, text=True, errors="replace", check=False,
-    ).stdout
-    try:
+        # `stage_parser` stages into `staging_root() / "poppler"`, so the
+        # staged directory is `staging_root / "poppler"`.
+        staged_directory = staging_root / "poppler"
+        assert staged_directory.exists(), (
+            f"the production path did not stage the parser at "
+            f"{staged_directory}"
+        )
+        acl = subprocess.run(
+            [r"C:\Windows\System32\icacls.exe", str(staged_directory)],
+            capture_output=True, text=True, errors="replace", check=False,
+        ).stdout
         assert wa.PRODUCT_PACKAGE_SID in acl, (
             "the production path must grant the product SID on the staged "
             "parser's DIRECTORY, not only on the staged files; icacls "
             f"reported:\n{acl}"
         )
     finally:
-        # The extra staging root is this test's own state.
+        # The extra staging root is this test's own state, and it carries
+        # a product-SID ACE, so it is removed on EVERY path -- including
+        # a failure in the production call above.
         shutil.rmtree(staging_root, ignore_errors=True)
 
 

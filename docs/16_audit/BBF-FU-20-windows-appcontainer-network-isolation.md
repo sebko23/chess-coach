@@ -340,7 +340,7 @@ a foreign tree that carries no ownership marker, and a second cleanup is
 a successful no-op.  The foreign state sits at exactly the path the
 cleanup inspects, so the **ownership predicate** is what preserves it --
 a cleanup that ignored the marker would remove that tree and the
-certificate would fail.  Each of the five mutations below is caught:
+certificate would fail.  Each of the six mutations below is caught:
 
 | Mutation | Caught with |
 |---|---|
@@ -348,7 +348,7 @@ certificate would fail.  Each of the five mutations below is caught:
 | the cleanup removes the unmarked tree it owns | "the cleanup removed the UNMARKED tree" |
 | the cleanup removes nothing | "the owned staging tree was not removed" / "the owned staging tree still exists" |
 | the cleanup reports a removal on every call | "the cleanup is not idempotent" |
-| the cleanup nukes the whole staging root | "the owned staging tree was not removed" / "the owned staging tree still exists" |
+| the cleanup nukes the whole staging root | "the owned staging tree was not removed" / "the owned staging tree still exists" / "the cleanup removed the whole staging ROOT" |
 | the cleanup removes the owned staging ROOT instead of the tree inside it | "the cleanup removed the whole staging ROOT, not just the staging tree inside it" |
 
 The cleanup removes `root / "poppler"`, **not** the root: the certificate
