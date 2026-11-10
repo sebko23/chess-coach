@@ -346,9 +346,14 @@ certificate would fail.  Each of the five mutations below is caught:
 |---|---|
 | the ownership-marker check broken, so an unmarked tree is removed | "the cleanup removed the UNMARKED tree" |
 | the cleanup removes the unmarked tree it owns | "the cleanup removed the UNMARKED tree" |
-| the cleanup removes nothing | "the owned staging tree was not removed" |
+| the cleanup removes nothing | "the owned staging tree was not removed" / "the owned staging tree still exists" |
 | the cleanup reports a removal on every call | "the cleanup is not idempotent" |
-| the cleanup nukes the whole staging root | "the cleanup removed a foreign tree" |
+| the cleanup nukes the whole staging root | "the owned staging tree was not removed" / "the owned staging tree still exists" |
+| the cleanup removes the owned staging ROOT instead of the tree inside it | "the cleanup removed the whole staging ROOT, not just the staging tree inside it" |
+
+The cleanup removes `root / "poppler"`, **not** the root: the certificate
+proves the root itself survives, with only the `poppler` subtree
+removed.
 
 The pre-existing Windows Job Object job is untouched and continues to
 protect the memory-cap half of A-F11.

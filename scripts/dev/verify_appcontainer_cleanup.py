@@ -136,6 +136,15 @@ def main() -> int:
         )
     if owned.exists():
         failures.append("the owned staging tree still exists")
+    # The cleanup removes `root / "poppler"`, NOT the root itself.  A
+    # cleanup that removed the root would delete state that is not ours
+    # -- for instance a sibling staging tree under the same root -- so
+    # the root must survive with only its `poppler` subtree removed.
+    if not owned_root.exists():
+        failures.append(
+            "the cleanup removed the whole staging ROOT, not just the "
+            "staging tree inside it"
+        )
     # The FOREIGN state is cleaned with ITS OWN root, so the cleanup
     # inspects root/poppler -- the same path -- and the ownership marker
     # is the only thing that preserves it.
@@ -157,6 +166,11 @@ def main() -> int:
         failures.append("the cleanup removed a foreign tree")
     elif not (foreign / "keep.txt").exists():
         failures.append("the cleanup removed a foreign file")
+    if not foreign_root.exists():
+        failures.append(
+            "the cleanup removed the whole foreign ROOT, not just the "
+            "staging tree inside it"
+        )
 
     second = wa.cleanup_owned_state(staging=owned_root)
     print("second cleanup:")

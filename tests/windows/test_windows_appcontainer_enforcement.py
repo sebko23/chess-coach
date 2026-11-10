@@ -1120,23 +1120,42 @@ def test_the_production_entry_point_runs_the_parser_in_the_container(
     Every other test in this suite drives the low-level launcher
     (``wj.run_in_appcontainer_job``) directly.  That left the PRODUCTION
     chain untested: a regression in ``_run_pdftoppm_in_windows_appcontainer``
-    -- dropping the staged directory from the ACL grant, reverting to
-    stdin, or mis-granting the artifact directory -- would leave CI green
-    while the shipped path was broken.  That is the same defect class the
-    earlier review recorded as F1.
+    -- reverting to stdin, or mis-granting the artifact directory -- would
+    leave CI green while the shipped path was broken.  That is the same
+    defect class the earlier review recorded as F1.
 
     This test therefore calls the shipped entry point,
     ``sr.run_pdftoppm_in_subprocess(pdf_bytes)``, with the opt-in ON, and
     asserts a rendered page comes back.  It covers the whole production
     chain in one call: ``stage_parser`` -> the ACL grant -> the AppContainer
     launch -> the real Poppler -> the PNG read-back.
+
+    It ALSO asserts that the production path granted the staged
+    DIRECTORY, not only the staged files.  On this host the two shapes
+    are observationally equivalent -- ``ProgramData`` grants the
+    built-in Users group traverse, so the restricted token can reach the
+    files even without a product-SID ACE on the directory -- so the
+    rendered page alone does not prove the directory was granted.  The
+    directory grant is what removes the container's dependence on those
+    inherited-user ACEs, which matters in a hardened deployment, so its
+    PRESENCE is asserted directly.  Without that assertion, dropping the
+    directory from the production grant survived every committed test.
     """
     from chess_coach.pdf_ocr import subprocess_runner as sr
 
     # The opt-in must be ON for this call, and it is evaluated at CALL
     # time, so the environment is set here rather than at import.
     monkeypatch.setenv(sr.ENV_WINDOWS_APPCONTAINER, "1")
-    monkeypatch.setenv(wa.ENV_STAGING_ROOT, str(stage / "poppler"))
+    # The staging root is a SIBLING of the granted work directory, not a
+    # child of it.  The `stage` fixture grants the product SID
+    # `(OI)(CI)(M)` on the work directory, and that inheritable ACE
+    # propagates to every directory created underneath it -- so a staged
+    # directory INSIDE the work tree would carry a product-SID ACE
+    # whatever the production caller granted, and the assertion below
+    # would be vacuous.  Outside the granted tree, the only product SID
+    # ACE on the staged directory can be the one production applied.
+    staging_root = stage.parent / f"prodstage_{os.getpid()}_{time.time_ns()}"
+    monkeypatch.setenv(wa.ENV_STAGING_ROOT, str(staging_root))
 
     # `stage_parser` copies the parser from the directory `pdftoppm` is
     # found in, so the real Poppler must be on PATH.
@@ -1170,6 +1189,36 @@ def test_the_production_entry_point_runs_the_parser_in_the_container(
         assert image.getbbox() is not None, (
             "the production entry point returned a blank page"
         )
+
+    # The production path must have granted the staged DIRECTORY, not
+    # only the staged files.  The rendered page above does NOT prove it:
+    # on this host the staging tree inherits traverse from ProgramData,
+    # so the restricted token reaches the files either way.  The
+    # directory grant is what removes that dependence, so its presence
+    # is asserted directly -- and this is what catches a production
+    # caller that drops it.
+    #
+    # `stage_parser` stages into `staging_root() / "poppler"`, and the
+    # test points the staging root at `stage / "poppler"`, so the staged
+    # directory is `stage / "poppler" / "poppler"`.
+    staged_directory = staging_root / "poppler"
+    assert staged_directory.exists(), (
+        f"the production path did not stage the parser at "
+        f"{staged_directory}"
+    )
+    acl = subprocess.run(
+        [r"C:\Windows\System32\icacls.exe", str(staged_directory)],
+        capture_output=True, text=True, errors="replace", check=False,
+    ).stdout
+    try:
+        assert wa.PRODUCT_PACKAGE_SID in acl, (
+            "the production path must grant the product SID on the staged "
+            "parser's DIRECTORY, not only on the staged files; icacls "
+            f"reported:\n{acl}"
+        )
+    finally:
+        # The extra staging root is this test's own state.
+        shutil.rmtree(staging_root, ignore_errors=True)
 
 
 def test_the_production_entry_point_is_refused_without_the_opt_in(
