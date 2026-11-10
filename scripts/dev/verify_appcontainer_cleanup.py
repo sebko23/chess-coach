@@ -38,6 +38,28 @@ What it proves
 * the cleanup PRESERVES a foreign, unmarked staging tree;
 * a second cleanup is a successful no-op.
 
+The foreign state is NOT a sibling directory
+-------------------------------------------
+An earlier version of this certificate put the foreign tree at
+``staging_root / "someone-elses-poppler"``, as a SIBLING of the staging
+tree.  That made the assertion VACUOUS: ``cleanup_owned_state()`` only
+ever inspects ``root / "poppler"`` and never enumerates the root, so a
+cleanup that removed the foreign tree would have had to delete a path
+the real cleanup never visits.  Measured: two security-relevant
+mutations -- the cleanup removing an unmarked tree, and the
+ownership-marker check being broken entirely -- both left that version
+exiting 0.
+
+Here the foreign state sits at exactly the path the cleanup inspects,
+``root / "poppler"``, and carries NO ownership marker.  The OWNERSHIP
+PREDICATE is therefore the only thing that preserves it, and the
+certificate proves that it does.  The owned state is a second root whose
+``poppler`` subdirectory DOES carry the marker, so the cleanup must
+remove it.
+
+Both roots live under the temporary directory, so the certificate does
+not depend on -- or destroy -- the tree the CI job staged.
+
 Usage
 -----
 ::
@@ -49,10 +71,10 @@ and defaults to ``ProgramData\\ChessCoach``.
 """
 from __future__ import annotations
 
-import os
 import pathlib
 import shutil
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT / "services") not in sys.path:
@@ -63,13 +85,16 @@ from chess_coach.pdf_ocr import windows_appcontainer as wa  # noqa: E402
 
 def main() -> int:
     """Run the certificate.  Returns 0 on success, 1 on failure."""
-    staging_root = pathlib.Path(
-        os.environ.get(wa.ENV_STAGING_ROOT)
-        or (pathlib.Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "ChessCoach")
-    )
+    # The certificate uses its OWN roots, under the temporary directory.
+    # It must not depend on -- or destroy -- the tree the CI job staged,
+    # and the ownership predicates it proves are the real ones, so each
+    # root is passed to the cleanup explicitly.
+    scratch = pathlib.Path(tempfile.mkdtemp(prefix="chess_coach_cleanup_cert_"))
 
-    # --- the OWNED state: a marked tree the application created -------- #
-    owned = staging_root / "poppler"
+    # --- the OWNED state: a MARKED tree the application created -------- #
+    # The marker is present, so the cleanup must remove this tree.
+    owned_root = scratch / "owned"
+    owned = owned_root / "poppler"
     owned.mkdir(parents=True, exist_ok=True)
     (owned / ".chesscoach-staging").write_text(
         "Owned by the Chess Coach installation. Removed by the application's "
@@ -78,8 +103,13 @@ def main() -> int:
     )
     (owned / "pdftoppm.exe").write_bytes(b"stub")
 
-    # --- the FOREIGN state: an unmarked tree that is NOT ours ---------- #
-    foreign = staging_root / "someone-elses-poppler"
+    # --- the FOREIGN state: an UNMARKED tree that is NOT ours ---------- #
+    # It sits at exactly the path the cleanup inspects -- root/poppler --
+    # and it carries NO ownership marker, so the OWNERSHIP PREDICATE is
+    # what preserves it.  A cleanup that ignored the marker would remove
+    # this tree, and the certificate would fail.
+    foreign_root = scratch / "foreign"
+    foreign = foreign_root / "poppler"
     foreign.mkdir(parents=True, exist_ok=True)
     (foreign / "keep.txt").write_text("not ours", encoding="utf-8")
 
@@ -88,7 +118,7 @@ def main() -> int:
     if not wa.profile_is_registered():
         wa.register_profile()
 
-    first = wa.cleanup_owned_state()
+    first = wa.cleanup_owned_state(staging=owned_root)
     print("first cleanup:")
     print("  removed  :", first.removed)
     print("  preserved:", first.preserved)
@@ -106,13 +136,29 @@ def main() -> int:
         )
     if owned.exists():
         failures.append("the owned staging tree still exists")
-    # The FOREIGN tree must survive: the cleanup is ownership-scoped.
+    # The FOREIGN state is cleaned with ITS OWN root, so the cleanup
+    # inspects root/poppler -- the same path -- and the ownership marker
+    # is the only thing that preserves it.
+    foreign_cleanup = wa.cleanup_owned_state(staging=foreign_root)
+    print("foreign cleanup (its own root, unmarked tree):")
+    print("  removed  :", foreign_cleanup.removed)
+    print("  preserved:", foreign_cleanup.preserved)
+    print("  errors   :", foreign_cleanup.errors)
+    if not foreign_cleanup.ok:
+        failures.append(
+            f"the cleanup reported errors on the foreign tree: {foreign_cleanup.errors}"
+        )
+    if foreign_cleanup.removed:
+        failures.append(
+            "the cleanup removed the UNMARKED tree; the ownership marker is "
+            f"what must preserve it, but it removed {foreign_cleanup.removed!r}"
+        )
     if not foreign.exists():
         failures.append("the cleanup removed a foreign tree")
     elif not (foreign / "keep.txt").exists():
         failures.append("the cleanup removed a foreign file")
 
-    second = wa.cleanup_owned_state()
+    second = wa.cleanup_owned_state(staging=owned_root)
     print("second cleanup:")
     print("  removed  :", second.removed)
     print("  preserved:", second.preserved)
@@ -126,8 +172,8 @@ def main() -> int:
             f"{second.removed!r}"
         )
 
-    # The foreign tree is the certificate's own scratch state.
-    shutil.rmtree(foreign, ignore_errors=True)
+    # The scratch roots are the certificate's own state.
+    shutil.rmtree(scratch, ignore_errors=True)
 
     if failures:
         print()
