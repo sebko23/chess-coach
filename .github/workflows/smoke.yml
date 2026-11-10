@@ -772,35 +772,6 @@ jobs:
           CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
         run: pytest tests/windows/test_windows_appcontainer_enforcement.py -v --no-header
 
-      - name: Run the AppContainer cleanup certificate
-        # The application-owned state must be removable, the cleanup must
-        # be idempotent, and it must NOT remove state that belongs to
-        # somebody else.
-        #
-        # The certificate CREATES its own owned state and removes it, so
-        # it proves the property regardless of what the earlier steps
-        # did.  This matters: the unit + cleanup test step that follows
-        # calls cleanup_owned_state() with the REAL staging root, so it
-        # removes the tree this job staged -- and a certificate that only
-        # asserted "the second pass removed nothing" would then pass
-        # vacuously.
-        #
-        # A cleanup that removed EVERYTHING would also satisfy that
-        # assertion, so the certificate also proves that a FOREIGN,
-        # unmarked staging tree is PRESERVED.  The cleanup is
-        # ownership-scoped, and the certificate proves it.
-        #
-        # The program is a FILE, not an inline command.  Inline
-        # `python -c "..."` inside a PowerShell double-quoted string is
-        # subject to backtick escaping, and a backtick-n in the program
-        # becomes a NEWLINE -- which silently corrupted this certificate
-        # once and made the step fail with a SyntaxError instead of a
-        # certificate result.  A file removes the whole class of hazard.
-        env:
-          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
-        run: |
-          python scripts/dev/verify_appcontainer_cleanup.py
-
       - name: Run the Windows AppContainer unit and cleanup tests
         env:
           CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
@@ -870,6 +841,44 @@ jobs:
               assert image.size[0] > 0 and image.size[1] > 0, image.size
           print('the PRODUCTION entry point rendered', len(images), 'page(s)')
           "
+
+      - name: Run the AppContainer cleanup certificate
+        # The application-owned state must be removable, the cleanup must
+        # be idempotent, and it must NOT remove state that belongs to
+        # somebody else.
+        #
+        # The certificate CREATES its own owned state and removes it, so
+        # it proves the property regardless of what the earlier steps
+        # did.
+        #
+        # It is the LAST step of this job on purpose.  It REMOVES the
+        # application-owned staging tree, and the CI staging step put
+        # that tree on PATH, so running it earlier deleted the directory
+        # PATH pointed into and made the later production step fail with
+        # "pdftoppm was not found".  As the last step, the cleanup
+        # property is proved on the state the job actually created, and
+        # nothing after it depends on that state.
+        #
+        # The certificate asserts that the FIRST pass really removed the
+        # owned state: asserting only that the second pass removed
+        # nothing would be satisfied vacuously when the first pass
+        # removed nothing either.
+        #
+        # A cleanup that removed EVERYTHING would also satisfy that
+        # assertion, so the certificate also proves that a FOREIGN,
+        # unmarked staging tree is PRESERVED.  The cleanup is
+        # ownership-scoped, and the certificate proves it.
+        #
+        # The program is a FILE, not an inline command.  Inline
+        # `python -c "..."` inside a PowerShell double-quoted string is
+        # subject to backtick escaping, and a backtick-n in the program
+        # becomes a NEWLINE -- which silently corrupted this certificate
+        # once and made the step fail with a SyntaxError instead of a
+        # certificate result.  A file removes the whole class of hazard.
+        env:
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          python scripts/dev/verify_appcontainer_cleanup.py
 
 
   mypy:
