@@ -286,15 +286,72 @@ closed and raised F1: the production ACL grant covered only the staged
 files, so the containing directory never received the product-SID ACE.
 F1 is fixed and measured as described in §2.5.
 
+Later reviews raised five further findings, each fixed and each
+verified on the native Windows host:
+
+| # | Finding | Resolution |
+|---|---|---|
+| HIGH-1 | No committed test or CI step exercised the **production** entry point -- every test drove the low-level launcher | The enforcement suite now calls the shipped `run_pdftoppm_in_subprocess` with the opt-in on and asserts a rendered page, and the CI job runs the same production call |
+| MEDIUM-2 | The capability list was read with the `TOKEN_GROUPS` inline layout instead of the `TOKEN_CAPABILITIES` pointer layout, and the `internetClient` flag was computed against the group list, where capability SIDs never appear | The capability list is read through its pointer at offset 8, and the flag is computed against the capability SIDs |
+| F1 | The reader read the pointer field at offset 8 of the **8-byte** `TOKEN_CAPABILITIES` buffer the production token actually has -- an out-of-bounds heap read | The count and the buffer length are checked first, and the pointer is read only when the buffer can hold it |
+| F2 | A failed `GetTokenInformation` became an empty capability list, so a token could pass verification with no proof that it held no network capability | A failed read is reported as a failed read, and the verification fails closed on it |
+| -- | The cleanup certificate's "foreign preservation" assertion was vacuous: the foreign tree was a sibling the cleanup never inspects | The foreign state now sits at the path the cleanup inspects, so the ownership predicate is what preserves it |
+
+The CI failures those findings exposed were also fixed: the certificate's
+inline program was corrupted by PowerShell backtick escaping, the
+certificate ran before the production step and deleted the tree `PATH`
+pointed into, the AppContainer unit tests assumed Windows import-time
+constant values, and the new Windows-only module needed a
+platform-independent test suite to keep the cross-platform coverage floor.
+
 ### 5.4 CI
 
 The new `windows-appcontainer-isolation` job in
 `.github/workflows/smoke.yml` stages the **pinned** Poppler 26.09.0
 (`Release-26.09.0-0.zip`, tag `v26.09.0-0`) under
-`C:\ProgramData\ChessCoachCI`, runs the real enforcement suite, the unit
-and cleanup suites, the taxonomy and default-refusal check, and an
-idempotent cleanup certificate. The pre-existing Windows Job Object job
-is untouched and continues to protect the memory-cap half of A-F11.
+`C:\ProgramData\ChessCoachCI` and runs, in this order:
+
+1. the real AppContainer enforcement suite;
+2. the AppContainer unit and cleanup suites;
+3. the taxonomy and default-refusal check;
+4. the **production entry point** with the opt-in on -- the shipped
+   `run_pdftoppm_in_subprocess`, which is the only step that proves the
+   production chain end to end;
+5. the cleanup certificate.
+
+The certificate is **last** on purpose.  It removes the application-owned
+staging tree, and the staging step puts that tree on `PATH`, so running
+the certificate earlier would delete the directory `PATH` points into
+and make the production step fail with "pdftoppm was not found".  As the
+last step, the cleanup property is proved on the state the job actually
+created and nothing after it depends on that state.
+
+The certificate is a program in a file,
+`scripts/dev/verify_appcontainer_cleanup.py`, not an inline command.  An
+inline `python -c "..."` inside a PowerShell double-quoted string is
+subject to backtick escaping, and a backtick-n in the program becomes a
+NEWLINE -- which silently corrupted the certificate once and made the
+step fail with a `SyntaxError` instead of a certificate result.  A file
+removes the whole class of hazard.
+
+The certificate proves three things, and it is proven non-vacuous: the
+cleanup removes the application-owned state it created, it **preserves**
+a foreign tree that carries no ownership marker, and a second cleanup is
+a successful no-op.  The foreign state sits at exactly the path the
+cleanup inspects, so the **ownership predicate** is what preserves it --
+a cleanup that ignored the marker would remove that tree and the
+certificate would fail.  Each of the five mutations below is caught:
+
+| Mutation | Caught with |
+|---|---|
+| the ownership-marker check broken, so an unmarked tree is removed | "the cleanup removed the UNMARKED tree" |
+| the cleanup removes the unmarked tree it owns | "the cleanup removed the UNMARKED tree" |
+| the cleanup removes nothing | "the owned staging tree was not removed" |
+| the cleanup reports a removal on every call | "the cleanup is not idempotent" |
+| the cleanup nukes the whole staging root | "the cleanup removed a foreign tree" |
+
+The pre-existing Windows Job Object job is untouched and continues to
+protect the memory-cap half of A-F11.
 
 CI uses **no** Linux emulation, Docker, WSL, documentation-only
 assertion, or skipped test as a substitute for real Win32/AppContainer
