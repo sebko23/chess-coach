@@ -419,8 +419,9 @@ def test_the_capability_list_is_read_through_its_pointer(monkeypatch):
     monkeypatch.setattr(
         wa,
         "_get_token_buffer",
-        lambda token, info_class: ctypes.cast(
-            ctypes.pointer(descriptor), ctypes.c_void_p,
+        lambda token, info_class: wa._TokenBuffer(
+            ctypes.cast(ctypes.pointer(descriptor), ctypes.POINTER(ctypes.c_char)),
+            ctypes.sizeof(descriptor),
         ),
     )
     read = wa._read_token_sids(None, wa._TOKEN_CAPABILITIES)
@@ -456,8 +457,9 @@ def test_the_capability_pointer_is_read_at_offset_eight(monkeypatch):
     monkeypatch.setattr(
         wa,
         "_get_token_buffer",
-        lambda token, info_class: ctypes.cast(
-            ctypes.pointer(descriptor), ctypes.c_void_p,
+        lambda token, info_class: wa._TokenBuffer(
+            ctypes.cast(ctypes.pointer(descriptor), ctypes.POINTER(ctypes.c_char)),
+            ctypes.sizeof(descriptor),
         ),
     )
     read = wa._read_token_sids(None, wa._TOKEN_CAPABILITIES)
@@ -480,3 +482,148 @@ def test_internet_client_is_checked_against_the_capability_sids():
 
     assert wa.INTERNET_CLIENT_CAPABILITY_SID in verification.capability_sids
     assert wa.INTERNET_CLIENT_CAPABILITY_SID not in verification.group_sids
+
+
+# ---------------------------------------------------------------------------
+# The token lists: a failed read is not an empty list
+# ---------------------------------------------------------------------------
+
+
+def test_an_eight_byte_capability_buffer_is_read_without_overrunning(monkeypatch):
+    """An 8-byte capability buffer is read safely (F1).
+
+    Measured on this host, the real ``TOKEN_CAPABILITIES`` buffer for a
+    token that holds no capability is EXACTLY 8 bytes -- and that is the
+    PRODUCTION AppContainer token's buffer.  The pointer field is at
+    offset 8, so reading it from an 8-byte buffer is an out-of-bounds
+    heap read.
+
+    The regression builds exactly that buffer and asserts the reader
+    returns an empty list.  A reader that read offset 8 would overrun
+    the buffer.
+    """
+    descriptor = (ctypes.c_char * 8)()
+    ctypes.memmove(
+        ctypes.addressof(descriptor),
+        ctypes.byref(ctypes.c_uint32(0)),  # count = 0
+        4,
+    )
+
+    monkeypatch.setattr(
+        wa,
+        "_get_token_buffer",
+        lambda token, info_class: wa._TokenBuffer(descriptor, 8),
+    )
+    read = wa._read_token_sids(None, wa._TOKEN_CAPABILITIES)
+
+    assert read == [], (
+        "an 8-byte capability buffer with count 0 must read as an empty "
+        f"list; got {read!r}"
+    )
+
+
+def test_a_short_capability_buffer_with_a_count_is_a_failed_read(monkeypatch):
+    """A buffer that cannot hold the elements it promises fails closed.
+
+    The count says there are capabilities but the buffer is too short to
+    hold the pointer to them, so the descriptor is malformed.  That is a
+    failed read, not an empty list.
+    """
+    descriptor = (ctypes.c_char * 8)()
+    ctypes.memmove(
+        ctypes.addressof(descriptor),
+        ctypes.byref(ctypes.c_uint32(3)),  # count = 3, but no room
+        4,
+    )
+
+    monkeypatch.setattr(
+        wa,
+        "_get_token_buffer",
+        lambda token, info_class: wa._TokenBuffer(descriptor, 8),
+    )
+    read = wa._read_token_sids(None, wa._TOKEN_CAPABILITIES)
+
+    assert read is None, (
+        "a malformed capability descriptor must be reported as a failed "
+        f"read; got {read!r}"
+    )
+
+
+def test_a_failed_capability_read_is_not_an_empty_list(monkeypatch):
+    """A list that could NOT be read is reported as such (F2).
+
+    An empty list is the PROOF that the token holds no capability.  A
+    failed read is the absence of that proof, and the two must not be
+    confused -- confusing them let a token pass the pre-resume
+    verification with no evidence about its capabilities.
+    """
+    monkeypatch.setattr(wa, "_get_token_buffer", lambda token, info_class: None)
+    read = wa._read_token_sids(None, wa._TOKEN_CAPABILITIES)
+
+    assert read is None, (
+        "a failed token read must be reported as a failed read; "
+        f"got {read!r}"
+    )
+
+
+def test_a_failed_capability_read_fails_the_verification(monkeypatch):
+    """The pre-resume verification FAILS when the capability list cannot be read.
+
+    The capability list is the evidence that the token holds no network
+    capability.  Without it the verification has established nothing, so
+    it must fail closed rather than pass on absent evidence.
+
+    The verification body is driven directly, so the test needs no
+    Windows API and runs on every platform.
+    """
+    # The token reads that SUCCEED: the AppContainer flag and the
+    # AppContainer SID, both matching the product.
+    def buffers(token_handle, info_class):
+        if info_class == wa._TOKEN_CAPABILITIES:
+            # The read that FAILS.
+            return None
+        if info_class == wa._TOKEN_IS_APP_CONTAINER:
+            value = ctypes.c_int32(1)
+            return wa._TokenBuffer(
+                ctypes.cast(
+                    ctypes.pointer(value), ctypes.POINTER(ctypes.c_char)
+                ),
+                ctypes.sizeof(value),
+            )
+        if info_class == wa._TOKEN_APP_CONTAINER_SID:
+            # A buffer holding the product SID.
+            raw = _raw_sid(15, (2, 1307264423, 3961844790, 1637159078,
+                                741858669, 3028905837, 1642583832, 2140039969))
+            struct = (ctypes.c_char * (8 + len(raw)))()
+            ctypes.memmove(
+                ctypes.addressof(struct) + 8,
+                raw,
+                len(raw),
+            )
+            return wa._TokenBuffer(
+                ctypes.cast(struct, ctypes.POINTER(ctypes.c_char)),
+                ctypes.sizeof(struct),
+            )
+        if info_class == wa._TOKEN_GROUPS:
+            return wa._TokenBuffer(
+                (ctypes.c_char * 8)(), 8,
+            )
+        return None
+
+    monkeypatch.setattr(wa, "_get_token_buffer", buffers)
+
+    verification = wa.TokenVerification()
+    wa._verify_token_into(
+        verification,
+        ctypes.c_void_p(1),  # a stub token handle; never dereferenced
+        wa.PRODUCT_PACKAGE_SID,
+        wa.ZERO_CAPABILITIES,
+    )
+
+    assert not verification.ok, (
+        "a verification whose capability list could not be read must fail"
+    )
+    assert any(
+        "capability list could not be read" in error
+        for error in verification.errors
+    ), verification.errors

@@ -84,6 +84,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import NamedTuple
 
 #: The package moniker owned by this product.
 PRODUCT_PACKAGE_MONIKER = "ChessCoach.PdfParser_8wekyb3d8bbwe"
@@ -1204,10 +1205,23 @@ def _close_token(token: ctypes.c_void_p) -> None:
         )
 
 
+class _TokenBuffer(NamedTuple):
+    """A token information buffer and its length in bytes.
+
+    The length matters: the ``TOKEN_CAPABILITIES`` descriptor is only
+    8 bytes long when the token holds no capability at all -- which is
+    the production token -- so a reader cannot assume the pointer field
+    is present.
+    """
+
+    data: ctypes.Array[ctypes.c_char]
+    length: int
+
+
 def _get_token_buffer(
     token: ctypes.c_void_p,
     info_class: int,
-) -> ctypes.Array[ctypes.c_char] | None:
+) -> _TokenBuffer | None:
     adv = _load_advapi32()
     adv.GetTokenInformation.restype = ctypes.c_int
     adv.GetTokenInformation.argtypes = [
@@ -1225,11 +1239,21 @@ def _get_token_buffer(
     if not adv.GetTokenInformation(token, info_class, buf, size.value,
                                    ctypes.byref(size)):
         return None
-    return buf
+    # The length travels with the buffer: the reader must be able to tell
+    # whether the buffer is large enough to contain the field it is about
+    # to read.
+    return _TokenBuffer(buf, size.value)
 
 
-def _read_token_sids(token: ctypes.c_void_p, info_class: int) -> list[str]:
+def _read_token_sids(
+    token: ctypes.c_void_p, info_class: int,
+) -> list[str] | None:
     """Read the SIDs from a token's group or capability list.
+
+    Returns the SIDs, an EMPTY LIST when the token holds none, or
+    ``None`` when the list could NOT be read.  The distinction matters:
+    an empty list is the PROOF that the token holds no capability, while
+    ``None`` is the absence of that proof.
 
     The two Win32 layouts DIFFER and must not be read the same way:
 
@@ -1244,30 +1268,53 @@ def _read_token_sids(token: ctypes.c_void_p, info_class: int) -> list[str]:
     silently returns the wrong SIDs for any larger count, so the two
     classes are handled separately.
     """
-    buf = _get_token_buffer(token, info_class)
-    if buf is None:
-        return []
+    buffer = _get_token_buffer(token, info_class)
+    if buffer is None:
+        # A FAILED read is NOT an empty list.  The caller must be able to
+        # tell "the token holds no capability" from "the capability list
+        # could not be read", because the second means there is NO PROOF
+        # that the capability set is empty.
+        return None
+
+    buf = buffer.data
+    length = buffer.length
 
     count = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint32))[0]
     if count > 4096:
-        return []
+        return None
 
     if info_class == _TOKEN_CAPABILITIES:
-        # The descriptor holds a POINTER to the array.  The pointer is NULL
-        # when the token holds no capability at all, which is the normal
-        # case for the production token.
-        # The pointer field is at offset 8, NOT 0: the struct is
+        # The descriptor holds a POINTER to the array.  The struct is
         # { DWORD CapabilityCount; PSID_AND_ATTRIBUTES Capabilities; } and
         # on x64 the 4-byte count is followed by 4 bytes of padding before
-        # the 8-byte pointer.  Measured on a real token:
-        #   count@0 = 1  pointer@8 = 0x27b28f682e8
+        # the 8-byte pointer, so the pointer field is at offset 8.
+        #
+        # Measured on this host, the real buffer for a token that holds no
+        # capability is EXACTLY 8 bytes:
+        #     buffer size : 8 bytes
+        #     raw         : 0000000000000000
+        #     count@0     : 0
+        # That is the PRODUCTION token's buffer, so the pointer field is
+        # ABSENT there and reading offset 8 of an 8-byte buffer is an
+        # out-of-bounds heap read.  The count is checked FIRST and the
+        # pointer is read only when the buffer is long enough to hold it.
+        if count == 0:
+            return []
+        if length < 16:
+            # The count promises capabilities the buffer cannot describe.
+            return None
         pointer = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[1]
-        if not pointer or count == 0:
+        if not pointer:
             return []
         array = ctypes.cast(pointer, ctypes.POINTER(_SID_AND_ATTRIBUTES))
         base = ctypes.addressof(array.contents)
     else:
         # TOKEN_GROUPS holds the array INLINE, right after the count.
+        if count == 0:
+            return []
+        if length < 8 + count * 16:
+            # The buffer cannot hold the elements the count promises.
+            return None
         base = ctypes.addressof(buf) + 8
 
     sids: list[str] = []
@@ -1318,23 +1365,30 @@ def _verify_token_into(
     expected_capabilities: CapabilitySet,
 ) -> None:
     """Fill ``result`` from an already-open token handle."""
-    is_app_buf = _get_token_buffer(token, _TOKEN_IS_APP_CONTAINER)
-    if is_app_buf is None:
+    is_app_buffer = _get_token_buffer(token, _TOKEN_IS_APP_CONTAINER)
+    if is_app_buffer is None or is_app_buffer.length < ctypes.sizeof(ctypes.c_int32):
         result.errors.append("could not read TokenIsAppContainer")
     else:
         result.is_app_container = bool(
-            ctypes.cast(is_app_buf, ctypes.POINTER(ctypes.c_int32))[0]
+            ctypes.cast(
+                is_app_buffer.data, ctypes.POINTER(ctypes.c_int32)
+            )[0]
         )
         if not result.is_app_container:
             result.errors.append(
                 "the launched token is not an AppContainer token"
             )
 
-    acs_buf = _get_token_buffer(token, _TOKEN_APP_CONTAINER_SID)
-    if acs_buf is None:
+    acs_buffer = _get_token_buffer(token, _TOKEN_APP_CONTAINER_SID)
+    if (
+        acs_buffer is None
+        or acs_buffer.length < ctypes.sizeof(_TOKEN_APPCONTAINER_SID)
+    ):
         result.errors.append("could not read TokenAppContainerSid")
     else:
-        acs = ctypes.cast(acs_buf, ctypes.POINTER(_TOKEN_APPCONTAINER_SID)).contents
+        acs = ctypes.cast(
+            acs_buffer.data, ctypes.POINTER(_TOKEN_APPCONTAINER_SID)
+        ).contents
         result.app_container_sid = sid_to_string(acs.Sid) if acs.Sid else None
         if result.app_container_sid != expected_sid:
             result.errors.append(
@@ -1342,8 +1396,27 @@ def _verify_token_into(
                 "product SID"
             )
 
-    result.capability_sids = tuple(_read_token_sids(token, _TOKEN_CAPABILITIES))
-    result.group_sids = tuple(_read_token_sids(token, _TOKEN_GROUPS))
+    # A list that could NOT be READ is not an empty list.  The capability
+    # list is the PROOF that the token holds no network capability, and the
+    # group list is where the AppContainer SID appears.  A failed read
+    # means neither has been established, so it is an ERROR: the
+    # verification fails closed rather than passing on absent evidence.
+    capability_sids = _read_token_sids(token, _TOKEN_CAPABILITIES)
+    group_sids = _read_token_sids(token, _TOKEN_GROUPS)
+    if capability_sids is None:
+        result.errors.append(
+            "the launched token's capability list could not be read, so it "
+            "cannot be proven that the token holds no network capability"
+        )
+        capability_sids = []
+    if group_sids is None:
+        result.errors.append(
+            "the launched token's group list could not be read, so the "
+            "AppContainer identity cannot be confirmed from it"
+        )
+        group_sids = []
+    result.capability_sids = tuple(capability_sids)
+    result.group_sids = tuple(group_sids)
     # The capability SIDs are NOT in TokenGroups, so this must be checked
     # against the capability list.  Checking the group list would always
     # report False, even for a token that really holds internetClient.
