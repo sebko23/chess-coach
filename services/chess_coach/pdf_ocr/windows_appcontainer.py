@@ -197,8 +197,26 @@ class AppContainerVerificationError(AppContainerSetupError):
 # ---------------------------------------------------------------------------
 
 
+#: ``ctypes.WinDLL`` exists ONLY on Windows.  It is resolved through
+#: ``getattr`` so this module stays importable -- and type-checkable -- on
+#: the Linux CI runners, exactly as the sibling ``windows_job`` module does.
+_WINDLL_LOADER = getattr(ctypes, "WinDLL", None)
+
+
 def _windll(name: str) -> ctypes.CDLL:
-    return ctypes.WinDLL(name, use_last_error=True)
+    """Load a Windows DLL (``ctypes.WinDLL``).
+
+    Raises:
+        AppContainerUnsupportedError: on a platform with no ``WinDLL``.
+    """
+    loader = _WINDLL_LOADER
+    if loader is None:
+        raise AppContainerUnsupportedError(
+            "the AppContainer backend requires Windows",
+            details={"platform": sys.platform, "stage": "platform_gate"},
+        )
+    library: ctypes.CDLL = loader(name, use_last_error=True)
+    return library
 
 
 def _load_kernel32() -> ctypes.CDLL:
@@ -262,8 +280,14 @@ def sid_to_string(sid_ptr: int | None) -> str | None:
     header = ctypes.string_at(ctypes.cast(sid_ptr, ctypes.c_void_p), 8)
     count = header[1]
     if count > 15:
-        # SECURITY_MAX_SID_SIZE is 68 bytes = 15 subauthorities.
-        count = 15
+        # SECURITY_MAX_SID_SIZE is 68 bytes = 15 subauthorities. A SID with
+        # more subauthorities is malformed for the Windows binary form.
+        # Truncating it silently would produce a DIFFERENT identity, so it
+        # is rejected instead.
+        raise AppContainerSetupError(
+            "the SID has an invalid subauthority count",
+            details={"stage": "sid_decode", "count": int(count)},
+        )
     raw = ctypes.string_at(
         ctypes.cast(sid_ptr, ctypes.c_void_p), 8 + count * 4,
     )
@@ -851,7 +875,14 @@ class StagedParser:
     runtime_dirs: tuple[Path, ...] = ()
 
     def paths(self) -> tuple[Path, ...]:
-        return (self.executable, *self.runtime_dirs)
+        """Every path that must be reachable by the restricted token.
+
+        The CONTAINING DIRECTORY comes first and is required: a Windows
+        token needs ``FILE_TRAVERSE`` on the parent directory to resolve
+        a child file, and the directory's own ACL therefore governs
+        whether the staged DLLs can be opened at all.
+        """
+        return (self.directory, self.executable, *self.runtime_dirs)
 
 
 def grant_minimum_access(
@@ -921,7 +952,16 @@ def grant_minimum_access(
                     "error": str(exc),
                 },
             ) from exc
-        if sid_string not in (check.stdout or ""):
+        # A bare substring test would also pass if the SID appeared only in
+        # a DENIED or an unrelated ACE line, so the GRANT line itself is
+        # matched: the SID must be followed by an explicit right set.
+        acl_text = check.stdout or ""
+        granted = any(
+            sid_string in line
+            and "(" in line.split(sid_string, 1)[1]
+            for line in acl_text.splitlines()
+        )
+        if not granted:
             raise AppContainerSetupError(
                 "the minimum-access ACL did not grant the product SID",
                 details={

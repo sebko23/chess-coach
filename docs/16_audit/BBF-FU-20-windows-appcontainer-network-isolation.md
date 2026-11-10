@@ -162,6 +162,26 @@ runtime, modify on the artifact directory that holds the input PDF and
 the output PNGs. No source tree, no parent-process directory, and no
 arbitrary user-profile path is granted.
 
+**The grant must cover the staged DIRECTORY, not only the files.** A
+Windows token needs `FILE_TRAVERSE` on the parent directory to resolve a
+child file, and the Poppler DLLs sit beside the executable. Two measured
+facts fix the shape:
+
+* `icacls /grant *SID:(OI)(CI)(RX)` applied to a **file** returns exit 0
+  and adds **no ACE** — the inheritance flags are meaningless on a file.
+  A file therefore gets the plain right.
+* The same form applied to the **directory** adds the inheritable ACE, so
+  the right reaches the files it contains.
+
+Granting only the files leaves the directory without the product-SID ACE,
+and the parser then dies with `STATUS_DLL_NOT_FOUND`. This was a real
+defect in the first implementation: the enforcement suite passed only
+because the *test* granted the work directory itself, while the
+*production* caller granted files only. The production caller now grants
+`staged.directory` together with the staged files, and the production path
+was measured end-to-end: the real Poppler runs inside the AppContainer and
+returns the rendered page.
+
 The PDF is passed to `pdftoppm` **by file path**, not stdin, because the
 production launch shape does not inherit a stdin handle.
 
@@ -244,7 +264,27 @@ and the populated-allowlist mitigation; pre-resume Job assignment; the
 real Poppler workload and its expected artifact; the no-ACL fail-closed
 behaviour; the error taxonomy; and deterministic cleanup.
 
-### 5.3 CI
+### 5.3 Independent leaf review
+
+An independent, adversarial leaf review of the implementation head
+returned **UNSAFE** and raised six blocking findings, all confirmed
+empirically with real Win32 calls:
+
+| # | Finding | Resolution |
+|---|---|---|
+| B1 | The explicit allowlist was silently dropped when stdout/stderr were absent, leaving `bInheritHandles=TRUE` with no attribute — the bypass shape | The launch now **fails closed** at stage `handle_policy`; measured: no bytes reach the server |
+| B2 | The per-file ACL grant added no ACE, so the staged parser could not load its own runtime | The grant now covers the staged directory as well; measured: the real Poppler runs and produces its artifact |
+| B3 | The CI job staged Poppler but never put it on `PATH`, so the two real-Poppler tests **skipped** and the job went green without the workload | The staged Poppler is on `PATH`, and a missing Poppler is a **failure**, not a skip |
+| B4 | `AppContainerUnsupportedError` mapped to 422 instead of the documented 501 | The unsupported condition now maps to the 501 refusal |
+| B5 | The Job and completion-port handles were unowned, and the token handle from `OpenProcessToken` was never closed | Every handle is owned and closed on every path; measured: handle delta over 10 launches is **0** |
+| B6 | The `ConvertStringSidToSidW` allocation was never freed | It is released |
+
+The re-review of the corrected head confirmed B1, B3, B4, B5 and B6
+closed and raised F1: the production ACL grant covered only the staged
+files, so the containing directory never received the product-SID ACE.
+F1 is fixed and measured as described in §2.5.
+
+### 5.4 CI
 
 The new `windows-appcontainer-isolation` job in
 `.github/workflows/smoke.yml` stages the **pinned** Poppler 26.09.0

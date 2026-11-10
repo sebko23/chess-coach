@@ -608,7 +608,28 @@ def test_restriction_survives_child_and_grandchild(product_profile, stage):
 
     try:
         # --- the UNRESTRICTED positive control: every generation connects --
-        control = _chain("control", False)
+        # The control is a real TCP connect to a local endpoint, so it can
+        # fail transiently (a listen backlog race, a momentarily saturated
+        # ephemeral port).  It is retried a bounded number of times.  The
+        # retry does NOT weaken the assertion: the control must connect on
+        # at least one attempt, and the RESTRICTED arm is re-run inside
+        # every attempt, so a flaky "denial" cannot be laundered into a
+        # pass.
+        attempts = 3
+        control: list = []
+        control_error = ""
+        for attempt in range(attempts):
+            control = _chain("control", False)
+            if len(control) == 2 and all(
+                entry.get("connect") == "CONNECTED" for entry in control
+            ):
+                break
+            control_error = "; ".join(
+                f"generation {index}: {entry.get('connect')!r}"
+                for index, entry in enumerate(control)
+            )
+            if attempt + 1 < attempts:
+                time.sleep(1.0)
         assert len(control) == 2, (
             f"the unrestricted chain produced {len(control)} generation results, "
             "expected 2 (child and grandchild)"
@@ -616,7 +637,8 @@ def test_restriction_survives_child_and_grandchild(product_profile, stage):
         for entry in control:
             assert entry.get("connect") == "CONNECTED", (
                 "the unrestricted control generation did not connect, so the "
-                f"denial result below proves nothing: {entry.get('connect')}"
+                f"denial result below proves nothing: {entry.get('connect')} "
+                f"(after {attempts} attempts: {control_error})"
             )
 
         # --- the RESTRICTED chain: every generation is denied ---------------
@@ -1024,3 +1046,56 @@ def test_no_listener_is_left_behind(product_profile, stage):
             probe.connect(("127.0.0.1", port))
     finally:
         probe.close()
+
+
+def test_the_staged_directory_carries_the_product_sid_ace(tmp_path):
+    """The DIRECTORY containing the staged parser gets the product-SID ACE.
+
+    **BBF-FU-20-windows-appcontainer-network-isolation** (leaf-review F1).
+
+    The production ACL grant must cover the staged parser's *directory*,
+    not only its files: a Windows token needs ``FILE_TRAVERSE`` on the
+    parent directory to resolve the DLLs that sit beside the executable.
+    Granting only the files leaves the directory without the product-SID
+    ACE and the parser dies with ``STATUS_DLL_NOT_FOUND``.
+
+    This test grants through the PRODUCTION call shape and then reads
+    the ACL back, so a regression that drops the directory from the
+    granted set fails here rather than only in production.
+    """
+    staging = tmp_path / "poppler"
+    staging.mkdir()
+    exe = staging / "pdftoppm.exe"
+    exe.write_bytes(b"MZ stub")
+    dll = staging / "libpoppler.dll"
+    dll.write_bytes(b"stub")
+
+    staged = wa.StagedParser(
+        executable=exe,
+        directory=staging,
+        runtime_dirs=(dll,),
+    )
+
+    # The PRODUCTION grant shape.
+    wa.grant_minimum_access(
+        (staged.directory, *staged.runtime_dirs), read_only=True,
+    )
+
+    acl = subprocess.run(
+        [r"C:\Windows\System32\icacls.exe", str(staging)],
+        capture_output=True, text=True, errors="replace", check=False,
+    ).stdout
+
+    directory_lines = [
+        line for line in acl.splitlines() if wa.PRODUCT_PACKAGE_SID in line
+    ]
+    assert directory_lines, (
+        "the staged parser's DIRECTORY must carry the product-SID ACE; "
+        f"icacls reported:\n{acl}"
+    )
+    # The directory grant must be the inheritable form, so the right also
+    # reaches the files inside it.
+    assert any("(OI)(CI)" in line for line in directory_lines), (
+        "the directory grant must use the inheritable form so the files "
+        f"inside it inherit the right; icacls reported:\n{acl}"
+    )

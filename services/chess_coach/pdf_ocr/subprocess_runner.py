@@ -76,6 +76,7 @@ pattern.
 from __future__ import annotations
 
 import contextlib
+import io
 import os
 import shutil
 import subprocess  # noqa: S404  -- intentional: PDF parsing requires subprocess
@@ -196,7 +197,17 @@ NETWORK_ISOLATION_SUPPORTED: bool = HOST_PLATFORM != "win32"
 #: The capability that enforces the network isolation, named for the error
 #: details. This is the import-time view;
 #: :func:`network_isolation_mechanism` is the call-time answer.
-NETWORK_ISOLATION_MECHANISM: str = "none (not yet resolved)"
+#:
+#: On Linux the namespace launcher always exists, so the import-time value
+#: names it. On Windows the AppContainer boundary is opt-in, so the
+#: import-time value is the conservative "no proven boundary" -- the
+#: call-time function reports the AppContainer mechanism once the opt-in
+#: flag is set.
+NETWORK_ISOLATION_MECHANISM: str = (
+    "Linux user+network namespace (CLONE_NEWUSER|CLONE_NEWNET|CLONE_NEWNS)"
+    if HOST_PLATFORM != "win32"
+    else "none (no proven Windows network-isolation boundary)"
+)
 
 # pdftoppm invocation defaults. These match the previous
 # pdf2image.convert_from_bytes defaults (DPI=200, fmt=ppm)
@@ -574,6 +585,26 @@ def run_pdftoppm_in_subprocess(
             )
 
         if WINDOWS_JOB_SUPPORTED:
+            # On Windows the Job backend is NOT a network-isolation
+            # boundary -- it enforces the MEMORY cap only.  Reaching this
+            # branch means the AppContainer path was not selected, so the
+            # network-isolation gate above already refused.  The Job
+            # backend is therefore reachable only on Linux, where the
+            # namespace launcher owns the isolation.  If the platform is
+            # Windows and the Job backend is the only thing left, REFUSE:
+            # running the parser under a Job Object alone would execute it
+            # without the no-network boundary.
+            if HOST_PLATFORM == "win32":
+                raise NetworkIsolationUnsupportedError(
+                    "PDF parsing is not supported on this platform: the "
+                    "A-F11 no-network requirement cannot be enforced here, "
+                    "so no parser process is started.",
+                    details={
+                        "platform": HOST_PLATFORM,
+                        "required_mechanism": network_isolation_mechanism(),
+                        "resource": "pdf_import",
+                    },
+                )
             return _run_pdftoppm_in_windows_job(
                 args,
                 pdf_bytes=pdf_bytes,
@@ -656,7 +687,7 @@ def run_pdftoppm_in_subprocess(
                 "pdftoppm exited cleanly but produced no PNG files; "
                 "the PDF may be empty or the page range may be out of bounds."
             )
-        return [Image.open(p) for p in png_files]
+        return _load_png_artifacts(png_files)
 
 
 def _run_pdftoppm_in_windows_job(
@@ -734,7 +765,35 @@ def _run_pdftoppm_in_windows_job(
             "pdftoppm exited cleanly but produced no PNG files; "
             "the PDF may be empty or the page range may be out of bounds."
         )
-    return [Image.open(p) for p in png_files]
+    return _load_png_artifacts(png_files)
+
+
+def _load_png_artifacts(png_files: list[Path]) -> list[Image.Image]:
+    """Load the PNGs an ``pdftoppm`` run produced.
+
+    The PNGs are read as BYTES and opened from memory.  ``Image.open(p)``
+    is lazy: it holds the file handle open and only reads the pixels on
+    ``load()``.  The images are handed back to the caller while the
+    containing temporary directory is being torn down, and WINDOWS cannot
+    delete a file that is still open -- so the cleanup failed with
+    ``PermissionError: [WinError 32]``.  Reading the bytes releases the
+    handle immediately and the directory can be removed.
+
+    Every image is fully loaded before it is returned, so the caller
+    never depends on the file still existing.
+    """
+    images: list[Image.Image] = []
+    for path in png_files:
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise RuntimeError(
+                f"could not read the PDF parser output {path.name}: {exc}"
+            ) from exc
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+            images.append(image.copy())
+    return images
 
 
 def _run_pdftoppm_in_windows_appcontainer(
@@ -825,7 +884,14 @@ def _run_pdftoppm_in_windows_appcontainer(
     # runtime, and modify on the artifact directory that holds the input
     # PDF and the output PNGs. Nothing else is granted.
     try:
-        grant_minimum_access(staged.runtime_dirs, read_only=True)
+        # The staged parser's DIRECTORY must be granted too: the
+        # restricted token needs traverse on the directory that contains
+        # the DLLs to resolve them at all.  Granting only the files
+        # leaves the directory without the product-SID ACE and the parser
+        # dies with STATUS_DLL_NOT_FOUND.
+        grant_minimum_access(
+            (staged.directory, *staged.runtime_dirs), read_only=True,
+        )
         grant_minimum_access((tmpdir,), read_only=False)
     except AppContainerSetupError as exc:
         raise NetworkIsolationSetupError(
@@ -889,7 +955,7 @@ def _run_pdftoppm_in_windows_appcontainer(
             "pdftoppm exited cleanly but produced no PNG files; "
             "the PDF may be empty or the page range may be out of bounds."
         )
-    return [Image.open(p) for p in png_files]
+    return _load_png_artifacts(png_files)
 
 
 def pdftoppm_available() -> bool:

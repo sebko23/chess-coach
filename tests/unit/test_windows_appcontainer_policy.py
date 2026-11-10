@@ -15,6 +15,7 @@ registration) is proven by the real-Windows suite in
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -293,3 +294,40 @@ def test_the_staging_root_honours_the_override(monkeypatch, tmp_path):
     """The staging root can be redirected (CI does this)."""
     monkeypatch.setenv(wa.ENV_STAGING_ROOT, str(tmp_path))
     assert wa.staging_root() == tmp_path
+
+
+# ---------------------------------------------------------------------------
+# The staged parser's ACL contract
+# ---------------------------------------------------------------------------
+
+
+def test_the_staged_paths_include_the_containing_directory():
+    """The DIRECTORY must be part of the granted set.
+
+    A Windows token needs ``FILE_TRAVERSE`` on the parent directory to
+    resolve a child file.  The staged parser's DLLs sit beside the
+    executable, so the directory that holds them must carry the
+    product-SID ACE -- granting only the files leaves the parser unable
+    to load its own runtime.
+    """
+    staged = wa.StagedParser(
+        executable=Path("C:/stage/poppler/pdftoppm.exe"),
+        directory=Path("C:/stage/poppler"),
+        runtime_dirs=(Path("C:/stage/poppler/libpoppler.dll"),),
+    )
+    paths = staged.paths()
+    assert Path("C:/stage/poppler") in paths, (
+        "the containing directory must be granted, not only the files"
+    )
+    assert Path("C:/stage/poppler/pdftoppm.exe") in paths
+    assert Path("C:/stage/poppler/libpoppler.dll") in paths
+
+
+def test_the_staged_paths_are_ordered_directory_first():
+    """The directory comes first, so a directory grant is never skipped."""
+    staged = wa.StagedParser(
+        executable=Path("C:/stage/poppler/pdftoppm.exe"),
+        directory=Path("C:/stage/poppler"),
+        runtime_dirs=(Path("C:/stage/poppler/libpoppler.dll"),),
+    )
+    assert staged.paths()[0] == Path("C:/stage/poppler")
