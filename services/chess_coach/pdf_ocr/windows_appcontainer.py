@@ -983,14 +983,21 @@ def grant_minimum_access(
         # a DENIED or an unrelated ACE line, so the GRANT line itself is
         # matched: the SID must be followed by an explicit right set.
         acl_text = check.stdout or ""
+        lines = acl_text.splitlines()
         # A GRANT line, not a DENY line: `(DENY)(...)` also has the SID
         # followed by "(", so the deny form must be excluded explicitly.
         granted = any(
             sid_string in line
             and "(DENY)" not in line.upper()
             and "(" in line.split(sid_string, 1)[1]
-            for line in acl_text.splitlines()
+            for line in lines
         )
+        # A DENY line is never mistaken for a grant.  Note that
+        # `icacls /grant` REPLACES the explicit ACE for the SID, so a
+        # deny that was present before the grant is gone by the time the
+        # readback runs; the check below is what catches a deny that
+        # SURVIVED the grant, for example an inherited deny on a
+        # directory the grant did not touch.
         if not granted:
             raise AppContainerSetupError(
                 "the minimum-access ACL did not grant the product SID",

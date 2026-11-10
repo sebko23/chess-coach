@@ -15,6 +15,7 @@ registration) is proven by the real-Windows suite in
 from __future__ import annotations
 
 import ctypes
+import struct
 import sys
 from pathlib import Path
 
@@ -354,26 +355,46 @@ class _TokenCapabilities(ctypes.Structure):
     ]
 
 
-def _synthetic_capabilities(sid_strings):
-    """Build a TOKEN_CAPABILITIES descriptor holding the given SIDs."""
-    adv = wa._load_advapi32()
-    sids = []
-    for text in sid_strings:
-        sid = ctypes.c_void_p()
-        assert adv.ConvertStringSidToSidW(text, ctypes.byref(sid))
-        sids.append(sid)
+def _raw_sid(authority: int, subauthorities: tuple[int, ...]) -> bytes:
+    """Build the binary form of a SID without any Windows API.
 
-    array = (wa._SID_AND_ATTRIBUTES * len(sids))()
-    for index, sid in enumerate(sids):
-        array[index].Sid = sid
+    The Windows binary SID layout is::
+
+        byte  0      revision (1)
+        byte  1      subauthority count
+        bytes 2..7   identifier authority, big-endian
+        then         subauthorities, each a 4-byte LITTLE-endian DWORD
+
+    Building the bytes directly keeps this test platform independent: it
+    needs no ``ConvertStringSidToSidW``, which exists only on Windows.
+    """
+    data = bytes([1, len(subauthorities)])
+    data += struct.pack(">Q", authority)[2:]  # the 6-byte authority
+    for sub in subauthorities:
+        data += struct.pack("<I", sub)
+    return data
+
+
+def _synthetic_capabilities(sid_bytes: list[bytes]):
+    """Build a TOKEN_CAPABILITIES descriptor holding the given SID bytes.
+
+    The buffers must outlive the descriptor, so they are returned too.
+    """
+    buffers = [
+        (ctypes.c_char * len(raw)).from_buffer_copy(raw) for raw in sid_bytes
+    ]
+
+    array = (wa._SID_AND_ATTRIBUTES * len(buffers))()
+    for index, buffer in enumerate(buffers):
+        array[index].Sid = ctypes.cast(buffer, ctypes.c_void_p)
         array[index].Attributes = 0
 
     descriptor = _TokenCapabilities()
-    descriptor.CapabilityCount = len(sids)
+    descriptor.CapabilityCount = len(buffers)
     descriptor.Capabilities = ctypes.cast(
         ctypes.addressof(array), ctypes.POINTER(ctypes.c_void_p),
     )
-    return descriptor, array
+    return descriptor, array, buffers
 
 
 def test_the_capability_list_is_read_through_its_pointer(monkeypatch):
@@ -384,10 +405,16 @@ def test_the_capability_list_is_read_through_its_pointer(monkeypatch):
     with the inline layout returned the wrong SIDs for any count above
     one -- and the ``internetClient`` flag was checked against the GROUP
     list, where capability SIDs never appear, so it was always False.
+
+    This test drives the SHIPPED reader against a descriptor that holds
+    TWO capabilities, so a reader that used the inline layout would
+    return the descriptor's own bytes instead of the two SIDs.
     """
-    internet = "S-1-15-3-1"
+    internet = wa.INTERNET_CLIENT_CAPABILITY_SID  # S-1-15-3-1
     other = "S-1-15-3-2"
-    descriptor, _array = _synthetic_capabilities([internet, other])
+    descriptor, _array, _buffers = _synthetic_capabilities(
+        [_raw_sid(15, (3, 1)), _raw_sid(15, (3, 2))],
+    )
 
     monkeypatch.setattr(
         wa,
@@ -404,22 +431,40 @@ def test_the_capability_list_is_read_through_its_pointer(monkeypatch):
     )
 
 
-def test_the_capability_pointer_is_at_offset_eight(monkeypatch):
-    """The pointer field is at offset 8, not 0.
+def test_the_capability_pointer_is_read_at_offset_eight(monkeypatch):
+    """The SHIPPED reader reads the pointer at offset 8, not offset 0.
 
     Reading offset 0 yields the COUNT, which as a pointer is a wild
-    address -- the process crashes rather than reporting an error.  This
-    test would therefore SEGFAULT rather than fail if the offset were
-    wrong, so it is the direct guard on that layout.
+    address -- the process would crash rather than report an error.  So
+    this test drives the shipped reader against a descriptor whose
+    offset-8 pointer is valid and whose offset-0 value is the count: a
+    reader that used offset 0 would not return the two SIDs.
     """
-    descriptor, _array = _synthetic_capabilities(["S-1-15-3-1"])
+    internet = wa.INTERNET_CLIENT_CAPABILITY_SID
+    other = "S-1-15-3-2"
+    descriptor, _array, _buffers = _synthetic_capabilities(
+        [_raw_sid(15, (3, 1)), _raw_sid(15, (3, 2))],
+    )
+
+    # The descriptor's layout, asserted directly.
     raw = ctypes.string_at(ctypes.pointer(descriptor), 16)
     count = int.from_bytes(raw[0:4], "little")
-    pointer = int.from_bytes(raw[8:16], "little")
-    assert count == 1
-    assert pointer != 0, "the pointer field must be at offset 8"
-    # The count must NOT be readable as a pointer.
-    assert int.from_bytes(raw[0:8], "little") != 0
+    pointer_at_8 = int.from_bytes(raw[8:16], "little")
+    assert count == 2
+    assert pointer_at_8 != 0, "the pointer field must be at offset 8"
+
+    monkeypatch.setattr(
+        wa,
+        "_get_token_buffer",
+        lambda token, info_class: ctypes.cast(
+            ctypes.pointer(descriptor), ctypes.c_void_p,
+        ),
+    )
+    read = wa._read_token_sids(None, wa._TOKEN_CAPABILITIES)
+
+    assert read == [internet, other], (
+        "the shipped reader must use the offset-8 pointer; got {read}"
+    )
 
 
 def test_internet_client_is_checked_against_the_capability_sids():

@@ -732,6 +732,18 @@ jobs:
           $target = Join-Path $env:STAGING_ROOT "poppler"
           New-Item -ItemType Directory -Force -Path $target | Out-Null
           Copy-Item -Path (Join-Path $binDir "*") -Destination $target -Recurse -Force
+          # The OWNERSHIP MARKER. The production `stage_parser()` writes
+          # this file, and the application's cleanup removes the staging
+          # tree ONLY when it carries the marker, so that a directory
+          # belonging to another installation is never deleted. Without it
+          # the CI job would stage a tree the application does not
+          # consider its own, and the cleanup certificate below would
+          # have nothing to remove.
+          Set-Content -Path (Join-Path $target ".chesscoach-staging") -Value (
+            "Staged by Chess Coach for the Windows AppContainer PDF parser.`n" +
+            "This directory is owned by the Chess Coach installation and is`n" +
+            "removed by the application's own cleanup routine.`n"
+          )
           # The staged copy must actually WORK, not merely exist: the
           # AppContainer proof depends on a real parser.
           $staged = Join-Path $target "pdftoppm.exe"
