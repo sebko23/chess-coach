@@ -780,61 +780,27 @@ jobs:
         # The certificate CREATES its own owned state and removes it, so
         # it proves the property regardless of what the earlier steps
         # did.  This matters: the unit + cleanup test step that follows
-        # calls `cleanup_owned_state()` with the REAL staging root, so
-        # it removes the tree this job staged -- and a certificate that
-        # only asserted "the second pass removed nothing" would then
-        # pass vacuously.
+        # calls cleanup_owned_state() with the REAL staging root, so it
+        # removes the tree this job staged -- and a certificate that only
+        # asserted "the second pass removed nothing" would then pass
+        # vacuously.
         #
-        # A cleanup that removed EVERYTHING would also satisfy the
+        # A cleanup that removed EVERYTHING would also satisfy that
         # assertion, so the certificate also proves that a FOREIGN,
         # unmarked staging tree is PRESERVED.  The cleanup is
         # ownership-scoped, and the certificate proves it.
+        #
+        # The program is a FILE, not an inline command.  Inline
+        # `python -c "..."` inside a PowerShell double-quoted string is
+        # subject to backtick escaping, and a backtick-n in the program
+        # becomes a NEWLINE -- which silently corrupted this certificate
+        # once and made the step fail with a SyntaxError instead of a
+        # certificate result.  A file removes the whole class of hazard.
         env:
           CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
         run: |
-          python -c "
-          import pathlib, shutil
-          from chess_coach.pdf_ocr import windows_appcontainer as wa
+          python scripts/dev/verify_appcontainer_cleanup.py
 
-          root = pathlib.Path(r'C:\\ProgramData\\ChessCoachCI')
-
-          # --- the OWNED state: a marked tree the application created ---
-          owned = root / 'poppler'
-          owned.mkdir(parents=True, exist_ok=True)
-          (owned / '.chesscoach-staging').write_text('owned by the certificate')
-          (owned / 'pdftoppm.exe').write_bytes(b'stub')
-
-          # --- the FOREIGN state: an unmarked tree that is NOT ours ---
-          foreign = root / 'someone-elses-poppler'
-          foreign.mkdir(parents=True, exist_ok=True)
-          (foreign / 'keep.txt').write_text('not ours')
-
-          # The profile must exist for the mapping half of the cleanup.
-          wa.invalidate_registration_cache()
-          if not wa.profile_is_registered():
-              wa.register_profile()
-
-          first = wa.cleanup_owned_state()
-          print('removed:', first.removed)
-          print('preserved:', first.preserved)
-          assert first.ok, first.errors
-          # The FIRST pass must actually have removed the application-owned
-          # state.  `not second.removed` alone is satisfied vacuously when
-          # the first pass removed nothing either.
-          assert any('staging:' in entry for entry in first.removed), (
-              'the owned staging tree was not removed: ' + repr(first.removed)
-          )
-          assert not owned.exists(), 'the owned staging tree still exists'
-          # The FOREIGN tree must survive: the cleanup is ownership-scoped.
-          assert foreign.exists(), 'the cleanup removed a foreign tree'
-          assert (foreign / 'keep.txt').exists(), 'the cleanup removed a foreign file'
-
-          second = wa.cleanup_owned_state()
-          assert second.ok, second.errors
-          assert not second.removed, 'the cleanup is not idempotent'
-          print('AppContainer cleanup removes owned state, preserves foreign state, and is idempotent')
-          shutil.rmtree(foreign, ignore_errors=True)
-          "
       - name: Run the Windows AppContainer unit and cleanup tests
         env:
           CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
