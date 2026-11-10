@@ -162,25 +162,27 @@ runtime, modify on the artifact directory that holds the input PDF and
 the output PNGs. No source tree, no parent-process directory, and no
 arbitrary user-profile path is granted.
 
-**The grant must cover the staged DIRECTORY, not only the files.** A
-Windows token needs `FILE_TRAVERSE` on the parent directory to resolve a
-child file, and the Poppler DLLs sit beside the executable. Two measured
-facts fix the shape:
+**The grant must cover the staged files, and the staged directory as
+well.** Two measured facts fix the shape:
 
 * `icacls /grant *SID:(OI)(CI)(RX)` applied to a **file** returns exit 0
   and adds **no ACE** — the inheritance flags are meaningless on a file.
-  A file therefore gets the plain right.
+  A file therefore gets the plain right. **This was the real cause of the
+  first production failure:** the staged files had no product-SID ACE at
+  all, so the parser died with `STATUS_DLL_NOT_FOUND`.
 * The same form applied to the **directory** adds the inheritable ACE, so
   the right reaches the files it contains.
 
-Granting only the files leaves the directory without the product-SID ACE,
-and the parser then dies with `STATUS_DLL_NOT_FOUND`. This was a real
-defect in the first implementation: the enforcement suite passed only
-because the *test* granted the work directory itself, while the
-*production* caller granted files only. The production caller now grants
-`staged.directory` together with the staged files, and the production path
-was measured end-to-end: the real Poppler runs inside the AppContainer and
-returns the rendered page.
+The production caller now grants `staged.directory` together with the
+staged files. The directory grant is a deliberate **superset**: measured
+on this host, granting the files alone was already sufficient for the
+parser to resolve its runtime. It is kept because it states the intent
+(the container may reach into the staged runtime) and removes the
+dependence on the inherited-user ACEs of the staging tree.
+
+The production path was measured end-to-end through the shipped entry
+point: the real Poppler runs inside the AppContainer and returns the
+rendered page.
 
 The PDF is passed to `pdftoppm` **by file path**, not stdin, because the
 production launch shape does not inherit a stdin handle.

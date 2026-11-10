@@ -1245,7 +1245,10 @@ def run_in_appcontainer_job(
     )
 
     expected_sid = package_sid or PRODUCT_PACKAGE_SID
-    plan = build_launch_plan()
+    # The plan is built with the SID the launch ACTUALLY uses, so the
+    # plan's identity field is the real one rather than a decorative copy
+    # of the module constant.
+    plan = build_launch_plan(package_sid=expected_sid)
     capabilities = plan.capabilities
     policy = handle_policy if handle_policy is not None else plan.handle_policy
 

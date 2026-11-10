@@ -51,6 +51,7 @@ from pathlib import Path
 
 import pytest
 
+from chess_coach.errors import ErrorCode
 from chess_coach.pdf_ocr import windows_appcontainer as wa
 from chess_coach.pdf_ocr import windows_job as wj
 
@@ -612,9 +613,10 @@ def test_restriction_survives_child_and_grandchild(product_profile, stage):
         # fail transiently (a listen backlog race, a momentarily saturated
         # ephemeral port).  It is retried a bounded number of times.  The
         # retry does NOT weaken the assertion: the control must connect on
-        # at least one attempt, and the RESTRICTED arm is re-run inside
-        # every attempt, so a flaky "denial" cannot be laundered into a
-        # pass.
+        # at least one attempt, or the test fails.  The RESTRICTED arm
+        # runs once, AFTER a control has connected, so the denial is
+        # always qualified by a control that really reached the
+        # endpoint.
         attempts = 3
         control: list = []
         control_error = ""
@@ -781,11 +783,17 @@ def test_the_bypass_is_real(product_profile, stage):
 # ---------------------------------------------------------------------------
 
 
-def test_the_job_limit_is_in_force_before_the_target_runs(product_profile, stage):
-    """The Job limit and the AppContainer identity precede the first instruction.
+def test_the_target_really_runs_under_the_job_limit(product_profile, stage):
+    """The target runs under the Job limit, and it really ran.
 
-    The marker file the target writes as its first action must not exist
-    while the target is still suspended.
+    The launch returns only after the target has finished, so the marker
+    file the target writes as its first action must exist afterwards.
+    That proves the target really executed under the Job -- it does NOT
+    by itself prove the limit was in force BEFORE the first instruction.
+
+    The pre-resume ORDERING is covered by
+    ``test_the_launcher_refuses_to_resume_a_mismatched_token``, which
+    asserts the target never executed at all.
     """
     marker = stage / "ran.txt"
     script = stage / "marker.ps1"
@@ -1099,3 +1107,86 @@ def test_the_staged_directory_carries_the_product_sid_ace(tmp_path):
         "the directory grant must use the inheritable form so the files "
         f"inside it inherit the right; icacls reported:\n{acl}"
     )
+
+
+def test_the_production_entry_point_runs_the_parser_in_the_container(
+    product_profile, stage, monkeypatch,
+):
+    """The PRODUCTION entry point returns a rendered page.
+
+    **BBF-FU-20-windows-appcontainer-network-isolation** (final leaf
+    review, HIGH-1).
+
+    Every other test in this suite drives the low-level launcher
+    (``wj.run_in_appcontainer_job``) directly.  That left the PRODUCTION
+    chain untested: a regression in ``_run_pdftoppm_in_windows_appcontainer``
+    -- dropping the staged directory from the ACL grant, reverting to
+    stdin, or mis-granting the artifact directory -- would leave CI green
+    while the shipped path was broken.  That is the same defect class the
+    earlier review recorded as F1.
+
+    This test therefore calls the shipped entry point,
+    ``sr.run_pdftoppm_in_subprocess(pdf_bytes)``, with the opt-in ON, and
+    asserts a rendered page comes back.  It covers the whole production
+    chain in one call: ``stage_parser`` -> the ACL grant -> the AppContainer
+    launch -> the real Poppler -> the PNG read-back.
+    """
+    from chess_coach.pdf_ocr import subprocess_runner as sr
+
+    # The opt-in must be ON for this call, and it is evaluated at CALL
+    # time, so the environment is set here rather than at import.
+    monkeypatch.setenv(sr.ENV_WINDOWS_APPCONTAINER, "1")
+    monkeypatch.setenv(wa.ENV_STAGING_ROOT, str(stage / "poppler"))
+
+    # `stage_parser` copies the parser from the directory `pdftoppm` is
+    # found in, so the real Poppler must be on PATH.
+    import shutil
+
+    assert shutil.which("pdftoppm"), (
+        "the real Poppler must be on PATH for the production-path proof"
+    )
+
+    # A minimal one-page PDF.
+    pdf_bytes = (
+        b"%PDF-1.4\n"
+        b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n"
+        b"trailer<</Root 1 0 R>>\n"
+    )
+
+    images = sr.run_pdftoppm_in_subprocess(pdf_bytes)
+
+    assert images, "the production entry point returned no page"
+    for image in images:
+        assert image.size[0] > 0, (
+            f"the production entry point returned an empty page: {image.size}"
+        )
+        assert image.size[1] > 0, (
+            f"the production entry point returned an empty page: {image.size}"
+        )
+        # The image must be fully loaded: it was read out of the temporary
+        # directory, so a lazy image would fail later.
+        assert image.getbbox() is not None, (
+            "the production entry point returned a blank page"
+        )
+
+
+def test_the_production_entry_point_is_refused_without_the_opt_in(
+    monkeypatch,
+):
+    """With the opt-in OFF the production path must still REFUSE (501).
+
+    The opt-in is the shipped boundary: while it is off, Windows PDF
+    parsing keeps raising the 501 ``internal.not_implemented`` refusal
+    and no parser process is created.
+    """
+    from chess_coach.pdf_ocr import subprocess_runner as sr
+
+    monkeypatch.delenv(sr.ENV_WINDOWS_APPCONTAINER, raising=False)
+    monkeypatch.setattr(sr, "NETWORK_ISOLATION_SUPPORTED", False)
+
+    with pytest.raises(sr.NetworkIsolationUnsupportedError) as excinfo:
+        sr.run_pdftoppm_in_subprocess(b"%PDF-1.4 fake")
+    assert excinfo.value.http_status == 501
+    assert excinfo.value.code == ErrorCode.NOT_IMPLEMENTED

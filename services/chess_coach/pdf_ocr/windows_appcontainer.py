@@ -202,6 +202,25 @@ class AppContainerVerificationError(AppContainerSetupError):
 #: the Linux CI runners, exactly as the sibling ``windows_job`` module does.
 _WINDLL_LOADER = getattr(ctypes, "WinDLL", None)
 
+#: ``ctypes.get_last_error`` exists only on Windows.  It is reached
+#: through a module-level accessor rather than named directly, so this
+#: module stays importable **and** type-checkable on Linux -- exactly as
+#: the sibling ``windows_job`` module does.  Using ``getattr`` rather than
+#: a direct attribute access also keeps the module free of
+#: platform-specific ``type: ignore`` comments, which
+#: ``warn_unused_ignores`` would flag on the platform where the
+#: attribute *does* exist.
+_LAST_ERROR_GETTER = getattr(ctypes, "get_last_error", None)
+
+
+def _last_error() -> int:
+    """Return the last Win32 error code (``ctypes.get_last_error``)."""
+    getter = _LAST_ERROR_GETTER
+    if getter is None:
+        return 0
+    code: int = getter()
+    return code
+
 
 def _windll(name: str) -> ctypes.CDLL:
     """Load a Windows DLL (``ctypes.WinDLL``).
@@ -321,7 +340,7 @@ def parse_sid_string(sid_string: str) -> ctypes.c_void_p:
             f"the package SID {sid_string!r} is not a valid SID",
             details={
                 "sid": sid_string,
-                "win32_error": ctypes.get_last_error(),
+                "win32_error": _last_error(),
                 "stage": "sid_parse",
             },
         )
@@ -907,6 +926,14 @@ def grant_minimum_access(
         # NO ACE, so the grant silently does nothing and the parser cannot
         # load its DLLs (STATUS_DLL_NOT_FOUND).  A file therefore gets the
         # plain right, and a directory keeps the inheritable form.
+        #
+        # The directory is granted as well as the files.  That is a
+        # SUPERSET of what the parser strictly needs: measured on this
+        # host, granting the files alone was enough for the parser to
+        # resolve its runtime.  The directory grant is kept because it
+        # states the intent (the container may reach into the staged
+        # runtime) and because it removes the dependence on the
+        # inherited-user ACEs of the staging tree.
         is_dir = path.is_dir()
         right = f"*{sid_string}:(OI)(CI)({perms})" if is_dir else f"*{sid_string}:({perms})"
         cmd = [
@@ -956,8 +983,11 @@ def grant_minimum_access(
         # a DENIED or an unrelated ACE line, so the GRANT line itself is
         # matched: the SID must be followed by an explicit right set.
         acl_text = check.stdout or ""
+        # A GRANT line, not a DENY line: `(DENY)(...)` also has the SID
+        # followed by "(", so the deny form must be excluded explicitly.
         granted = any(
             sid_string in line
+            and "(DENY)" not in line.upper()
             and "(" in line.split(sid_string, 1)[1]
             for line in acl_text.splitlines()
         )
@@ -1144,7 +1174,7 @@ def _open_process_token(process_handle: int) -> ctypes.c_void_p:
             "could not open the launched process token",
             details={
                 "stage": "token_verification",
-                "win32_error": ctypes.get_last_error(),
+                "win32_error": _last_error(),
             },
         )
     return token
@@ -1192,13 +1222,47 @@ def _get_token_buffer(
 
 
 def _read_token_sids(token: ctypes.c_void_p, info_class: int) -> list[str]:
+    """Read the SIDs from a token's group or capability list.
+
+    The two Win32 layouts DIFFER and must not be read the same way:
+
+    * ``TOKEN_GROUPS`` is ``{ DWORD GroupCount; SID_AND_ATTRIBUTES
+      Groups[ANYSIZE]; }`` -- an **inline** array at offset 8.
+    * ``TOKEN_CAPABILITIES`` is ``{ DWORD CapabilityCount;
+      PSID_AND_ATTRIBUTES Capabilities; }`` -- a **pointer** at offset 8.
+
+    Reading the capability list with the inline layout reads the
+    elements from inside the descriptor buffer instead of from the
+    pointed-to array.  It happens to agree when the count is 1 and
+    silently returns the wrong SIDs for any larger count, so the two
+    classes are handled separately.
+    """
     buf = _get_token_buffer(token, info_class)
     if buf is None:
         return []
+
     count = ctypes.cast(buf, ctypes.POINTER(ctypes.c_uint32))[0]
     if count > 4096:
         return []
-    base = ctypes.addressof(buf) + 8
+
+    if info_class == _TOKEN_CAPABILITIES:
+        # The descriptor holds a POINTER to the array.  The pointer is NULL
+        # when the token holds no capability at all, which is the normal
+        # case for the production token.
+        # The pointer field is at offset 8, NOT 0: the struct is
+        # { DWORD CapabilityCount; PSID_AND_ATTRIBUTES Capabilities; } and
+        # on x64 the 4-byte count is followed by 4 bytes of padding before
+        # the 8-byte pointer.  Measured on a real token:
+        #   count@0 = 1  pointer@8 = 0x27b28f682e8
+        pointer = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[1]
+        if not pointer or count == 0:
+            return []
+        array = ctypes.cast(pointer, ctypes.POINTER(_SID_AND_ATTRIBUTES))
+        base = ctypes.addressof(array.contents)
+    else:
+        # TOKEN_GROUPS holds the array INLINE, right after the count.
+        base = ctypes.addressof(buf) + 8
+
     sids: list[str] = []
     for i in range(count):
         elem = ctypes.cast(base + i * 16, ctypes.POINTER(_SID_AND_ATTRIBUTES)).contents
@@ -1273,7 +1337,12 @@ def _verify_token_into(
 
     result.capability_sids = tuple(_read_token_sids(token, _TOKEN_CAPABILITIES))
     result.group_sids = tuple(_read_token_sids(token, _TOKEN_GROUPS))
-    result.internet_client_present = INTERNET_CLIENT_CAPABILITY_SID in result.group_sids
+    # The capability SIDs are NOT in TokenGroups, so this must be checked
+    # against the capability list.  Checking the group list would always
+    # report False, even for a token that really holds internetClient.
+    result.internet_client_present = (
+        INTERNET_CLIENT_CAPABILITY_SID in result.capability_sids
+    )
     if result.internet_client_present:
         result.errors.append("the launched token holds the internetClient capability")
     unexpected = [

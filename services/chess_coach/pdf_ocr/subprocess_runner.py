@@ -251,7 +251,8 @@ class NetworkIsolationUnsupportedError(NotImplementedYetError):
     isolation is not enforced.
 
     **BBF-FU-20-linux-phase1-network-isolation.** Windows PDF parsing is
-    explicitly unsupported: the Job Object backend enforces the *memory*
+    explicitly unsupported while the opt-in is off: the Job Object
+    backend enforces the *memory*
     cap, not network isolation, and Job Object network-rate control is
     throttling rather than isolation. Proxy-environment stripping is
     defense in depth, never isolation.

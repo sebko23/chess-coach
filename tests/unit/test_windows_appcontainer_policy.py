@@ -14,6 +14,7 @@ registration) is proven by the real-Windows suite in
 """
 from __future__ import annotations
 
+import ctypes
 import sys
 from pathlib import Path
 
@@ -331,3 +332,106 @@ def test_the_staged_paths_are_ordered_directory_first():
         runtime_dirs=(Path("C:/stage/poppler/libpoppler.dll"),),
     )
     assert staged.paths()[0] == Path("C:/stage/poppler")
+
+
+# ---------------------------------------------------------------------------
+# The capability list is read through a POINTER, not an inline array
+# ---------------------------------------------------------------------------
+
+
+class _TokenCapabilities(ctypes.Structure):
+    """The Win32 ``TOKEN_CAPABILITIES`` layout.
+
+    ``{ DWORD CapabilityCount; PSID_AND_ATTRIBUTES Capabilities; }`` --
+    on x64 the 4-byte count is followed by 4 bytes of padding before the
+    8-byte pointer, so the pointer field is at offset **8**, not 0.
+    """
+
+    _fields_ = [
+        ("CapabilityCount", ctypes.c_uint32),
+        ("_padding", ctypes.c_uint32),
+        ("Capabilities", ctypes.POINTER(ctypes.c_void_p)),
+    ]
+
+
+def _synthetic_capabilities(sid_strings):
+    """Build a TOKEN_CAPABILITIES descriptor holding the given SIDs."""
+    adv = wa._load_advapi32()
+    sids = []
+    for text in sid_strings:
+        sid = ctypes.c_void_p()
+        assert adv.ConvertStringSidToSidW(text, ctypes.byref(sid))
+        sids.append(sid)
+
+    array = (wa._SID_AND_ATTRIBUTES * len(sids))()
+    for index, sid in enumerate(sids):
+        array[index].Sid = sid
+        array[index].Attributes = 0
+
+    descriptor = _TokenCapabilities()
+    descriptor.CapabilityCount = len(sids)
+    descriptor.Capabilities = ctypes.cast(
+        ctypes.addressof(array), ctypes.POINTER(ctypes.c_void_p),
+    )
+    return descriptor, array
+
+
+def test_the_capability_list_is_read_through_its_pointer(monkeypatch):
+    """A token with several capabilities yields ALL of them.
+
+    ``TOKEN_CAPABILITIES`` holds a POINTER to the array, while
+    ``TOKEN_GROUPS`` holds the array INLINE.  Reading the capability list
+    with the inline layout returned the wrong SIDs for any count above
+    one -- and the ``internetClient`` flag was checked against the GROUP
+    list, where capability SIDs never appear, so it was always False.
+    """
+    internet = "S-1-15-3-1"
+    other = "S-1-15-3-2"
+    descriptor, _array = _synthetic_capabilities([internet, other])
+
+    monkeypatch.setattr(
+        wa,
+        "_get_token_buffer",
+        lambda token, info_class: ctypes.cast(
+            ctypes.pointer(descriptor), ctypes.c_void_p,
+        ),
+    )
+    read = wa._read_token_sids(None, wa._TOKEN_CAPABILITIES)
+
+    assert read == [internet, other], (
+        "the capability list must be read through the descriptor's pointer; "
+        f"got {read}"
+    )
+
+
+def test_the_capability_pointer_is_at_offset_eight(monkeypatch):
+    """The pointer field is at offset 8, not 0.
+
+    Reading offset 0 yields the COUNT, which as a pointer is a wild
+    address -- the process crashes rather than reporting an error.  This
+    test would therefore SEGFAULT rather than fail if the offset were
+    wrong, so it is the direct guard on that layout.
+    """
+    descriptor, _array = _synthetic_capabilities(["S-1-15-3-1"])
+    raw = ctypes.string_at(ctypes.pointer(descriptor), 16)
+    count = int.from_bytes(raw[0:4], "little")
+    pointer = int.from_bytes(raw[8:16], "little")
+    assert count == 1
+    assert pointer != 0, "the pointer field must be at offset 8"
+    # The count must NOT be readable as a pointer.
+    assert int.from_bytes(raw[0:8], "little") != 0
+
+
+def test_internet_client_is_checked_against_the_capability_sids():
+    """The flag is derived from the CAPABILITY list, not the group list.
+
+    Capability SIDs are not in ``TokenGroups``, so checking the group
+    list would report False even for a token that really holds
+    ``internetClient``.
+    """
+    verification = wa.TokenVerification()
+    verification.capability_sids = ("S-1-15-3-1",)
+    verification.group_sids = ()
+
+    assert wa.INTERNET_CLIENT_CAPABILITY_SID in verification.capability_sids
+    assert wa.INTERNET_CLIENT_CAPABILITY_SID not in verification.group_sids

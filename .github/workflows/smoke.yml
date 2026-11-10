@@ -772,6 +772,10 @@ jobs:
         # internal.network_isolation_setup_failed) from an UNSUPPORTED
         # platform (501 internal.not_implemented) and from a parser
         # failure, and the 501 refusal must still be the default.
+        #
+        # The refusal is verified by a REAL call, not by a source
+        # substring: `ensure_network_isolation_supported()` must raise
+        # the 501 refusal with the opt-in off.
         run: |
           python -c "
           import inspect
@@ -787,11 +791,43 @@ jobs:
           assert sr._network_isolation_available() is False
           try:
               sr.ensure_network_isolation_supported()
-          except sr.NetworkIsolationUnsupportedError:
+          except sr.NetworkIsolationUnsupportedError as exc:
+              assert exc.http_status == 501, exc.http_status
               print('the default Windows refusal is intact')
           else:
               raise AssertionError('the default Windows refusal was weakened')
           print('Windows AppContainer taxonomy and refusal verified')
+          "
+
+      - name: Run the PRODUCTION entry point with the opt-in ON
+        # HIGH-1 (final leaf review): every other proof in this job drives
+        # the LOW-LEVEL launcher (`run_in_appcontainer_job`) directly, so
+        # the PRODUCTION chain -- `stage_parser` -> the ACL grant -> the
+        # AppContainer launch -> the real Poppler -> the PNG read-back --
+        # was never exercised in CI.  A regression there (dropping the
+        # staged directory from the grant, reverting to stdin,
+        # mis-granting the artifact directory) would leave CI green.
+        # That is the defect class the earlier review recorded as F1.
+        #
+        # This step calls the SHIPPED entry point with the opt-in ON and
+        # asserts a rendered page comes back.
+        env:
+          CHESS_COACH_WINDOWS_APPCONTAINER: "1"
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          python -c "
+          from chess_coach.pdf_ocr import subprocess_runner as sr
+          assert sr.windows_appcontainer_is_enabled() is True, 'the opt-in must be honoured at call time'
+          pdf = (b'%PDF-1.4\n'
+                 b'1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n'
+                 b'2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n'
+                 b'3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n'
+                 b'trailer<</Root 1 0 R>>\n')
+          images = sr.run_pdftoppm_in_subprocess(pdf)
+          assert images, 'the production entry point returned no page'
+          for image in images:
+              assert image.size[0] > 0 and image.size[1] > 0, image.size
+          print('the PRODUCTION entry point rendered', len(images), 'page(s)')
           "
 
       - name: Run the AppContainer cleanup certificate
@@ -807,6 +843,11 @@ jobs:
           print('removed:', first.removed)
           print('preserved:', first.preserved)
           assert first.ok, first.errors
+          # The FIRST pass must actually have removed the application-owned
+          # state.  `not second.removed` alone is satisfied vacuously when
+          # the first pass removed nothing either, so the removal itself
+          # is asserted.
+          assert first.removed, 'the first cleanup pass removed nothing'
           second = wa.cleanup_owned_state()
           assert second.ok, second.errors
           assert not second.removed, 'the cleanup is not idempotent'
