@@ -247,6 +247,10 @@ def test_cleanup_only_removes_the_product_package_folder(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="staging the parser is a Windows mechanism",
+)
 def test_staging_marks_the_directory_as_owned(tmp_path, monkeypatch):
     """A staged parser directory carries the ownership marker."""
 
@@ -261,6 +265,10 @@ def test_staging_marks_the_directory_as_owned(tmp_path, monkeypatch):
     assert "Chess Coach" in marker.read_text(encoding="utf-8")
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="staging the parser is a Windows mechanism",
+)
 def test_staging_is_idempotent(tmp_path):
     """Staging twice reuses the already-staged tree."""
 
@@ -274,6 +282,10 @@ def test_staging_is_idempotent(tmp_path):
     assert first.executable.exists()
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="staging the parser is a Windows mechanism",
+)
 def test_staging_reports_a_missing_parser(tmp_path):
     """A missing parser is an unsupported-backend error, not a setup error.
 

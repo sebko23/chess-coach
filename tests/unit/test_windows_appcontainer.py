@@ -139,9 +139,17 @@ def test_capability_set_rejects_a_non_capability_sid():
 
 
 def test_launch_plan_refuses_a_network_capable_set():
-    """A network-capable plan is refused before any process is created."""
+    """A network-capable plan is refused before any process is created.
+
+    The refusal is asserted on the CAPABILITY SET, which is platform
+    independent: the set is network-capable, so the plan builder can
+    never use it.  The builder itself starts with the platform gate, so
+    off Windows it refuses even earlier -- with the unsupported-backend
+    error, which is also a refusal and never a launch.
+    """
     caps = wa.CapabilitySet(sids=("S-1-15-3-3",))  # a non-internet capability
-    with pytest.raises(wa.AppContainerSetupError):
+    assert caps.is_network_capable
+    with pytest.raises((wa.AppContainerSetupError, wa.AppContainerUnsupportedError)):
         wa.build_launch_plan(capabilities=caps)
 
 
@@ -241,9 +249,15 @@ def test_windows_refusal_is_preserved_when_the_flag_is_off(monkeypatch):
 
     This is the retained 501 refusal. It must not be weakened by the
     existence of the AppContainer backend.
+
+    The WINDOWS default of the isolation flag is pinned explicitly.  The
+    constant is `True` at import time on Linux and `False` on Windows,
+    so relying on the import-time value would make this test assert
+    something different on each platform.
     """
     monkeypatch.delenv(sr.ENV_WINDOWS_APPCONTAINER, raising=False)
     monkeypatch.setattr(sr, "HOST_PLATFORM", "win32")
+    monkeypatch.setattr(sr, "NETWORK_ISOLATION_SUPPORTED", False)
     assert sr.windows_appcontainer_is_enabled() is False
     assert sr._network_isolation_available() is False
     with pytest.raises(sr.NetworkIsolationUnsupportedError):
@@ -254,6 +268,8 @@ def test_windows_refusal_is_preserved_when_the_flag_is_off(monkeypatch):
 def test_windows_opt_in_accepts_truthy_values(monkeypatch, value):
     """The opt-in flag accepts the usual truthy spellings."""
     monkeypatch.setattr(sr, "HOST_PLATFORM", "win32")
+    # The WINDOWS default of the isolation flag, pinned explicitly.
+    monkeypatch.setattr(sr, "NETWORK_ISOLATION_SUPPORTED", False)
     monkeypatch.setenv(sr.ENV_WINDOWS_APPCONTAINER, value)
     assert sr.windows_appcontainer_is_enabled() is True
     assert sr._network_isolation_available() is True
@@ -281,6 +297,9 @@ def test_linux_isolation_is_unaffected_by_the_windows_flag(monkeypatch):
 def test_the_opt_in_is_evaluated_at_call_time(monkeypatch):
     """The gate reads the environment on every call, not at import time."""
     monkeypatch.setattr(sr, "HOST_PLATFORM", "win32")
+    # The WINDOWS default of the isolation flag, pinned explicitly: the
+    # constant is `True` at import time on Linux.
+    monkeypatch.setattr(sr, "NETWORK_ISOLATION_SUPPORTED", False)
     monkeypatch.delenv(sr.ENV_WINDOWS_APPCONTAINER, raising=False)
     assert sr._network_isolation_available() is False
     monkeypatch.setenv(sr.ENV_WINDOWS_APPCONTAINER, "1")
