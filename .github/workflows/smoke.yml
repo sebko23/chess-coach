@@ -681,6 +681,206 @@ jobs:
           print('Windows route maps the Job error taxonomy')
           "
 
+  windows-appcontainer-isolation:
+    name: Windows AppContainer network isolation
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install package + test deps
+        run: |
+          python -m pip install --upgrade pip --quiet
+          pip install -e '.[dev]'
+
+      - name: Stage the pinned Poppler outside the user profile
+        # The AppContainer token cannot traverse the user profile, so the
+        # parser and its runtime must live under ProgramData. The version is
+        # pinned to the one the feasibility evidence used, so the CI proof
+        # exercises the same parser build.
+        #
+        # The staging root is passed through CHESS_COACH_APPCONTAINER_STAGING_ROOT
+        # so the runner controls exactly where the parser is staged.
+        env:
+          POPPLER_TAG: "v26.09.0-0"
+          POPPLER_VERSION: "26.09.0"
+          POPPLER_ARCHIVE: "Release-26.09.0-0.zip"
+          STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:STAGING_ROOT" | Out-Null
+          $url = "https://github.com/oschwartz10612/poppler-windows/releases/download/$env:POPPLER_TAG/$env:POPPLER_ARCHIVE"
+          $zip = Join-Path $env:RUNNER_TEMP "poppler.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $extract = Join-Path $env:RUNNER_TEMP "poppler"
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $bin = Get-ChildItem -Path $extract -Recurse -Filter "pdftoppm.exe" | Select-Object -First 1
+          if (-not $bin) { throw "pdftoppm.exe was not found in the Poppler archive" }
+          # NOTE: `Select-Object -First 1` returns a FileInfo whose
+          # `.Source` adapter property is NULL, so the source directory
+          # must be read from the FileInfo itself.  Using
+          # `$bin.Source.Directory.FullName` made `Join-Path` fail with
+          # "Cannot bind argument to parameter 'Path' because it is null"
+          # and the step failed before any test ran.
+          $binDir = $bin.Directory.FullName
+          if (-not (Test-Path -LiteralPath $binDir)) { throw "the Poppler bin directory was not found: $binDir" }
+          $target = Join-Path $env:STAGING_ROOT "poppler"
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item -Path (Join-Path $binDir "*") -Destination $target -Recurse -Force
+          # The OWNERSHIP MARKER. The production `stage_parser()` writes
+          # this file, and the application's cleanup removes the staging
+          # tree ONLY when it carries the marker, so that a directory
+          # belonging to another installation is never deleted. Without it
+          # the CI job would stage a tree the application does not
+          # consider its own, and the cleanup certificate below would
+          # have nothing to remove.
+          Set-Content -Path (Join-Path $target ".chesscoach-staging") -Value (
+            "Staged by Chess Coach for the Windows AppContainer PDF parser.`n" +
+            "This directory is owned by the Chess Coach installation and is`n" +
+            "removed by the application's own cleanup routine.`n"
+          )
+          # The staged copy must actually WORK, not merely exist: the
+          # AppContainer proof depends on a real parser.
+          $staged = Join-Path $target "pdftoppm.exe"
+          if (-not (Test-Path -LiteralPath $staged)) { throw "the staged pdftoppm.exe is missing from $target" }
+          $probe = Start-Process -FilePath $staged -ArgumentList "-v" -NoNewWindow -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw "the staged pdftoppm.exe failed with exit code $($probe.ExitCode)" }
+          # The staged Poppler must be on PATH: the enforcement suite
+          # locates pdftoppm with shutil.which("pdftoppm"), and without
+          # this the two real-Poppler tests would SKIP, so the job would
+          # go green without ever running the real workload.
+          Add-Content -Path $env:GITHUB_PATH -Value $target
+          Write-Host "Staged Poppler $env:POPPLER_VERSION into $target"
+
+      - name: Run the Windows AppContainer enforcement tests
+        # REAL Win32 calls on a REAL Windows runner: no mocked AppContainer
+        # API, no skip, no documentation-only assertion. The suite proves
+        # the token identity and zero capabilities, the network denial
+        # against an unrestricted control in the same run, the three
+        # generation denial, the inherited-socket bypass and the populated
+        # stdout/stderr allowlist that defeats it, the pre-resume Job
+        # assignment, the real Poppler workload, and the cleanup.
+        #
+        # The file is collected explicitly so the job fails loudly if it is
+        # renamed or moved.
+        env:
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: pytest tests/windows/test_windows_appcontainer_enforcement.py -v --no-header
+
+      - name: Run the Windows AppContainer unit and cleanup tests
+        env:
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          pytest tests/unit/test_windows_appcontainer.py -v --no-header
+          pytest tests/unit/test_windows_appcontainer_cleanup.py -v --no-header
+
+      - name: Verify the Windows PDF route maps the AppContainer taxonomy
+        # The route must distinguish a containment SETUP failure (500
+        # internal.network_isolation_setup_failed) from an UNSUPPORTED
+        # platform (501 internal.not_implemented) and from a parser
+        # failure, and the 501 refusal must still be the default.
+        #
+        # The refusal is verified by a REAL call, not by a source
+        # substring: `ensure_network_isolation_supported()` must raise
+        # the 501 refusal with the opt-in off.
+        run: |
+          python -c "
+          import inspect
+          from chess_coach.gateway.routes import pdf_ingest
+          src = inspect.getsource(pdf_ingest)
+          assert 'NetworkIsolationUnsupportedError' in src
+          assert 'NetworkIsolationSetupError' in src
+          from chess_coach.pdf_ocr import subprocess_runner as sr
+          from chess_coach.pdf_ocr import windows_appcontainer as wa
+          assert wa.PRODUCT_PACKAGE_SID.startswith('S-1-15-2-')
+          assert wa.select_capabilities().sids == (), 'the parser must hold no capability'
+          assert sr.windows_appcontainer_is_enabled() is False, 'the AppContainer path must be opt-in'
+          assert sr._network_isolation_available() is False
+          try:
+              sr.ensure_network_isolation_supported()
+          except sr.NetworkIsolationUnsupportedError as exc:
+              assert exc.http_status == 501, exc.http_status
+              print('the default Windows refusal is intact')
+          else:
+              raise AssertionError('the default Windows refusal was weakened')
+          print('Windows AppContainer taxonomy and refusal verified')
+          "
+
+      - name: Run the PRODUCTION entry point with the opt-in ON
+        # HIGH-1 (final leaf review): every other proof in this job drives
+        # the LOW-LEVEL launcher (`run_in_appcontainer_job`) directly, so
+        # the PRODUCTION chain -- `stage_parser` -> the ACL grant -> the
+        # AppContainer launch -> the real Poppler -> the PNG read-back --
+        # was never exercised in CI.  A regression there (dropping the
+        # staged directory from the grant, reverting to stdin,
+        # mis-granting the artifact directory) would leave CI green.
+        # That is the defect class the earlier review recorded as F1.
+        #
+        # This step calls the SHIPPED entry point with the opt-in ON and
+        # asserts a rendered page comes back.
+        env:
+          CHESS_COACH_WINDOWS_APPCONTAINER: "1"
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          python -c "
+          from chess_coach.pdf_ocr import subprocess_runner as sr
+          assert sr.windows_appcontainer_is_enabled() is True, 'the opt-in must be honoured at call time'
+          pdf = (b'%PDF-1.4\n'
+                 b'1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n'
+                 b'2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n'
+                 b'3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n'
+                 b'trailer<</Root 1 0 R>>\n')
+          images = sr.run_pdftoppm_in_subprocess(pdf)
+          assert images, 'the production entry point returned no page'
+          for image in images:
+              assert image.size[0] > 0 and image.size[1] > 0, image.size
+          print('the PRODUCTION entry point rendered', len(images), 'page(s)')
+          "
+
+      - name: Run the AppContainer cleanup certificate
+        # The application-owned state must be removable, the cleanup must
+        # be idempotent, and it must NOT remove state that belongs to
+        # somebody else.
+        #
+        # The certificate CREATES its own owned state and removes it, so
+        # it proves the property regardless of what the earlier steps
+        # did.
+        #
+        # It is the LAST step of this job on purpose.  It REMOVES the
+        # application-owned staging tree, and the CI staging step put
+        # that tree on PATH, so running it earlier deleted the directory
+        # PATH pointed into and made the later production step fail with
+        # "pdftoppm was not found".  As the last step, the cleanup
+        # property is proved on the state the job actually created, and
+        # nothing after it depends on that state.
+        #
+        # The certificate asserts that the FIRST pass really removed the
+        # owned state: asserting only that the second pass removed
+        # nothing would be satisfied vacuously when the first pass
+        # removed nothing either.
+        #
+        # A cleanup that removed EVERYTHING would also satisfy that
+        # assertion, so the certificate also proves that a FOREIGN,
+        # unmarked staging tree is PRESERVED.  The cleanup is
+        # ownership-scoped, and the certificate proves it.
+        #
+        # The program is a FILE, not an inline command.  Inline
+        # `python -c "..."` inside a PowerShell double-quoted string is
+        # subject to backtick escaping, and a backtick-n in the program
+        # becomes a NEWLINE -- which silently corrupted this certificate
+        # once and made the step fail with a SyntaxError instead of a
+        # certificate result.  A file removes the whole class of hazard.
+        env:
+          CHESS_COACH_APPCONTAINER_STAGING_ROOT: "C:\\ProgramData\\ChessCoachCI"
+        run: |
+          python scripts/dev/verify_appcontainer_cleanup.py
+
+
   mypy:
     name: mypy strict
     runs-on: ubuntu-latest
