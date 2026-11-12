@@ -203,7 +203,7 @@ details preserved in the line-217 append below and at
 `services/chess_coach/narration/pipeline.py:63` (helper
 `_pv_to_san`).
 
-**Status:** **IN PROGRESS 2026-08-06** by BBF-FU-5 (branch `bbf-fu5-pv-moves-san`,
+**Status:** RESOLVED 2026-08-06 via squash `cada4ab2` (PR #81, BBF-FU5 additive `pv_moves_san` field on `NarrationResponse`); see the canonical resolution above. Historical investigation context preserved below -- the work was first tracked as IN PROGRESS 2026-08-06 by BBF-FU-5 (branch `bbf-fu5-pv-moves-san`,
 commit on `main@d6a9e1e`). Additive `pv_moves_san` field on
 `NarrationResponse`, backend helper `_pv_to_san()` in
 `services/chess_coach/narration/pipeline.py` (replay-on-board, never-raise,
@@ -336,7 +336,7 @@ promoting the append's RESOLVED status to the canonical Status
 section. Implementation details preserved in the line-341
 append below.
 
-**Status:** OPEN. Low urgency. Not blocking. Pick up after FU-5 ships.
+**Status:** RESOLVED 2026-08-08 via squash `e091988c` (PR #82, BBF-FU6 `engine_pool` mock added to the `test_narrative_position_fk` fixtures); see the canonical resolution above. Historical context preserved below:
 
 **Resolved 2026-08-08 via FU-6 PR #82.** Documentation drift
 corrected 2026-08-10 (third-round doc-drift fix-up) -- the original
