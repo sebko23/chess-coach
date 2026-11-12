@@ -3565,7 +3565,7 @@ unchanged in the upper section, but change the `**Status:**` line and add a brie
 
 ### FU-11 — RESOLVED for the approved α-ext scope, fixed by the FU-11 remediation
 
-**Original entry:** lines 795-856 (above).
+**Original entry:** lines 795-858 (above).
 **Resolution:** Resolved 2026-11-04 by the FU-11 remediation branch
 `bbf-fu11-polyglot-book-remediation` (commits `ce4e0c19` and `941c22de`),
 based on final-main tree `df3ed9bffc95b009c7cc656d2ec009aaa8556760`. The
@@ -3645,22 +3645,22 @@ full `.bin` import/export surface is unchanged and still open.
 
 ### FU-28 — RESOLVED, fixed by PR #110
 
-**Original entry:** lines 2136-2183 (above).
+**Original entry:** lines 2238-2285 (above).
 **Resolution:** Addressed by PR #110 (`feat(ci): enforce-by-default for backend tests; log FU-30 conftest path defect`), squash-merged as `f0b07dac` (2026-08-27). The 14-path explicit enumeration in `smoke.yml:178-192` was replaced by the directory-level invocation `pytest tests/unit tests/integration --ignore=...`. Post-merge state: 53 of 58 test files enforced by the glob (vs. 16 under the explicit list).
 
 ### FU-31 — RESOLVED, fixed by PR #111
 
-**Original entry:** lines 2270-2320 (above).
+**Original entry:** lines 2372-2422 (above).
 **Resolution:** Addressed by PR #111 (`fix(tests): rewrite test_route_is_wired_to_smoke_yml for FU-28 glob convention`), squash-merged as `042f56c1` (2026-08-29). The meta-test's literal `"test_pdf_ingest_security.py" in smoke_text` assertion was rewritten to assert the post-FU-28 structural convention: `tests/unit` appears as a positional pytest arg AND the file basename does NOT appear in any `--ignore=` clause. Post-merge gateway-boot pytest: 567 passed, 4 skipped, 0 failed on Linux CI.
 
 ### FU-32 — RESOLVED, fixed by PR #112
 
-**Original entry:** lines 2322-2375 (above).
+**Original entry:** lines 2424-2477 (above).
 **Resolution:** Addressed by PR #112 (`fix(route): add os.path.isdir() pre-check for polyglot_book_path (FU-32)`), squash-merged as `b4a8e5f0` (2026-08-31). The route's `_book_moves_for_fen` gained an explicit `os.path.isdir(book_path)` pre-check that raises `HTTPException(400)` before the library call. This bypasses the `chess.polyglot.MemoryMappedReader._EmptyMmap` workaround (which silently returns an empty reader on Linux for directory paths, defeating the route's existing `OSError` catch on Windows). Post-merge gateway-boot pytest: 567 passed, 4 skipped, 0 failed on Linux CI.
 
 ### FU-33 — RESOLVED, accepted as-is, not amended
 
-**Original entry:** lines 2377-2425 (above).
+**Original entry:** lines 2479-2527 (above).
 **Resolution:** ACCEPTED as-is, NOT amended. Rationale:
 
 - (a) The stale references are in commit-body prose (specifically `smoke.yml:178-192` in the bodies of merges `f0b07dac` / `042f56c1` / `b4a8e5f0`), not in code or test assertions. They do not affect runtime behavior or test pass/fail.
@@ -3672,7 +3672,7 @@ The `verify_commit_refs.py` failure on `f0b07dac` / `042f56c1` / `b4a8e5f0` is n
 
 ### FU-24 — RESOLVED, fixed by PR #114
 
-**Original entry:** lines 2021-2051 (above).
+**Original entry:** lines 2123-2153 (above).
 **Resolution:** Addressed by PR #114 (`docs: fix two doc-drift pointers surfaced by FU-24`), squash-merged as `e74528a6` (2026-09-03). Two single-line doc-drift fixes in tracked docs:
 
 - `docs/11_repo_structure/repository-structure.md:154` — was `apps/desktop/README.md`, now `apps/desktop/UPSTREAM.md` §Rebase history. The rebase ritual does not live in the 17-line `apps/desktop/README.md`; it lives in `apps/desktop/UPSTREAM.md` at the `## Rebase history` section (verified: 3 rebase mentions including a v0.15.0 initial-fork row at L107; `README.md` has zero rebase mentions).
@@ -3682,7 +3682,7 @@ No governance questions, no upstream-inheritance concerns, no side-effects. Leaf
 
 ### FU-34 — RESOLVED, fixed by PR #117
 
-**Original entry:** lines 2428-2480 (above).
+**Original entry:** lines 2530-2582 (above).
 **Resolution:** Addressed by PR #117 (`fix(pnpm): FU-34 GHSA-cp6q-959q-f8rh @tiptap/core override`), squash-merged as `2c92fda4` (2026-09-04). One-line `pnpm.overrides` entry in `apps/desktop/pnpm-workspace.yaml` (the canonical pnpm v11 override location per FU-17, NOT `apps/desktop/package.json` whose `pnpm.overrides` block is dead code under pnpm v11+):
 
 ```yaml
@@ -3730,7 +3730,7 @@ No governance questions, no upstream-inheritance concerns. Leaf reviewer verdict
 
 ### FU-38 — RESOLVED, accepted as-is, not rewritten
 
-**Original entry:** lines 2782-2919 (above).
+**Original entry:** lines 2889-3027 (above).
 **Resolution:** ACCEPTED as-is, NOT rewritten. Closed 2026-10-27 by product-owner scope decision.
 
 The allowlist fix itself shipped in PR #140 (commit `d78b9b9b`, squash-merged as
@@ -3796,7 +3796,7 @@ removable without cross-version re-measurement — see the FU-48 entry below.
 
 ### FU-35 — RESOLVED, packaging half completed by BBF-FU-35-pyinstaller-collect-all
 
-**Original entry:** lines 2479-2582 (above).
+**Original entry:** lines 2584-2688 (above).
 **Resolution:** Closed in two parts. The structural half landed 2026-10-17 via squash-merge of PR #161 (commit `99a355df`, merge `92aa7dfc`): the repo-root `chess_coach/__init__.py` marker (option (b) of the resolution shape) plus the `[tool.setuptools.package-dir]` self-mapping. The packaging half landed 2026-10-27 via `docs/16_audit/BBF-FU-35-pyinstaller-collect-all.md`.
 
 **What the packaging BBF changed.** The PyInstaller spec now COLLECTS the physical `chess_coach` package instead of bundling the source tree; the runtime hook `services/chess_coach/gateway/pyinstaller_rthook.py` is deleted (not renamed, not retained as a fallback, not replaced by a source-tree monkeypatch); and the binary smoke test gains a regression test that proves the frozen artifact imports the collected package.
@@ -3845,7 +3845,7 @@ The measured facts the earlier paragraph did not state:
 
 ### FU-22 — RESOLVED (Linux enforced via RLIMIT_AS; Windows enforced via a Job Object per-process limit), B1 contract correction then B2 implementation
 
-**Original entry:** lines 1820-1918 (above).
+**Original entry:** lines 1922-2021 (above).
 **Resolution:** Resolved 2026-10-29 via PR #190 (`BBF-FU-22-B2-windows-job-object`). Both halves of A-F11 property 4 (the 2 GB memory cap) are implemented and enforced: Linux through `resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))`, Windows through a Job Object's **per-process** memory limit. The limit is per-process on both platforms, inherited independently by descendants, and is **not** an aggregate process-tree memory budget. The B1 record below is preserved in full as the accurate account of the gap B2 closed.
 
 **What B1 changed.** `services/chess_coach/pdf_ocr/subprocess_runner.py` gained `MEMORY_CAP_SUPPORTED` (true iff `sys.platform != "win32"`), `ensure_memory_cap_supported()`, and the typed `UnsupportedParserPlatformError` (a subclass of `NotImplementedYetError` → HTTP 501, ADR-0002 code `internal.not_implemented`). `run_pdftoppm_in_subprocess` calls the guard **before** `subprocess.Popen`, so on an uncappable platform no parser process is ever started. `services/chess_coach/gateway/routes/pdf_ingest.py` re-raises the typed error through the gateway's central handler instead of letting the catch-all flatten it into a 422.
