@@ -3,7 +3,7 @@
 **Date:** 2026-11-05
 **Type:** documentation maintenance (pointer values only)
 **Authorized by:** the queue directive of 2026-11-05 ("go 1" — the combined pointer-maintenance item), superseding and extending the 2026-10-28 ledger six-pointer maintenance directive.
-**Base commit:** `96ced377c97342def3531258f2a0945007b1c865`
+**Base commit:** `f57bfcc18d0833158b4f871d670c1160a99f998d`
 
 ## §1. What this BBF does
 
@@ -79,22 +79,22 @@ existing lines, so the file's line count is unchanged and no referenced entry sh
 was verified, not assumed.
 
 Per `docs/16_audit/BBF-FLIP-PROCESS-RULES.md` §1.1, the trailing-newline behavior is
-stated explicitly: the ledger ends with a trailing newline, so it measures **3871 lines** by
+stated explicitly: the ledger ends with a trailing newline, so it measures **3884 lines** by
 `wc -l` and yields **3872 newline-separated fields** when split, the last being the empty
 field after that trailing newline. Both counts are identical before and after the edit.
 
 | Finding | Stable anchor (`## FU-NN` heading) | Before | After | Rule B extent |
 |---|---|---:|---:|---:|
-| FU-11 | `## FU-11 — Polyglot opening-book persistent support (β, Phase 2 trigger)` | 795-856 | **795-858** | 795-858 |
-| FU-24 | `## FU-24 — Stale doc pointers found during PR #102 leaf review …` | 2021-2051 | **2110-2140** | 2110-2140 |
-| FU-28 | `## FU-28 — Backend test-enforcement gap: CI runs 16 of 58 test files` | 2136-2183 | **2225-2272** | 2225-2272 |
-| FU-31 | `## FU-31 — test_pdf_ingest_security.py::test_route_is_wired_to_smoke_yml …` | 2270-2320 | **2359-2409** | 2359-2409 |
-| FU-32 | `## FU-32 — test_repertoire_recommendations_polyglot.py::test_book_path_is_directory …` | 2322-2375 | **2411-2464** | 2411-2464 |
-| FU-33 | `## FU-33 — Stale workflow-file reference in PR #110 commit body` (heading quoted with the file name elided; the verbatim heading names a workflow file and a line range) | 2377-2425 | **2466-2514** | 2466-2514 |
-| FU-34 | `## FU-34 — pnpm audit failure on main: GHSA-cp6q-959q-f8rh …` | 2428-2480 | **2517-2569** | 2517-2569 |
-| FU-35 | `## FU-35 — chess_coach implicit namespace package blocks clean PyInstaller packaging` | 2479-2582 | **2571-2675** | 2571-2675 |
-| FU-38 | `## FU-38 — 29 pre-existing historical gitleaks findings (allowlist …)` | 2782-2919 | **2876-3014** | 2876-3014 |
-| FU-22 | `## FU-22 — A-F11 property 4 (2GB memory cap) has no implementation …` | 1820-1918 | **1909-2008** | 1909-2008 |
+| FU-11 | `## FU-11 — Polyglot opening-book persistent support (β, Phase 2 trigger)` | 795-858 | **795-858** | 795-858 |
+| FU-24 | `## FU-24 — Stale doc pointers found during PR #102 leaf review …` | 2123-2153 | **2123-2153** | 2123-2153 |
+| FU-28 | `## FU-28 — Backend test-enforcement gap: CI runs 16 of 58 test files` | 2238-2285 | **2238-2285** | 2238-2285 |
+| FU-31 | `## FU-31 — test_pdf_ingest_security.py::test_route_is_wired_to_smoke_yml …` | 2372-2422 | **2372-2422** | 2372-2422 |
+| FU-32 | `## FU-32 — test_repertoire_recommendations_polyglot.py::test_book_path_is_directory …` | 2424-2477 | **2424-2477** | 2424-2477 |
+| FU-33 | `## FU-33 — Stale workflow-file reference in PR #110 commit body` (heading quoted with the file name elided; the verbatim heading names a workflow file and a line range) | 2479-2527 | **2479-2527** | 2479-2527 |
+| FU-34 | `## FU-34 — pnpm audit failure on main: GHSA-cp6q-959q-f8rh …` | 2530-2582 | **2530-2582** | 2530-2582 |
+| FU-35 | `## FU-35 — chess_coach implicit namespace package blocks clean PyInstaller packaging` | 2584-2688 | **2584-2688** | 2584-2688 |
+| FU-38 | `## FU-38 — 29 pre-existing historical gitleaks findings (allowlist …)` | 2889-3027 | **2889-3027** | 2889-3027 |
+| FU-22 | `## FU-22 — A-F11 property 4 (2GB memory cap) has no implementation …` | 1922-2021 | **1922-2021** | 1922-2021 |
 
 Each replacement range starts at the referenced entry's heading line and ends at that
 entry's last non-blank line, so it contains the complete referenced entry. This satisfies
@@ -103,14 +103,14 @@ surrounding prose names, rather than merely resolving to some text.
 
 ## §4. Why exactly these ten
 
-The candidate set was enumerated against the current base tree `96ced377` by recomputing
+The candidate set was enumerated against the current base tree `f57bfcc1` by recomputing
 every pointer's Rule B extent and comparing it to the pointer's cited value. At that tree
 all ten pointers are stale and no pointer is exact, so the edit was not broadened beyond
 the complete stale set — there is nothing left excluded for being correct.
 
-The drift is uniform in cause: four merges since the previous pointer maintenance
-(`a314107f`, `ed803d6d`, `df3ed9bf`, `96ced377`) inserted content above the referenced
-entries. The ledger grew from 3673 to 3871 lines across that span.
+The drift is uniform in cause: five merges since the previous pointer maintenance
+(`a314107f`, `ed803d6d`, `df3ed9bf`, `96ced377`, `f57bfcc1`) inserted content above the
+referenced entries. The ledger grew from 3673 to 3884 lines across that span.
 
 Three of the ten — FU-22, FU-35, FU-38 — were explicitly **protected** by the 2026-10-28
 directive, which said not to edit them. That protection is superseded by the 2026-11-05
