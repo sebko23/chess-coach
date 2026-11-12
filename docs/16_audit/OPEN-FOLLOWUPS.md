@@ -53,7 +53,7 @@ directory. See PR #73 squash `e4a4c66` (BBF-87.2) for the fix. Import chain rest
 - (c) Hybrid: convert engine PV to SAN at the route boundary, expose both fields —
   superseded by FU-5 below.
 
-**Status:** **PARTIALLY RESOLVED 2026-08-04** by this BBF (`doc-fix-pv-moves-uci-schema`).
+**Status:** **RESOLVED 2026-08-06** by the original doc-fix BBF (`3cf012b8`, PR #79) and FU-5 (`cada4ab2`, PR #81); FU-5's canonical ledger status was corrected by PR #196 (`78c804c3`). Historical context preserved below:
 The schema docstrings are corrected (option b); option (a) is tracked separately as **FU-5**.
 
 ---
