@@ -2366,8 +2366,8 @@ the defect is in the conftest, not the test.
 Replacing the hardcoded path needs its own design choice (env var + pytest fixture factory, or
 plain string-template parameterized test, or skipif guard) — a scoping decision of its own.
 
-**Status:** OPEN — log only. Path fix deferred to a follow-up BBF that addresses the fixture
-factory design.
+**Status:** RESOLVED 2026-10-16 via squash `1501f408` (BBF-FU-30-perf-conftest-portable). The
+path fix this line deferred has shipped; the superseded deferral prose is preserved above.
 
 ## FU-31 — `test_pdf_ingest_security.py::test_route_is_wired_to_smoke_yml` breaks under glob-based CI
 
@@ -2642,7 +2642,7 @@ After that:
   - The binary size drops (no source-tree inclusion, just the
     modules actually imported).
 
-**Status:** OPEN. Resolution shape:
+**Status:** RESOLVED 2026-10-27 — the structural half landed 2026-10-17 via squash `99a355df` (BBF-FU-35-explicit-namespace) and the packaging half via squash `bcb70d88` (BBF-FU-35-pyinstaller-collect-all); the resolution shape this line introduced has been executed, and the plan is preserved below as historical context.
 
   1. Add `chess_coach/__init__.py` at the repo root (zero-byte file
      or `# Explicit namespace package marker` comment).
