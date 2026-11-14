@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "_metadata": {
+    "version": "hand-curated-v0",
     "WARNING": "HAND-CURATED SEED (minimal). 2 archetype profiles curated by a human chess-knowledgeable curator on 2026-08-02 from the maintainer's own play. This is the minimal BBF-89 seed, NOT the full 20-40 completion corpus; the >=2 per-label minimum is not met (1 Specialist, 1 Tactician). Metric vectors are the curator's attested assessments, not machine-computed from a verified 30+ game set.",
     "provenance": "hand_curated_seed",
     "curated_by": "human chess curator (repo maintainer)",

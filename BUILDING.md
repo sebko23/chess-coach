@@ -197,7 +197,7 @@ If you wish to **sign** your build (so other users can install your updates with
 
 ### Environment variables (read these first)
 
-The backend reads three env vars that the next dev should understand:
+The backend reads the following env vars that the next dev should understand:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -205,6 +205,7 @@ The backend reads three env vars that the next dev should understand:
 | `CHESS_COACH_BACKEND_TOKEN` | random per-startup | Bearer token the gateway requires on every request. Read from `backend.json` after first startup. **For dev, set this to `devtoken123`** so you can curl without re-reading the descriptor. |
 | `CHESS_COACH_MAX_WORKERS` | `1` | How many Stockfish subprocesses to spawn. Each process is single-coroutine, so `1` is correct for a single-user setup. Set to your CPU core count (4 on the dev machine) for max parallelism, but be aware: each Stockfish process spawns its own OS thread, and running many processes + the gateway itself can hit the per-process thread limit on the host. See "cgroup / thread limit caveat" below. |
 | `CHESS_COACH_NARRATIVE_GOLD_VERSION` | `v2` | Which narrative-gold corpus the gateway grounds FEN narration on. `v2` = the auto-derived production corpus (default). Set to `hand-curated-v0` to ground on the BBF-89 hand-curated seed (the maintainer's curated coach narratives) instead. An unknown value degrades to ungrounded narration with a startup WARNING. |
+| `CHESS_COACH_ARCHETYPE_GOLD_VERSION` | `v0` | Which archetype-gold corpus the profile kNN classifier uses. In a Docker image, this must match the `ARCHETYPE_VERSION` used to build the image unless that image also packages the selected corpus. In a local checkout, the selected `tests/gold/archetypes/<version>/corpus.json` must exist. |
 
 ### Dev mode (recommended for contributors)
 

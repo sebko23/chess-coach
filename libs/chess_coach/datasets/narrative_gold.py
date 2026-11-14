@@ -50,6 +50,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from chess_coach.datasets.corpus_version import warn_on_version_mismatch
+
 # ID pattern: NG-<version>-NNNN where <version> is either a numeric
 # version (e.g. v1) or the hand-curated seed token (hand-curated-v0),
 # and NNNN is a 4-digit zero-padded sequence. Examples: NG-v1-0001,
@@ -282,6 +284,9 @@ def load_narrative_gold_with_metadata(
             f"Narrative gold corpus at {corpus_path} has "
             f"schema_version {raw.get('schema_version')}, expected 1"
         )
+    warn_on_version_mismatch(
+        raw, version, corpus_path, corpus_name="narrative gold corpus"
+    )
     return raw
 
 

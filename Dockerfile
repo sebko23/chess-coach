@@ -92,27 +92,29 @@ COPY apps/ ./apps/
 # stale.
 RUN uv pip install --system --no-cache -e .
 
-# BBF-87.1: copy the v2 narrative gold corpus into the image.
-# The narration pipeline loads GroundingIndex(version="v2") at
-# startup, and the corpus must be reachable at the path the
-# loader resolves to (tests/gold/narrative/v2/corpus.json
-# relative to the repo root). Production deployments without
-# this COPY would FileNotFoundError at gateway startup.
-COPY tests/gold/narrative/v2/ /app/tests/gold/narrative/v2/
+# BBF-86.7: build-time corpus selection is coupled to the runtime
+# environment below, so packaged and selected corpora cannot drift by default.
+ARG NARRATIVE_VERSION=v2
+ARG ARCHETYPE_VERSION=v0
 
-# BBF-87.1.y follow-up: copy the v0 archetype gold corpus into
-# the image. The kNN classifier at services/chess_coach/profile/
-# archetypes.py loads the v0 corpus (auto-derived in BBF-88.x) at
-# startup per the brief's "ship v0 alongside v1, default for new
-# code" decision. Without this COPY, gateway startup would
-# FileNotFoundError when the kNN classifier attempts to load
-# its reference vectors.
-COPY tests/gold/archetypes/v0/ /app/tests/gold/archetypes/v0/
+# BBF-86.7: copy the selected narrative gold corpus into the image.
+# NARRATIVE_VERSION selects both the copied path and the runtime corpus.
+# Without this COPY, narrative grounding degrades to an empty index
+# with a startup warning.
+COPY tests/gold/narrative/${NARRATIVE_VERSION}/ /app/tests/gold/narrative/${NARRATIVE_VERSION}/
+
+# BBF-86.7: copy the selected archetype gold corpus into the image.
+# ARCHETYPE_VERSION selects both the copied path and the runtime corpus.
+# The kNN classifier loads this corpus when the archetype metric is
+# requested. Without this COPY, that request would FileNotFoundError.
+COPY tests/gold/archetypes/${ARCHETYPE_VERSION}/ /app/tests/gold/archetypes/${ARCHETYPE_VERSION}/
 
 # ---- runtime config ----
 ENV CHESS_COACH_HOST=0.0.0.0 \
     CHESS_COACH_PORT=18080 \
     CHESS_COACH_DATA_DIR=/data \
+    CHESS_COACH_NARRATIVE_GOLD_VERSION=${NARRATIVE_VERSION} \
+    CHESS_COACH_ARCHETYPE_GOLD_VERSION=${ARCHETYPE_VERSION} \
     CHESS_COACH_BACKEND_TOKEN=devtoken123 \
     CHESS_COACH_MAX_WORKERS=1 \
     PYTHONUNBUFFERED=1 \

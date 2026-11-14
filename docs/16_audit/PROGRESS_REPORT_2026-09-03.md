@@ -157,7 +157,7 @@ These are pre-existing dep vulnerabilities that **block every PR's CI on `main`*
 
 ### 5.2 HIGH-VALUE, LOW-RISK — ship next (Tier 1 / Tier 2 from BBF-86)
 
-4. **BBF-86.5 / 86.6 / 86.7** — already ✅ shipped per `BBF-86-release-readiness-audit.md:122-124, 130-133, 141`. Skip.
+4. **BBF-86.5 / 86.6 / 86.7** — 86.5 and 86.6 are shipped; 86.7 is implemented by this BBF. See its tracked brief.
 5. **Real engine-backed narration path** — Tier 4 from BBF-86. Currently narration route uses stub LLM router. Already partially wired via BBF-87.2; the LLM side is the held-back piece. ~1 BBF.
 6. **Real LLM integration** — Tier 4. The `llm_router/` exists with `router.py` + `config.py` but is stub-mode by default per FU-3 doc; needs a real OpenRouter key + a smoke-test with budget cap. ~1 BBF.
 7. **Pre-BBF-87.1.y narrations rows backfill** — Tier 3. Needs production DB query (`SELECT COUNT(*) FROM narrations WHERE position_id NOT IN (SELECT id FROM positions)`). Held back pending DB snapshot from `sebko23`.

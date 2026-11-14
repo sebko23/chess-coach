@@ -184,30 +184,39 @@ def test_v0_shape_curated_entries_have_archetype_trait_source() -> None:
 # ---- BBF-86.5: confidence gating (silent failure mode for v0 corpus) ----
 
 
-def test_knn_classify_gates_low_confidence_as_unknown() -> None:
-    """BBF-86.5: when confidence < min_confidence, return Unknown.
-
-    Before BBF-86.5, a user whose metric vector was near (but not
-    exactly at) a 4-covered-archetype training vector would get a
-    wrong label. After BBF-86.5, the gate returns Unknown below
-    min_confidence.
-    """
+def test_knn_classify_accepts_high_confidence_v0_vector() -> None:
+    """A representative v0 vector clears the confidence floor."""
     from chess_coach.profile.archetypes import _knn_classify
-    # Mid-range input: high confidence (Grinder archetype)
-    result = _knn_classify(
-        {
-            "tactical_vs_positional_bias": 0.5,
-            "time_pressure_quality": 0.1,
-            "opening_comfort": 15.0,
-            "conversion_ability": 0.6,
-            "blunder_rate_vs_rating": 0.15,
-            "decision_fatigue": 0.05,
-            "sequence_based_tilt": 0.05,
-        },
-        min_confidence=0.3,
-    )
-    assert result[0] == "Grinder"
+
+    metrics = {
+        "tactical_vs_positional_bias": 0.75,
+        "time_pressure_quality": 0.05,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.18,
+        "decision_fatigue": 0.0,
+    }
+    result = _knn_classify(metrics, min_confidence=0.3)
+    assert result[0] == "Tactician"
     assert result[1] >= 0.3
+
+
+def test_knn_classify_gates_low_confidence_as_unknown() -> None:
+    """BBF-86.5: confidence below the floor returns Unknown."""
+    from chess_coach.profile.archetypes import _knn_classify
+
+    metrics = {
+        "tactical_vs_positional_bias": 0.8964238769,
+        "time_pressure_quality": 0.0808758882,
+        "opening_comfort": 13.3602792699,
+        "conversion_ability": 0.8369321165,
+        "blunder_rate_vs_rating": 0.1385317948,
+        "decision_fatigue": 0.1023476196,
+        "sequence_based_tilt": 0.0986027116,
+    }
+    result = _knn_classify(metrics, min_confidence=0.3)
+    assert result[0] == "Unknown"
+    assert 0.0 <= result[1] < 0.3
 
 
 def test_knn_classify_below_threshold_returns_unknown() -> None:
@@ -255,12 +264,8 @@ def test_knn_classify_min_confidence_zero_disables_gate() -> None:
         },
         min_confidence=0.0,
     )
-    # With gate: same logic as without (label or Unknown).
-    # Without gate: same result, just no floor.
-    # Either way, both should agree on Unknown vs labeled.
-    assert (result_with_gate[0] == "Unknown") == (
-        result_without_gate[0] == "Unknown"
-    )
+    assert result_with_gate[0] == "Unknown"
+    assert result_without_gate[0] != "Unknown"
 
 
 def test_cluster_archetypes_gates_low_confidence_in_assignment() -> None:

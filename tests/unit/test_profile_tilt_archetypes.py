@@ -236,6 +236,43 @@ def test_sequence_tilt_detects_tilt_pattern(sqlite_db: str) -> None:
     assert result.null_value == 0.0
 
 
+
+_REPRESENTATIVE_V0_METRICS = {
+    "Tactician": {
+        "tactical_vs_positional_bias": 0.75,
+        "time_pressure_quality": 0.05,
+        "opening_comfort": 1.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.18,
+        "decision_fatigue": 0.0,
+    },
+    "Specialist": {
+        "tactical_vs_positional_bias": 0.45,
+        "time_pressure_quality": 0.08,
+        "opening_comfort": 0.0,
+        "conversion_ability": 0.65,
+        "blunder_rate_vs_rating": 0.08,
+        "decision_fatigue": 0.0,
+    },
+    "Wildcard": {
+        "tactical_vs_positional_bias": 0.38,
+        "time_pressure_quality": 0.20,
+        "opening_comfort": 3.0,
+        "conversion_ability": 0.0,
+        "blunder_rate_vs_rating": 0.25,
+        "decision_fatigue": 0.03,
+    },
+    "Tilter": {
+        "tactical_vs_positional_bias": 0.47,
+        "time_pressure_quality": 0.18,
+        "opening_comfort": 14.0,
+        "conversion_ability": 0.35,
+        "blunder_rate_vs_rating": 0.22,
+        "decision_fatigue": 0.18,
+        "sequence_based_tilt": 0.20,
+    },
+}
+
 # --- cluster_archetypes tests ---
 
 
@@ -246,7 +283,7 @@ def test_archetypes_empty_metrics_returns_standard_label() -> None:
 
     BBF-66: this test was rewritten from a heuristic-shape assertion
     (which expected label='Unknown' for empty input) to a behavioral
-    assertion. The kNN against the SYNTHETIC PLACEHOLDER corpus may
+    assertion. The kNN against the production v0 corpus may
     pick any archetype for empty input; the contract is just that
     the label is valid.
     """
@@ -266,100 +303,105 @@ def test_archetypes_tactician_shape() -> None:
     """High tactical + low opening breadth returns the Tactician archetype.
 
     BBF-66: rewritten from a heuristic-shape assertion to behavioral
-    (placeholder corpus was noisy, so a specific label was not
-    asserted). After BBF-75 ships a strict completion validator,
-    the corpus has real-labelled entries and the kNN can be asserted
-    against a specific label. The input vector is close to the
-    Tactician centroid in the current corpus
-    (tactical_vs_positional_bias=0.70 vs 0.55-0.70 in the v1 entries;
-    opening_comfort=8 vs 5-8), so the kNN picks Tactician with
-    confidence 0.755 in today's data. A future corpus rebalancing
-    under BBF-75.1 may need new inputs.
+    coverage. The production v0 corpus now has labelled entries, so a
+    fixed representative vector can assert a specific label. Its labels
+    remain subject to the corpus's documented quality limitation.
     """
     from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
-    result = cluster_archetypes({
-        "tactical_vs_positional_bias": 0.70,
-        "conversion_ability": 0.60,
-        "opening_comfort": 8,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Tactician"])
     assert result.label in STANDARD_ARCHETYPES
     assert result.label == "Tactician", (
         f"input vector returns Tactician in the current corpus; "
         f"got {result.label!r}"
     )
-    assert 0.0 <= result.confidence <= 1.0
+    assert result.confidence >= 0.3
+    assert result.effect_size.d is not None
+    assert result.effect_size.d > 0.5
+    assert result.passes_b4_gate is True
     assert set(result.archetype_scores.keys()) == set(STANDARD_ARCHETYPES)
 
 
 def test_archetypes_specialist_shape() -> None:
     """Very narrow opening + high conversion returns the Specialist archetype.
 
-    Post-BBF-75: tightening. The input (opening_comfort=2,
-    conversion_ability=0.70) is closest to the Specialist centroid
-    in the current corpus (kNN confidence 0.913). A future corpus
-    rebalancing under BBF-75.1 may need new inputs.
+    Post-BBF-75: tightening. A fixed non-exact production-v0
+    representative vector is closest to the Specialist centroid.
     """
     from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
-    result = cluster_archetypes({
-        "opening_comfort": 2,
-        "conversion_ability": 0.70,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Specialist"])
     assert result.label in STANDARD_ARCHETYPES
     assert result.label == "Specialist", (
         f"input vector returns Specialist in the current corpus; "
         f"got {result.label!r}"
     )
-    assert 0.0 <= result.confidence <= 1.0
+    assert result.confidence >= 0.3
+    assert result.effect_size.d is not None
+    assert result.effect_size.d > 0.5
+    assert result.passes_b4_gate is True
 
 
 def test_archetypes_wildcard_shape() -> None:
     """Wide opening + low conversion returns the Wildcard archetype.
 
-    Post-BBF-75: tightening. The input (opening_comfort=60,
-    conversion_ability=0.30) is closest to the Wildcard centroid
-    in the current corpus (kNN confidence 0.644). Note: 60 is
-    *above* the highest Wildcard value in v1, so the kNN picks
-    Wildcard via z-scored-majority fallback rather than nearest
-    neighbor. A future corpus rebalancing under BBF-75.1 may
-    need new inputs.
+    Post-BBF-75: tightening. A fixed non-exact production-v0
+    representative vector is closest to the Wildcard centroid.
     """
     from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
-    result = cluster_archetypes({
-        "opening_comfort": 60,
-        "conversion_ability": 0.30,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Wildcard"])
     assert result.label in STANDARD_ARCHETYPES
     assert result.label == "Wildcard", (
         f"input vector returns Wildcard in the current corpus; "
         f"got {result.label!r}"
     )
-    assert 0.0 <= result.confidence <= 1.0
+    assert result.confidence >= 0.3
+    assert result.effect_size.d is not None
+    assert result.effect_size.d > 0.5
+    assert result.passes_b4_gate is True
 
 
 def test_archetypes_tilter_shape() -> None:
     """High sequence_based_tilt returns the Tilter archetype.
 
-    Post-BBF-75: tightening. The input (sequence_based_tilt=0.30)
-    is *above* the highest Tilter value in v1 (0.20-0.25), so
-    the kNN picks Tilter via z-scored-majority fallback rather
-    than nearest neighbor. kNN confidence 0.435. A future corpus
-    rebalancing under BBF-75.1 may need new inputs.
+    The production v0 corpus includes synthetic Tilter references with
+    an explicit sequence_based_tilt dimension derived from the approved
+    ARCHETYPE_TRAITS[Tilter] shape contract.
     """
     from chess_coach.profile import STANDARD_ARCHETYPES, cluster_archetypes
 
-    result = cluster_archetypes({
-        "sequence_based_tilt": 0.30,
-        "conversion_ability": 0.35,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Tilter"])
     assert result.label in STANDARD_ARCHETYPES
     assert result.label == "Tilter", (
         f"input vector returns Tilter in the current corpus; "
         f"got {result.label!r}"
     )
-    assert 0.0 <= result.confidence <= 1.0
+    assert result.confidence >= 0.3
+    assert result.effect_size.d is not None
+    assert result.effect_size.d > 0.5
+    assert result.passes_b4_gate is True
+
+
+def test_archetypes_tilter_feature_is_present_and_sensitive() -> None:
+    """v0 carries tilt references and changing only tilt changes confidence."""
+    from chess_coach.datasets.archetype_gold import load_archetype_gold
+    from chess_coach.profile import cluster_archetypes
+
+    tilter_entries = [
+        entry for entry in load_archetype_gold("v0")
+        if entry.archetype_label == "Tilter"
+    ]
+    assert tilter_entries
+    assert any("sequence_based_tilt" in entry.metrics for entry in tilter_entries)
+
+    no_tilt = dict(_REPRESENTATIVE_V0_METRICS["Tilter"])
+    no_tilt.pop("sequence_based_tilt")
+    with_tilt = {**no_tilt, "sequence_based_tilt": 0.3}
+    without_result = cluster_archetypes(no_tilt)
+    with_result = cluster_archetypes(with_tilt)
+    assert with_result.label == "Tilter"
+    assert with_result.confidence != without_result.confidence
 
 
 def test_archetypes_returns_archetype_assignment_dataclass() -> None:
@@ -367,11 +409,7 @@ def test_archetypes_returns_archetype_assignment_dataclass() -> None:
     from chess_coach.profile import ArchetypeAssignment, cluster_archetypes
     from chess_coach.profile.effect_size import EffectSize
 
-    result = cluster_archetypes({
-        "tactical_vs_positional_bias": 0.70,
-        "conversion_ability": 0.60,
-        "opening_comfort": 8,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Tactician"])
     assert isinstance(result, ArchetypeAssignment)
     assert isinstance(result.effect_size, EffectSize)
     assert isinstance(result.archetype_scores, dict)
@@ -450,15 +488,11 @@ def test_archetypes_winner_d_uses_other_archetype_distribution():
     """Cohen's d for the winner should be computed against the OTHER
     archetypes' scores as the null distribution.
 
-    Setup: a strong Tactician vector (Tactician scores high, others
-    score low). The d value should be > 0 (effect present) and not None.
+    Setup: a fixed non-identical production v0 Tactician representative.
+    The d value should be > 0 (effect present) and not None.
     """
     from chess_coach.profile import cluster_archetypes
-    result = cluster_archetypes({
-        "tactical_vs_positional_bias": 0.70,
-        "conversion_ability": 0.60,
-        "opening_comfort": 8,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Tactician"])
     assert result.label == "Tactician"
     # d should now be a real number, not None
     assert result.effect_size.d is not None, (
@@ -477,8 +511,8 @@ def test_archetypes_unknown_label_sets_d_to_none():
     should be None (per §B4 rule 3: no archetype match = inconclusive).
 
     BBF-66: rewritten as a behavioral assertion that does not depend on
-    which specific input triggers Unknown (the kNN against the SYNTHETIC
-    PLACEHOLDER corpus may pick a real archetype for {sequence_based_tilt:
+    which specific input triggers Unknown (the kNN against the production
+    v0 corpus may pick a real archetype for {sequence_based_tilt:
     0.01}). The test now constructs a fake ArchetypeAssignment with
     label=Unknown directly to verify the d=None invariant.
     """
@@ -531,11 +565,7 @@ def test_archetypes_d_capped_under_synthesized_null():
     Any strong signal input works.
     """
     from chess_coach.profile import cluster_archetypes
-    result = cluster_archetypes({
-        "tactical_vs_positional_bias": 0.70,
-        "conversion_ability": 0.60,
-        "opening_comfort": 8,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Tactician"])
     if result.effect_size.d is not None:
         # Cap is 3.0 either way
         assert -3.0 <= result.effect_size.d <= 3.0, (
@@ -567,19 +597,15 @@ def test_archetypes_explain_endpoint_includes_archetype_scores():
 
 
 def test_archetypes_assignment_passes_b4_gate_for_strong_tactician():
-    """A confident Tactician vector should produce an assignment where
-    passes_b4_gate=True (Cohen d >= 0.5, label != Unknown).
+    """A fixed production v0 Tactician representative should produce an
+    assignment where passes_b4_gate=True (Cohen d >= 0.5, label != Unknown).
 
     Verifies the BBF-65.2 field is computed at the end of
     cluster_archetypes() and correctly gates a strong signal.
     """
     from chess_coach.profile import cluster_archetypes
     from chess_coach.profile.effect_size import COHENS_D_THRESHOLD
-    result = cluster_archetypes({
-        "tactical_vs_positional_bias": 0.70,
-        "conversion_ability": 0.60,
-        "opening_comfort": 8,
-    })
+    result = cluster_archetypes(_REPRESENTATIVE_V0_METRICS["Tactician"])
     # Sanity: this is a Tactician vector
     assert result.label == "Tactician", (
         "test setup broken: expected Tactician, got "
