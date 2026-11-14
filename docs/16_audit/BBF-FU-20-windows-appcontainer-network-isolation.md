@@ -445,5 +445,8 @@ separate audit task.
   backend this BBF extends with the AppContainer layer.
 - `docs/16_audit/BBF-FU-20-impl-windows.md` — the earlier
   best-effort proxy-stripping Windows attempt, preserved as history.
+- `docs/16_audit/BBF-FU-20-windows-appcontainer-enablement-contract.md` —
+  the enablement contract for this path: what enabling it takes, what
+  acceptance means, and the residual limitations it accepts.
 - `docs/16_audit/OPEN-FOLLOWUPS.md` — the FU-20 ledger entry.
 - `docs/08_security/security-strategy.md` — the A-F11 property record.
