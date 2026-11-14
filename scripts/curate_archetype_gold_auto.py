@@ -168,6 +168,24 @@ def next_entry_id(version: str, existing_ids: set[str]) -> str:
     return f"AG-{version}-{n:04d}"
 
 
+
+def _load_shape_curated_entries(output_path: Path) -> list[dict]:
+    """Load canonical shape-curated rows that regeneration must preserve."""
+    if not output_path.is_file():
+        return []
+    try:
+        existing = json.loads(output_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    entries = existing.get("entries", []) if isinstance(existing, dict) else []
+    return [
+        entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and isinstance(entry.get("_provenance"), dict)
+        and entry["_provenance"].get("strategy") == "synthetic_shape_curated"
+    ]
+
 def curate_v02(
     pgn_inputs: list[Path],
     output_path: Path,
@@ -276,7 +294,12 @@ def curate_v02(
 # integer key (DEFAULT_OUTPUT -> "v0/corpus.json").
     int_version = "v0"
     entries: list[dict] = []
-    existing_ids: set[str] = set()
+    preserved_shape_curated = _load_shape_curated_entries(output_path)
+    existing_ids: set[str] = {
+        entry["id"]
+        for entry in preserved_shape_curated
+        if isinstance(entry.get("id"), str)
+    }
     for player in players:
         metrics = {
             "tactical_vs_positional_bias": tactical_vs_positional_bias(
@@ -301,11 +324,13 @@ def curate_v02(
         # sequence_based_tilt is optional (Tilter only); capture
         # but don't error if it's None.
         seq_eff = sequence_based_tilt(str(db_path), player.name)
-        if seq_eff.point_estimate:
+        if seq_eff.point_estimate is not None:
             metrics["sequence_based_tilt"] = seq_eff.point_estimate
 
         # kNN bootstrap label from v1 placeholder.
-        label, _confidence, _scores, _dist = knn_classify(metrics, k=3)
+        label, _confidence, _scores, _dist = knn_classify(
+            metrics, k=3, corpus_version="v1"
+        )
         if label not in STANDARD_ARCHETYPES:
             label = "Unknown"
 
@@ -354,28 +379,32 @@ def curate_v02(
     corpus = {
         "schema_version": 1,
         "_metadata": {
+            "version": int_version,
             "WARNING": (
-                "AUTO-DERIVED. This v0.2 corpus is generated from "
-                "real Lichess PGNs + a synthetic-analyses DB. The "
-                "metric vectors are real (production SQL pipeline); "
-                "the labels are auto-bootstrapped from the v1 "
-                "placeholder via _knn_classify. There is no "
-                "human-curator path on this project."
+                "AUTO-DERIVED + SHAPE-CURATED. This canonical v0 corpus "
+                "combines auto-derived player entries with preserved "
+                "BBF-88.2a and BBF-86.7 shape-curated rows. Auto-derived metric vectors "
+                "come from the production SQL pipeline and are labelled "
+                "against the v1 placeholder; shape-curated metric vectors "
+                "come from the documented ARCHETYPE_TRAITS contract."
             ),
             "provenance": "auto",
             "generator": (
                 f"scripts/curate_archetype_gold_auto.py @ {_git_sha()}"
             ),
-            "metric_methodology":
-                "services.chess_coach.profile.stats.<6 metrics>",
+            "metric_methodology": (
+                "services.chess_coach.profile.stats.<6 metrics> + "
+                "services.chess_coach.profile.tilt.sequence_based_tilt"
+            ),
             "metric_partial_coverage": [],
             "bootstrap_label_strategy":
                 "_knn_classify(metrics) against v1 placeholder",
             "pgn_inputs": [str(p) for p in pgn_inputs],
             "n_players_evaluated": len(players),
-            "n_entries_emitted": len(capped),
+            "n_entries_emitted": len(capped) + len(preserved_shape_curated),
+            "n_shape_curated_entries": len(preserved_shape_curated),
             "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "expected_real_corpus_size": 14,
+            "expected_real_corpus_size": len(capped) + len(preserved_shape_curated),
             "labels_use": (
                 "one entry per (player, archetype_label) -- the "
                 "kNN picks the label of the nearest reference "
@@ -385,7 +414,7 @@ def curate_v02(
             "v0_default": "v0 (production truth); v1 still callable",
             "v0_brief_alias": "v0.2 (BBF-88.x brief notation; loader sees v0)",
         },
-        "entries": capped,
+        "entries": [*capped, *preserved_shape_curated],
     }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -413,8 +442,12 @@ def curate_v02(
 
     return {
         "n_players_evaluated": len(players),
-        "n_entries_emitted": len(capped),
-        "archetypes": sorted(by_arch),
+        "n_entries_emitted": len(capped) + len(preserved_shape_curated),
+        "n_shape_curated_entries": len(preserved_shape_curated),
+        "archetypes": sorted(
+            {entry["archetype_label"] for entry in capped}
+            | {entry["archetype_label"] for entry in preserved_shape_curated}
+        ),
         "output": str(output_path),
     }
 

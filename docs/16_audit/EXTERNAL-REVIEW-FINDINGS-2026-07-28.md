@@ -54,7 +54,7 @@ a new short brief at `docs/16_audit/BBF-86.{5,6,7}-*.md` and
 |---|---|---|---|---|
 | 86.5 | Gate kNN label by confidence in production route | Low | ~50 LOC | ✅ shipped (`881c435`) |
 | 86.6 | Gateway health check surfaces degraded GroundingIndex | Low | ~30 LOC | ✅ shipped |
-| 86.7 | Corpus self-describing version + Dockerfile build-time flag | Medium | ~80 LOC + schema | ✅ shipped (`f0253b0`) |
+| 86.7 | Corpus self-describing version + Dockerfile build-time flag | Medium | ~80 LOC + schema | Implemented by this BBF; PR #48 is historical |
 | 90 | Regenerate lost briefs + change convention to tracked | Low | ~3 KB docs | IN PROGRESS (BBF-90) |
 
 **BBF-86.5 is the highest-impact item** — it closes the silent
@@ -84,7 +84,7 @@ After the second-pass review, the held-back queue is:
     to provide a DB snapshot. Held back.
 
 **Tier 4 — Strategic / held back:**
-11. **BBF-86.7** — corpus versioning schema. ✅ shipped
+11. **BBF-86.7** — corpus versioning schema. Implemented by this BBF
 12. **BBF-87.2** — online regen of v2 corpus (lichess rate-limit).
 13. **BBF-88.2** — extend v0 corpus to cover 3 missing archetypes. ✅ shipped
 14. **Real engine-backed narration path** — separate BBF.
@@ -100,9 +100,9 @@ After the second-pass review, the held-back queue is:
 1. **The kNN confidence threshold (2.0) is arbitrary.** Not
    validated against held-out real player data. BBF-86.5 should
    include a validation step or document the threshold's origin.
-2. **The "self-describing corpus" design is vague.** Current
-   `_metadata` shape is undocumented. BBF-86.7 needs to propose
-   the schema extension.
+2. **The "self-describing corpus" design is now implemented by BBF-86.7.** Its
+   `_metadata` schema, advisory validation, and coupled runtime selection
+   are defined in its tracked brief.
 3. **Lost-briefs recovery has structural risk.** Regenerated
    briefs from git history may be inaccurate. BBF-90 should
    include a human review step (sebko23 or external reviewer
@@ -186,7 +186,7 @@ analysis distilled the most important ones into 5 categories:
   WARNING log on missing corpus.
 
 **F5 — Corpus self-describing version**
-- BBF-86.7 added the `_metadata` schema and the `BUILD_ARG`
+- BBF-86.7 implements the `_metadata` schema and the `BUILD_ARG`
   Dockerfile flag.
 
 ---

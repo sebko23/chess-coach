@@ -115,6 +115,7 @@ class TestNarrativeGoldAuto:
         assert out.is_file(), f"corpus not written: {out}"
         corpus = json.loads(out.read_text(encoding="utf-8"))
         assert corpus["schema_version"] == 1
+        assert corpus["_metadata"]["version"] == "v2"
         assert corpus["_metadata"]["provenance"] == "auto"
         # The minimal-PGN fixture produces 2 entries (one per file),
         # which is below the strict-validator's 20-30 floor.  We

@@ -1,8 +1,8 @@
 """Unit tests for BBF-66 kNN archetype cluster.
 
-Tests the kNN classifier against the SYNTHETIC PLACEHOLDER corpus. The
-labels are STUB; the kNN's job is to pick SOMETHING (a label from the
-corpus), not to validate that labels are correct against real data.
+Tests the kNN classifier against the production v0 corpus. The kNN's job
+is to pick the closest labelled reference vector, not to validate every
+label against external ground truth.
 """
 
 from chess_coach.datasets.archetype_gold import load_archetype_gold
@@ -21,7 +21,7 @@ def test_cluster_min_sample_size_constant():
 def test_kNN_classifier_picks_label_from_corpus():
     """Given a vector that EXACTLY matches a corpus entry, the kNN
     must pick that entry's archetype_label."""
-    corpus = load_archetype_gold("v1")
+    corpus = load_archetype_gold("v0")
     # Pick the first Tactician entry
     tactician_entry = next(e for e in corpus if e.archetype_label == "Tactician")
     result = cluster_archetypes(dict(tactician_entry.metrics))
@@ -35,13 +35,14 @@ def test_kNN_classifier_handles_missing_optional_metrics():
     missing from the input vector (the kNN computes distance only over
     present-dimension overlap, OR uses a z-score with mean-imputation).
     """
-    corpus = load_archetype_gold("v1")
-    tactician_entry = next(e for e in corpus if e.archetype_label == "Tactician")
-    metrics = {k: v for k, v in tactician_entry.metrics.items()
+    corpus = load_archetype_gold("v0")
+    tilter_entry = next(e for e in corpus if e.archetype_label == "Tilter")
+    assert "sequence_based_tilt" in tilter_entry.metrics
+    metrics = {k: v for k, v in tilter_entry.metrics.items()
                if k != "sequence_based_tilt"}
     result = cluster_archetypes(metrics)
     assert result.label in STANDARD_ARCHETYPES  # Must pick SOMETHING
-    assert result.label == "Tactician"  # With placeholder corpus, this is exact
+    assert result.label == "Tilter"  # Optional tilt remains optional.
 
 
 def test_kNN_classifier_returns_Unknown_for_distant_input():
@@ -66,7 +67,7 @@ def test_kNN_classifier_passes_b4_gate_on_confident_match():
     """An exact-match input should produce a confident assignment with
     passes_b4_gate=True (Cohen's d above threshold; kNN distance is small
     so the synthesized null distribution produces a high d)."""
-    corpus = load_archetype_gold("v1")
+    corpus = load_archetype_gold("v0")
     tactician_entry = next(e for e in corpus if e.archetype_label == "Tactician")
     result = cluster_archetypes(dict(tactician_entry.metrics))
     # Confident match -> passes_b4_gate=True (BBF-65.2 contract)

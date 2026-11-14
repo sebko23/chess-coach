@@ -16,6 +16,13 @@ approved Path A: author 6 hand-curated synthetic entries directly
 into the v0 corpus with a new `synthetic_shape_curated` provenance
 strategy.
 
+**Historical-state note (BBF-86.7, 2026-11-14):** The sections below
+describe the pre-BBF-86.7 state as of this brief's original July 2026
+scope. BBF-86.7 is now implemented: the production archetype corpus
+defaults to v0, and the deferred v1-to-v0 flip described below has landed.
+The dated body is preserved as historical context rather than rewritten as
+current state.
+
 ---
 
 ## 0. Background and the silent failure mode

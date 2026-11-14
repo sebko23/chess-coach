@@ -252,6 +252,19 @@ def test_numstat_mismatch_is_rejected() -> None:
     head = _head_sha()
     if not base or base == head:
         return
+    target = None
+    for line in _git("diff", "--numstat", f"{base}..{head}").split("\n"):
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        add, dele, path = parts
+        if add.isdigit() and dele.isdigit() and path.endswith(".md"):
+            target = path
+            break
+    if target is None:
+        return
     code, out = _run(
         "--repo-root",
         str(REPO_ROOT),
@@ -260,7 +273,7 @@ def test_numstat_mismatch_is_rejected() -> None:
         "--head",
         head,
         "--numstat",
-        "docs/16_audit/OPEN-FOLLOWUPS.md=999,999",
+        f"{target}=999,999",
     )
     assert code == 1, f"expected exit 1 for a numstat mismatch, got {code}: {out}"
     assert "numstat mismatch" in out, f"unexpected message: {out}"

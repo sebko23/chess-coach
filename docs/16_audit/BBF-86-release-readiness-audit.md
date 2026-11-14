@@ -27,7 +27,7 @@ The audit was organized into the following categories:
   F3 E2E scope documentation, F4 kNN classifier docs, BBF-86.1a-c
   Ruff slices, BBF-86.2 profile slice, BBF-86.3 engine_orch slice,
   BBF-86.4 strategy, BBF-86.5 kNN confidence gate, BBF-86.6
-  grounding health check, BBF-86.7 corpus versioning).
+  grounding health check; BBF-86.7 corpus versioning is implemented by this BBF).
 
 The original audit document was at `docs/16_audit/BBF-86-release-readiness-audit.md`,
 approximately 12 KB. This is its regenerated approximation.
@@ -138,7 +138,7 @@ replaces §6):
 
 ### Tier 4 — Strategic / held back
 
-11. **BBF-86.7** — corpus versioning schema. ✅ shipped (`f0253b0`).
+11. **BBF-86.7** — corpus versioning schema. Implemented by this BBF; PR #48 is historical.
 12. **BBF-87.2** — online regen of v2 corpus (lichess rate-limit). Held back.
 13. **BBF-88.2** — extend v0 corpus to cover 3 missing archetypes. ✅ shipped (`25e17e2`).
 14. **Real engine-backed narration path** — separate BBF. Held back.
@@ -156,7 +156,7 @@ tickets held back (per v2 §13.3).**
 
 The release-readiness audit's main contribution was the per-file
 Ruff baseline (134 errors) and the held-back queue. The post-audit
-ship cluster (BBF-86.1 through BBF-86.7, BBF-87.x, BBF-88.x) closed
+ship cluster (BBF-86.1 through BBF-86.6, BBF-87.x, BBF-88.x) closed
 most of the Tier-1 and Tier-2 items.
 
 The audit was self-reported; the doc edits inherit any audit errors.
@@ -170,9 +170,9 @@ recreations.
 - `docs/16_audit/BBF-86-release-readiness-audit.md` (this brief, regenerated)
 - `docs/16_audit/BBF-86.4-ruff-strategy-decision.md` (existing, tracked)
 
-The BBF-86.5, BBF-86.6, and BBF-86.7 briefs exist on disk but are
-**untracked** (per the BBF-90 convention; existing untracked briefs
-remain untracked until they are migrated under the new convention).
+The BBF-86.5 and BBF-86.6 briefs remain untracked historical briefs; the
+**BBF-86.7 brief is now tracked by this BBF**. Existing untracked briefs
+remain untracked until they are migrated under the new convention.
 The v1 handoff is also untracked for the same reason.
 - `docs/16_audit/BBF-84B-fixture-policy.md` (regenerated, sibling brief)
 - `docs/16_audit/BBF-85-narrow-roadmap-refresh.md` (regenerated, sibling brief)

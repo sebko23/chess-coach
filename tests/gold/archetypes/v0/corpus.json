@@ -1,21 +1,22 @@
 {
   "schema_version": 1,
   "_metadata": {
-    "WARNING": "AUTO-DERIVED + SHAPE-CURATED. The 8 kNN-bootstrapped entries (Tilter, Grinder, Positional Player, Endgame Specialist) are auto-derived from real Lichess PGNs + a synthetic-analyses DB. The 6 entries covering Tactician, Wildcard, and Specialist (BBF-88.2a) are hand-curated from the ARCHETYPE_TRAITS shape contract because the v1 placeholder's 4-cluster metric space did not produce those archetype labels. The metric vectors for the 6 shape-curated entries are NOT measured; they are derived from the per-archetype trait parameters (start_score, end_score, blunder_rate, etc.) to extend coverage to all 7 standard archetypes. The labels are still self-consistent with v1's heuristic definitions; this is the documented honest gap that BBF-89 (hand-curated seed corpus) will close.",
+    "version": "v0",
+    "WARNING": "AUTO-DERIVED + SHAPE-CURATED. The 8 kNN-bootstrapped entries (Tilter, Grinder, Positional Player, Endgame Specialist) are auto-derived from real Lichess PGNs + a synthetic-analyses DB. The 8 entries covering Tactician, Wildcard, Specialist, and Tilter (BBF-88.2a plus BBF-86.7) are hand-curated from the ARCHETYPE_TRAITS shape contract. Their metric vectors are NOT measured; they are derived from the per-archetype trait parameters (start_score, end_score, blunder_rate, etc.) to extend coverage to all 7 standard archetypes. The labels remain self-consistent with the documented shape contract; BBF-89 remains the eventual hand-curated seed corpus.",
     "provenance": "auto",
-    "generator": "scripts/curate_archetype_gold_auto.py @ 2fb42b4 (initial 8) + hand-curated 6 entries per BBF-88.2a",
-    "metric_methodology": "services.chess_coach.profile.stats.<6 metrics>",
+    "generator": "scripts/curate_archetype_gold_auto.py @ 2fb42b4 (initial 8) + hand-curated 8 entries per BBF-88.2a and BBF-86.7",
+    "metric_methodology": "services.chess_coach.profile.stats.<6 metrics> + services.chess_coach.profile.tilt.sequence_based_tilt",
     "metric_partial_coverage": [],
-    "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder (8 entries) + shape-curated from ARCHETYPE_TRAITS (6 entries)",
+    "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder; shape-curated from ARCHETYPE_TRAITS (8 entries)",
     "pgn_inputs": [
       "C:\\Users\\i3\\Desktop\\lichess_ebassti_2026-03-05.pgn",
       "C:\\Users\\i3\\Downloads\\lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn"
     ],
     "n_players_evaluated": 14,
-    "n_entries_emitted": 14,
-    "n_shape_curated_entries": 6,
+    "n_entries_emitted": 16,
+    "n_shape_curated_entries": 8,
     "created_at": "2026-07-27T20:43:35+00:00",
-    "expected_real_corpus_size": 14,
+    "expected_real_corpus_size": 16,
     "labels_use": "one entry per (player, archetype_label) -- the kNN picks the label of the nearest reference vector against the v1 placeholder; shape-curated entries are derived from ARCHETYPE_TRAITS",
     "v0_strategy": "alongside_v1",
     "v0_default": "v0 (production truth); v1 still callable",
@@ -145,14 +146,16 @@
         "opening_comfort": 1.0,
         "conversion_ability": 0.0,
         "blunder_rate_vs_rating": 0.1744,
-        "decision_fatigue": 0.0
+        "decision_fatigue": 0.0,
+        "sequence_based_tilt": 0.0
       },
       "_provenance": {
         "player_name": "Svetozar Gligoric",
         "n_games_in_pgn": 4,
         "source_pgn": "lichess_study_fischer-bobby-my-60-memorable-games_by_ackreq_2026.07.21.pgn",
         "metric_methodology": "services.chess_coach.profile.stats.*",
-        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder",
+        "sequence_based_tilt_source": "services.chess_coach.profile.tilt.sequence_based_tilt returned the underpowered/no-sample sentinel 0.0 because the source PGN player sample is below the 30-game minimum for a meaningful tilt estimate."
       }
     },
     {
@@ -164,14 +167,16 @@
         "opening_comfort": 1.0,
         "conversion_ability": 0.0,
         "blunder_rate_vs_rating": 0.1744,
-        "decision_fatigue": 0.0
+        "decision_fatigue": 0.0,
+        "sequence_based_tilt": 0.0
       },
       "_provenance": {
         "player_name": "ITA19",
         "n_games_in_pgn": 2,
         "source_pgn": "lichess_ebassti_2026-03-05.pgn",
         "metric_methodology": "services.chess_coach.profile.stats.*",
-        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder"
+        "bootstrap_label_strategy": "_knn_classify(metrics) against v1 placeholder",
+        "sequence_based_tilt_source": "services.chess_coach.profile.tilt.sequence_based_tilt returned the underpowered/no-sample sentinel 0.0 because the source PGN player sample is below the 30-game minimum for a meaningful tilt estimate."
       }
     },
     {
@@ -286,6 +291,48 @@
         "rationale": "BBF-88.2a: second Specialist entry to ensure the 2-per-archetype floor. Same shape as AG-v0-0018 with slight variation in blunder_rate and time_pressure_quality.",
         "metric_methodology": "hand-curated from ARCHETYPE_TRAITS shape contract",
         "bootstrap_label_strategy": "shape_contract"
+      }
+    },
+    {
+      "id": "AG-v0-0020",
+      "archetype_label": "Tilter",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.5,
+        "time_pressure_quality": 0.2,
+        "opening_comfort": 15,
+        "conversion_ability": 0.4,
+        "blunder_rate_vs_rating": 0.25,
+        "decision_fatigue": 0.2,
+        "sequence_based_tilt": 0.2
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Tilter]",
+        "rationale": "BBF-86.7: synthetic Tilter reference derived from the existing v1 Tilter shape and cross-checked against ARCHETYPE_TRAITS[Tilter]. Its nonzero sequence_based_tilt dimension preserves a discriminative Tilter feature in production v0; the vector is synthetic, not player-measured.",
+        "metric_methodology": "synthetic shape reference from the v1 Tilter vector, cross-checked against ARCHETYPE_TRAITS[Tilter]",
+        "bootstrap_label_strategy": "shape_contract",
+        "source_reference": "tests/gold/archetypes/v1/corpus.json"
+      }
+    },
+    {
+      "id": "AG-v0-0021",
+      "archetype_label": "Tilter",
+      "metrics": {
+        "tactical_vs_positional_bias": 0.48,
+        "time_pressure_quality": 0.22,
+        "opening_comfort": 18,
+        "conversion_ability": 0.38,
+        "blunder_rate_vs_rating": 0.28,
+        "decision_fatigue": 0.22,
+        "sequence_based_tilt": 0.25
+      },
+      "_provenance": {
+        "strategy": "synthetic_shape_curated",
+        "archetype_trait_source": "ARCHETYPE_TRAITS[Tilter]",
+        "rationale": "BBF-86.7: synthetic Tilter reference derived from the existing v1 Tilter shape and cross-checked against ARCHETYPE_TRAITS[Tilter]. Its nonzero sequence_based_tilt dimension preserves a discriminative Tilter feature in production v0; the vector is synthetic, not player-measured.",
+        "metric_methodology": "synthetic shape reference from the v1 Tilter vector, cross-checked against ARCHETYPE_TRAITS[Tilter]",
+        "bootstrap_label_strategy": "shape_contract",
+        "source_reference": "tests/gold/archetypes/v1/corpus.json"
       }
     }
   ]

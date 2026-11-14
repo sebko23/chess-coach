@@ -12,16 +12,19 @@ corpus: L-2 is chess-position data (FEN + eval_deltas); this corpus is
 player-metric data (the 6 metric dimensions + archetype_label).
 
 The v1 corpus is a SYNTHETIC PLACEHOLDER (per the post-BBF-65 handoff
-directive). Real labelled entries replace placeholders in a future BBF.
+directive). The production default is v0, the auto-derived corpus shipped
+by BBF-88.x. Version metadata is validated in advisory mode: mismatches
+are logged but never refused.
 
 Public API:
 
-  load_archetype_gold(version="v1", base_path=None)
+  load_archetype_gold(version="v0", base_path=None)
     Load the corpus for the given version. Returns a list of
     ArchetypeGoldEntry dataclasses.
 
   load_archetype_gold_with_metadata(version, base_path=None)
-    Same, but returns the full dict (including _metadata).
+    Same, but returns the full dict (including _metadata). The
+    `_metadata.version` field is load-bearing for advisory diagnostics.
 
   validate_archetype_gold(corpus)
     Validate the corpus shape. Returns a list of error strings.
@@ -33,6 +36,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from chess_coach.datasets.corpus_version import warn_on_version_mismatch
 
 # ID pattern: AG-<version>-NNNN where <version> is either a numeric
 # version (e.g. v1) or the hand-curated seed token (hand-curated-v0),
@@ -80,7 +85,7 @@ class ArchetypeGoldEntry:
 
 
 def load_archetype_gold(
-    version: str = "v1", base_path: str | None = None
+    version: str = "v0", base_path: str | None = None
 ) -> list[ArchetypeGoldEntry]:
     """Load the corpus for the given version.
 
@@ -91,7 +96,7 @@ def load_archetype_gold(
 
 
 def load_archetype_gold_with_metadata(
-    version: str = "v1", base_path: str | None = None
+    version: str = "v0", base_path: str | None = None
 ) -> dict[str, Any]:
     """Same, but returns the full dict (preserves _metadata)."""
     base = Path(base_path) if base_path is not None else _default_base_path()
@@ -111,7 +116,12 @@ def load_archetype_gold_with_metadata(
             f"Archetype gold corpus at {corpus_path} has schema_version "
             f"{raw.get('schema_version')}, expected 1"
         )
+    warn_on_version_mismatch(
+        raw, version, corpus_path, corpus_name="archetype gold corpus"
+    )
     return raw
+
+
 
 
 def validate_archetype_gold(corpus: list[Any]) -> list[str]:

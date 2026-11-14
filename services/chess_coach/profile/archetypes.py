@@ -6,13 +6,13 @@ against the reference corpus at tests/gold/archetypes/v*/corpus.json.
 ## Design
 
 The BBF-66 implementation is kNN (k=3, z-scored Euclidean) against the
-v1 SYNTHETIC PLACEHOLDER corpus (see tests/gold/archetypes/v1/corpus.json
-for the explicit _metadata.WARNING block). Heuristic shape-matching
+v0 production corpus (see tests/gold/archetypes/v0/corpus.json
+for provenance and the explicit _metadata.WARNING block). Heuristic shape-matching
 (BBF-59 ship) is RETIRED entirely -- not kept as a fallback -- so there
 is exactly one source of truth.
 
 Steps:
-1. Load corpus entries (label, metrics) from the v1 corpus.
+1. Load corpus entries (label, metrics) from the configured archetype corpus.
 2. Compute per-dimension mean and std from the corpus.
 3. Z-score the input metrics using corpus mean/std.
 4. For each corpus entry, compute the z-scored Euclidean distance
@@ -32,12 +32,13 @@ passes_b4_gate=False (per §B4 rule 3: below-threshold metrics MUST NOT
 surface). For other labels, gate_metric is called with
 CLUSTER_MIN_SAMPLE_SIZE=1 (cluster assignments are single observations).
 
-## SYNTHETIC PLACEHOLDER caveat (BBF-66 Q1)
+## Corpus-label caveat
 
-The v1 corpus is a SYNTHETIC PLACEHOLDER. Confidence values from kNN
-against this corpus are NOT validated against real chess data. Real
-labelled entries replace placeholders in a follow-on BBF. The kNN
-algorithm itself is correct; only the corpus labels are placeholders.
+The production default is the v0 auto-derived plus shape-curated corpus.
+Its labels and confidence values are not externally validated against
+real-player ground truth. The v1 corpus remains the bootstrap reference
+used by the auto-curator. The kNN algorithm itself is correct; corpus-label
+quality remains a separate data-governance concern.
 
 ## Why this was changed (BBF-59 -> BBF-66)
 
@@ -53,6 +54,7 @@ domain expert (the user) can curate without touching the algorithm.
 """
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -129,18 +131,29 @@ STANDARD_ARCHETYPES = (
 )
 
 
-def _load_corpus_entries() -> list[tuple[str, dict[str, float]]]:
-    """Load the v1 archetype gold corpus. Returns list of (label, metrics)
-    tuples. The corpus is loaded from tests/gold/archetypes/v1/corpus.json
-    (Option B -- separate file from L-2 corpus).
+def resolve_archetype_gold_version(env: dict[str, str] | None = None) -> str:
+    """Return the archetype corpus version used by production clustering."""
+    src = os.environ if env is None else env
+    value = src.get("CHESS_COACH_ARCHETYPE_GOLD_VERSION")
+    return value if value else "v0"
 
-    BBF-66 Q1: the v1 corpus is a SYNTHETIC PLACEHOLDER. The labels are
-    STUB; the kNN's job is to pick SOMETHING from the corpus, not to
-    validate that labels are correct against real data. See the
-    _metadata.WARNING block in the corpus file.
+
+def _load_corpus_entries(
+    version: str | None = None,
+) -> list[tuple[str, dict[str, float]]]:
+    """Load the configured archetype gold corpus.
+
+    The production default is v0, which is the corpus copied by the Docker
+    image. ``CHESS_COACH_ARCHETYPE_GOLD_VERSION`` may select another
+    shipped version without changing the classifier implementation.
     """
     from chess_coach.datasets.archetype_gold import load_archetype_gold
-    return [(e.archetype_label, dict(e.metrics)) for e in load_archetype_gold("v1")]
+
+    selected_version = version or resolve_archetype_gold_version()
+    return [
+        (e.archetype_label, dict(e.metrics))
+        for e in load_archetype_gold(selected_version)
+    ]
 
 
 def _zscore_normalize(
@@ -163,6 +176,7 @@ def _knn_classify(
     k: int = 3,
     z_score_threshold: float = 2.0,
     min_confidence: float = 0.3,
+    corpus_version: str | None = None,
 ) -> tuple[str, float, dict[str, float], float]:
     """k-NN against the archetype gold corpus.
 
@@ -180,7 +194,7 @@ def _knn_classify(
        0.3), return "Unknown" instead of the wrong-but-close label.
        (BBF-86.5: this gates the silent failure mode where users
        in the Tactician/Wildcard/Specialist cluster (no training
-       data in v0's 8-entry corpus) get nearest-neighbor labels
+       data in the original v0 bootstrap subset) get nearest-neighbor labels
        from the 4 covered archetypes. The kNN was finding "close
        enough" matches but the labels were wrong. The 0.3 floor
        is conservative: any label with confidence < 0.3 is surfaced
@@ -197,7 +211,7 @@ def _knn_classify(
     with confidence < 0.3 is surfaced as Unknown instead of
     being reported as authoritative.
     """
-    corpus = _load_corpus_entries()
+    corpus = _load_corpus_entries(corpus_version)
     if not corpus:
         # No corpus: fall back to Unknown. (We don't have heuristic as fallback
         # per the BBF-66 design decision: heuristic is RETIRED.)
@@ -261,7 +275,8 @@ def _knn_classify(
     k_nearest = distances[:k]
     if not k_nearest:
         return ("Unknown", 0.0, {}, float("inf"))
-    mean_neighbor_distance = sum(d for _, d in k_nearest) / len(k_nearest)
+    effective_k = len(k_nearest)
+    mean_neighbor_distance = sum(d for _, d in k_nearest) / effective_k
 
     # Majority vote on labels among k nearest.
     label_votes: dict[str, int] = {}
@@ -272,7 +287,7 @@ def _knn_classify(
     # Build archetype_scores: vote-share for each label among k nearest.
     archetype_scores = dict.fromkeys(STANDARD_ARCHETYPES, 0.0)
     for label, _ in k_nearest:
-        archetype_scores[label] += 1.0 / k
+        archetype_scores[label] += 1.0 / effective_k
 
     # If k nearest are too far, return Unknown.
     if mean_neighbor_distance > z_score_threshold:
@@ -291,7 +306,7 @@ def _knn_classify(
     # the wrong-but-close label. The kNN would otherwise return
     # the nearest-neighbor label for users in the
     # Tactician/Wildcard/Specialist cluster (no training data
-    # in v0's 8-entry corpus), even when the match is genuinely
+    # in the original v0 bootstrap subset), even when the match is genuinely
     # poor (high distance, low confidence). The min_confidence
     # gate prevents this silent failure mode.
     if confidence < min_confidence:
@@ -306,7 +321,7 @@ def cluster_archetypes(
     """Assign an archetype to a player based on their 6-metric vector.
 
     BBF-66: replaced BBF-59 heuristic shape-matching with kNN against the
-    archetype gold corpus at tests/gold/archetypes/v1/corpus.json.
+    configured archetype gold corpus.
     Heuristic is RETIRED (not kept as a fallback) per the Q1 strategic
     decision -- single source of truth.
 
@@ -394,6 +409,7 @@ def cluster_archetypes(
 __all__ = [
     "ArchetypeAssignment",
     "STANDARD_ARCHETYPES",
+    "resolve_archetype_gold_version",
     "CLUSTER_MIN_SAMPLE_SIZE",
     "cluster_archetypes",
 ]
