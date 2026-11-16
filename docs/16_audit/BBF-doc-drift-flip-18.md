@@ -21,9 +21,10 @@ Three claims in three lines, and all three were false against the repository:
    `git ls-files --error-unmatch` resolves it; `git check-ignore` does not match
    it, so it is not ignored either.
 2. **"per the project's `docs/16_audit/` convention."** There is no such
-   convention in the repository's actual state. 91 files under `docs/16_audit/`
-   are tracked on `main` — this ledger among them, plus every per-flip brief in
-   this series. The ledger is tracked alongside them, not apart from them.
+   convention in the repository's actual state. At the pinned base of this flip,
+   91 files under `docs/16_audit/` were tracked — this ledger among them, plus
+   every per-flip brief in this series. The ledger is tracked alongside them,
+   not apart from them.
 3. **"Do NOT `git add` it."** An instruction to avoid a no-op. The file is
    already in the index on every branch derived from the pinned base.
 
@@ -186,6 +187,16 @@ prose in a markdown file with no behavioural surface.
 - **The header's date is the date the file became tracked**, which is the
   commit's own date. A reader who wants the reason should look at PR #84's
   diff; this flip records that the file was added there, not why.
+- **Correction (2026-11-16, doc-drift flip-19) to §1's file-count sentence.**
+  §1 item 2 originally read "91 files under `docs/16_audit/` are tracked on
+  `main`". That was true at this flip's pinned base (`42a6a400`) and became false
+  when this flip landed, because this brief is itself a file under `docs/16_audit/` —
+  the count on `main` moved to 92 at this flip's own merge. The sentence now scopes
+  the count to the pinned base instead of to the moving ref, so it cannot be
+  invalidated by a later addition. The count value itself (91) is unchanged and was
+  measured, not corrected: `git ls-tree -r --name-only 42a6a400 docs/16_audit`
+  returns 91 entries (90 besides this ledger), and the same command at this flip's
+  landed merge returns 92. No other sentence in this brief changed.
 
 ## §9. Maintenance-cost estimate
 
