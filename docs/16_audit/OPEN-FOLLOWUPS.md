@@ -4,9 +4,9 @@
 scope for the BBF that surfaced them. Each item should reference the BBF that identified it
 and the directive that explicitly deferred it.
 
-**Convention:** This file is untracked, per the project's `docs/16_audit/` convention.
-Do NOT `git add` it. Future sessions should read this on startup alongside
-`HERMES-POLICY-AUTH-BOUNDARIES-2026-08-03.md`.
+**Convention:** This file is tracked in git and has been since 2026-08-08 (PR #84). Do NOT
+remove it or add it to `.gitignore`; future sessions should read this on startup alongside
+`docs/16_audit/HERMES-POLICY-AUTH-BOUNDARIES-2026-08-03.md`.
 
 ---
 
