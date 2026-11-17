@@ -1,6 +1,6 @@
 # BBF-doc-drift-flip-18 — correct the ledger's stale "this file is untracked" header
 
-**Status:** Draft for review
+**Status:** Doc-only BBF. 2 files modified (`docs/16_audit/OPEN-FOLLOWUPS.md` modified, `docs/16_audit/BBF-doc-drift-flip-18.md` NEW per-flip brief).
 **Base:** `42a6a400cf37911d15dc8edcd744000945c6fcdc`
 
 ## §1. Why this flip exists

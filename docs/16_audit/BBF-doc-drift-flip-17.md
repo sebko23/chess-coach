@@ -1,6 +1,6 @@
 # BBF-doc-drift-flip-17 — close the FU-20 stale out-of-scope list and record the enablement contract
 
-**Status:** Draft for review
+**Status:** Doc + config BBF. 3 files modified (`.env.example` modified, `docs/16_audit/OPEN-FOLLOWUPS.md` modified, `docs/16_audit/BBF-doc-drift-flip-17.md` NEW per-flip brief).
 **Base:** `025ddb3e983fc936aa97abd719ec1f53cda6bf5b`
 
 ## §1. Why this flip exists

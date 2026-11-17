@@ -1,6 +1,7 @@
 # BBF — FU-20 Windows AppContainer network isolation
 
-**Date:** 2026-11-09
+**Date:** 2026-11-09 (implementation work)
+**Landed on `main`:** 2026-11-11 as squash `f57bfcc1` (PR #195)
 **Status:** Implementation landed behind an opt-in flag. **FU-20 is NOT marked resolved** — production enablement is a separate product decision.
 **Scope:** A-F11 property 2 (no network access in the PDF-parsing subprocess) on Windows.
 
