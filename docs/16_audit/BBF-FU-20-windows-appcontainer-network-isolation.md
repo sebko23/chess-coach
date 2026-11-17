@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-09 (implementation work)
 **Landed on `main`:** 2026-11-11 as squash `f57bfcc1` (PR #195)
-**Status:** Implementation landed behind an opt-in flag. **FU-20 is NOT marked resolved** — production enablement is a separate product decision.
+**Status:** Implementation landed behind an opt-in flag. **FU-20 is NOT marked resolved** — **Decision A was accepted generally on 2026-11-17** as available-for-enablement (actual activation remains a per-deployment operational decision) and **Decision B was not accepted**, so the shipped default remains the 501 `internal.not_implemented` refusal.
 **Scope:** A-F11 property 2 (no network access in the PDF-parsing subprocess) on Windows.
 
 ---
@@ -374,7 +374,7 @@ These are real and are **not** closed by this BBF.
    artifact dir) remains a deployment-config concern on Windows
    (AppLocker/WDAC). This BBF addresses property 2 only.
 2. **The opt-in must be set for the Windows path to run at all.** Until
-   the enablement decision, Windows PDF parsing is still refused.
+   the opt-in is enabled, Windows PDF parsing is still refused.
 3. **The AppContainer grants the parser its own package identity**, which
    the OS may grant additional rights to through other policy. This BBF
    controls the capability set and the filesystem ACLs it applies; it does

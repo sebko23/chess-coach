@@ -183,7 +183,7 @@ a blocked or misconfigured deployment (500).
 - the shipped default is the **501 `internal.not_implemented`** refusal;
 - no parser process, Job target, or AppContainer is created while the
   opt-in is off;
-- FU-20 remains **open**, pending the product-enablement decision;
+- FU-20 remains **open**, as the standing enablement item — **Decision A was accepted generally on 2026-11-17** as available-for-enablement (actual activation remains a per-deployment operational decision), and **Decision B was not accepted**;
 - Linux network isolation remains enforced fail closed.
 
 ## 8. Related records
