@@ -1442,8 +1442,8 @@ each one findable for the right failure mode.
 
 ## Persistence and recall
 
-- This document lives at `docs/16_audit/HERMES-POLICY-AUTH-BOUNDARIES-2026-08-03.md` (untracked,
-  per the project's `docs/16_audit/` convention).
+- This document lives at `docs/16_audit/HERMES-POLICY-AUTH-BOUNDARIES-2026-08-03.md` and is
+  **tracked** in git (added by squash `d3c5a18a`, 2026-08-10); it is not ignored.
 - A condensed version of 7.1 + 7.2 is in Hermes persistent memory at `MEMORY.md` under the
   "Authorization-boundary incident" entry (added 2026-08-03, end of session
   `20260803_093603_772e51`).

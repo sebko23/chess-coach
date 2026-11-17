@@ -1,6 +1,6 @@
 # BBF-doc-drift-flip-16 — close the FU-30 and FU-35 stale mid-entry status declarations
 
-**Status:** Draft for review
+**Status:** Doc-only BBF. 2 files modified (`docs/16_audit/OPEN-FOLLOWUPS.md` modified, `docs/16_audit/BBF-doc-drift-flip-16.md` NEW per-flip brief).
 **Base:** `ab3aef09f23a2d076e69026ca8d36f68bb667341`
 
 ## §1. Why this flip exists
