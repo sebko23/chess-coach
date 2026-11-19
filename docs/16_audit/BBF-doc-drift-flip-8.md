@@ -80,8 +80,36 @@ append below.
 
 - **Does not edit the append blocks.** They're accurate. Re-stating them would be scope-creep.
 - **Does not edit FU-2's PARTIAL status.** FU-2 is `PARTIALLY RESOLVED` per line 56, with the live part being the doc-fix in PR #79 and the deferred part being FU-5. Now that FU-5 is RESOLVED, FU-2's PARTIAL wording is technically stale, but FU-2's status shape (`PARTIALLY RESOLVED` per the regex, with one of its sub-parts satisfied by FU-5) is intentionally preserved for now — flagged as a separate potential flip-9 candidate.
+
+  **Correction (2026-11-19, doc-drift fix-up):** the bullet above is preserved
+  as the reading at the time of this flip (2026-10-21), when FU-2's status line
+  did read `PARTIALLY RESOLVED 2026-08-04`. FU-2 is now `RESOLVED 2026-08-06`,
+  its deferred part having been discharged by FU-5 (`cada4ab2`), so the
+  `PARTIALLY RESOLVED` shape this bullet names is no longer the live status.
+  The scoping decision this flip made is not re-opened: leaving FU-2 alone was
+  correct then, and only the current-state claim is corrected.
 - **Does not re-implement either FU-5 or FU-6.** Both ships are on `main`; the on-disk truth is intact.
 - **Does not touch FU-15, FU-42.** Those are session-startup-named but are *separate* work items (FU-15 = 3 pre-existing frontend test failures, FU-42 = A-F11 sandbox-isolation tests follow-on to FU-19). Both are still OPEN per the headline and have NO append Resolved block. Different shape from FU-5/FU-6 — out of scope here.
+
+  **Correction (2026-11-19, doc-drift fix-up):** the bullet above is preserved
+  as the reading at the time of this flip (2026-10-21). Two things have since
+  changed, and one of them was already imprecise when written.
+
+  Its "still OPEN" framing no longer holds: FU-15 is FULLY RESOLVED (2026-08-10,
+  via PR #86 and PR #89 — `77a83796`; flip-9a flipped its headline later the
+  same day, after this brief landed) and FU-42 is RESOLVED (2026-10-16, via PR
+  #143 — `7d51afa0`). Each entry's own `**Status:**` line in the `## FU-N`
+  section is the live status.
+
+  The bullet's "Both are still OPEN" wording over-stated FU-15 even when it was
+  written: FU-15's own `**Status:**` line read `PARTIAL` at this brief's base,
+  not `OPEN`. It was therefore not a stale claim for FU-15 — it was an
+  imprecise one — and it is recorded here as such rather than as a later
+  measurement that has overtaken it.
+
+  The scoping decision this flip made is not re-opened: keeping FU-15 and FU-42
+  out of scope was correct then, and the bullet is corrected only as a
+  current-state statement.
 
 ---
 

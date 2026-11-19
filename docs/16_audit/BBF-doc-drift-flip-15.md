@@ -128,15 +128,29 @@ This flip does not touch:
 
 - FU-3, FU-4, or any other FU entry;
 - the BBF-86.7 corpus-versioning work or PR #48;
-- the false `shipped` claims in the BBF-86 audit briefs;
+- the `shipped` claims in the BBF-86 audit briefs, which read as false when this
+  flip was written (2026-11-13) and were corrected separately on 2026-11-14 by
+  the BBF-86.7 implementation landing;
 - FU-5's implementation or ledger entry beyond the historical PR #196
   reference in FU-2's replacement line;
 - any source, test, workflow, configuration, lockfile, or generated API file.
 
-BBF-86.7 is a separate defect class. Commit `f0253b0` is not an ancestor of
-main, so whether to land or reconstruct that work and how to correct the
-related audit prose require a separate BBF and decision. They are not
-bundled into this narrow FU-2 status correction.
+BBF-86.7 is a separate defect class. At the time of this flip (2026-11-13)
+commit `f0253b0` was not an ancestor of main, so whether to land or reconstruct
+that work and how to correct the related audit prose required a separate BBF and
+decision. They were not bundled into this narrow FU-2 status correction.
+
+**Correction (2026-11-19, doc-drift fix-up):** that separate BBF has since
+happened. PR #199 (`0243d315`) shipped BBF-86.7's reviewed implementation on
+2026-11-14 and is an ancestor of `main`, so the corpus `version` field and the
+Dockerfile `BUILD_ARG` flags are now in the tree and the audit briefs' `shipped`
+claims have been corrected. The passage above is preserved as the historical
+reading; its live status is that BBF-86.7's scope is discharged by PR #199. The
+commit `f0253b0` itself is still not an ancestor of main — the work landed
+through a different reviewed commit — and PR #48 was closed as superseded on
+2026-11-19. The scope decision this flip made is not re-opened: deferring
+BBF-86.7 to a separate BBF and decision was correct then, and only the
+current-state claim is corrected.
 
 ---
 

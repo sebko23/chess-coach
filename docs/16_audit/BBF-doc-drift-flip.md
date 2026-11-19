@@ -65,6 +65,23 @@ These 13 will remain in the `## FU-N` section with
 their existing `Status: OPEN` (or equivalent) markers.
 The BBF's diff is restricted to the 14 closures only.
 
+**Correction (2026-11-19, doc-drift fix-up):** the table above is preserved as
+the reading at the time of this flip (2026-10-16, audited against `cab74655`),
+but its "genuinely still OPEN" framing no longer holds for most of its rows.
+Ten of the thirteen named FUs have since been resolved: FU-5 and FU-6 by the
+squashes `cada4ab2` and `e091988c`, FU-19 by PR #143 (`7d51afa0`), FU-20 for
+the named release scope on 2026-10-30, FU-21 by PR #169 (`d3fbb35c`), FU-22 by
+PR #190, FU-29 by the FU-29 chain on 2026-10-17, FU-30 by `1501f408`, FU-35 by
+`99a355df` for its structural half and `bcb70d88` for its packaging half, and
+FU-11 for the approved α-ext scope on 2026-11-04. Each entry's own
+`**Status:**` line in the `## FU-N` section is the live status and carries the
+resolution. The three rows that remain true are FU-9, FU-23 and FU-27, which
+are still OPEN. FU-20's row remains true in part: its scope is resolved for the
+named release scope, and the per-deployment enablement it records is still open
+as a standing item. The scope decision this flip made is not re-opened: its 14
+closures were correct, and the exclusion table is corrected only as a
+current-state statement.
+
 **Work product:**
 
 This BBF produces 2 file changes:

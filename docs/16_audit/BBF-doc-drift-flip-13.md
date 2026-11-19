@@ -179,6 +179,21 @@ so the fix is one line. That is a config change to a live CI-adjacent file and i
 tracked as a separate BBF, not discharged by this doc-only flip. The ledger's `## Resolved` entry
 records the finding so it is not lost.
 
+**Correction (2026-11-19, doc-drift fix-up):** the finding above is preserved as
+the reading at the time of this flip (2026-10-27), when it was correct: the
+merged `.gitleaks.toml` did then name `lichess-pat` in `targetRules`, and this
+brief was landed on 2026-10-27 at 12:22 local time on the same day that the
+separate BBF it referenced was merged — PR #184, merge commit `a5bd6d38`, at
+13:59 local time. PR #184 removed only that one id, leaving the list as
+`["generic-api-key", "github-pat", "curl-auth-header"]`, so the finding has since
+shipped and the merged config no longer names `lichess-pat`. The three retained
+ids are load-bearing for path allowlisting on gitleaks 8.30.1 and must not be
+removed without cross-version re-measurement; that measurement, and the retained
+ids' rationale, are recorded in the FU-48 entry. The ledger's own FU-38
+correction block already records this reconciliation. The scope decision this
+flip made is not re-opened: deferring the config change to a separate BBF was
+correct then, and only the current-state claim is corrected.
+
 ---
 
 ## §5. The `## Resolved` entry
@@ -195,6 +210,18 @@ This flip does not touch:
 
 - **FU-20** at L1664 — untouched. Its `**Status:** OPEN. Real contract gap, but heavy-lift caveat applies:` line is byte-identical to the base.
 - **FU-35** at L2538 — untouched. Its `**Status:** OPEN. Resolution shape:` line is byte-identical to the base.
+
+**Correction (2026-11-19, doc-drift fix-up):** the two bullets above are
+preserved as the reading at the time of this flip (2026-10-27), when both
+quoted mid-entry strings were present in the ledger and byte-identical to this
+flip's base. Their *byte-identity* claim still holds against that pinned base,
+but the strings are no longer both live: FU-20's quoted mid-entry line is still
+in the ledger, sitting under a lead that now reads `RESOLVED for the named
+release scope (2026-10-30)`, while FU-35's quoted line is no longer present at
+all — FU-35 is `RESOLVED 2026-10-27`, its packaging half having shipped in
+`bcb70d88`. The scope decision this flip made is not re-opened: each entry was
+correctly excluded from a doc-only flip at the time. Only the current-state
+reading of the two bullets is corrected.
 - **L1786** — historical prose inside FU-21's preserved block, untouched.
 - Any source file, test, lockfile, package manifest, workflow, or `.gitleaks.toml`.
 - The `lichess-pat` `targetRules` entry — measured, documented, and deliberately deferred to a separate config BBF.
