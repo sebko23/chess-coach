@@ -3551,6 +3551,142 @@ cross-version re-measurement this entry requires and is a separate decision.
 risk; PR #184 — the merged one-line config BBF that removed `lichess-pat`; the
 `## Resolved` FU-38 entry below — the pre-PR-#184 state this entry supersedes.
 
+## FU-49 — `picomatch` ReDoS advisory (`CVE-2026-112366`) briefly reddened the `pnpm audit` gate on `main`; the advisory was then withdrawn
+
+**Identified:** 2026-11-17, while refreshing PR #205's merged-state body after
+the FU-20 enablement flip. The `pnpm audit (JS dep vulnerability scan)` job in
+`.github/workflows/security-audit.yml` failed at the landed SHA with one
+high-severity finding, `picomatch` ReDoS, while the same job had passed on the
+same SHA earlier the same day.
+
+**The finding, as the gate reported it.** `pnpm audit --audit-level moderate
+--prod` (the exact CI invocation, `working-directory: apps/desktop`) reported
+one vulnerability, exit 1:
+
+| Package | Locked version | Vulnerable range | Patched range (gate's own text) | Severity | Advisory |
+|---|---|---|---|---|---|
+| `picomatch` | 4.0.5, 4.0.7 | `<= 4.0.7` | `>= 4.0.8` | high | `GHSA-fc5q-39xc-vjpf` / `CVE-2026-112366` |
+
+The `>= 4.0.8` in the last column is the advisory text the gate itself
+printed; it is **not** a release that exists. The advisory's API record
+reports `first_patched_version: null` and npm publishes no `4.0.8` — the
+highest published version is still `4.0.7`. See *What remains open* below.
+
+**The dependency paths.** The gate reported **10 paths** and printed three of
+them: `vite>picomatch`, `@vitejs/plugin-react>vite>picomatch`, and
+`@vitejs/plugin-react>@rolldown/plugin-babel>vite>picomatch`, truncating the
+rest. The chain structure is measured directly with `pnpm why picomatch
+--prod` in `apps/desktop`, which shows the paths are **not** all through
+`vite`: `picomatch@4.0.5` is reached directly by `@rolldown/plugin-babel`
+(which is itself reached from `@vitejs/plugin-react`), and also by `fdir`
+(reached from `tinyglobby`); `picomatch@4.0.7` is reached by `vite`. `vite`
+(`^8.3.5`) is a **production** dependency of `apps/desktop` — declared in
+`dependencies`, not `devDependencies`, in every revision of that manifest in
+the recent history — which is why `--prod` includes these chains.
+
+**Why the same SHA changed from green to red.** The gate did not change; the
+advisory database it reads did. The ordering rests on the CI job timestamps,
+which are immutable: the passing attempt's `pnpm audit` job ran
+`13:12:18Z`–`13:12:34Z` and reported `No known vulnerabilities found`; the
+first failing attempt's ran `20:28:45Z`–`20:29:00Z` and the second's ran
+`20:42:13Z`–`20:42:24Z`, both reporting `1 vulnerabilities found / Severity: 1
+high`. The advisory record itself was updated between those runs and updated
+again when it was withdrawn; its `published_at` is 2026-10-19, its
+`withdrawn_at` is `2026-11-18T15:38:56Z`, and its `updated_at` /
+OSV `modified` are **moving values** — as read on 2026-11-18, GitHub's
+`updated_at` was `2026-11-18T15:38:58Z` and OSV's `modified` was
+`2026-11-18T15:56:12Z`, neither of which is the 2026-11-17 value that the
+record carried during the failing runs. The causal claim does not depend on
+any of those moving values: the same job, the same command, and the same SHA
+produced opposite results, and only the advisory's presence in the database
+changed.
+
+**Not caused by the flip under test.** `apps/desktop/pnpm-lock.yaml` and
+`apps/desktop/package.json` are byte-identical between the flip's base
+(`849a6388`) and its landed head (`ce35a3e6`) — the same two blob ids on both
+sides of that range — and that flip's scope was five Markdown files with no
+dependency surface.
+
+**Status:** RESOLVED 2026-11-18 by the **withdrawal** of the advisory — not by
+any change to this repository. The advisory record's `withdrawn_at` is
+`2026-11-18T15:38:56Z` and its summary now reads `Withdrawn Advisory:
+picomatch vulnerable to ReDoS through single-branch repeated extglobs`. The
+CI job was re-run after that withdrawal and reported `success`; the landed
+SHA is green again at 20/20 jobs (smoke 13/13, security-audit 7/7).
+
+**What remains open, and what is explicitly not claimed.** The **code** is
+unchanged: `picomatch` 4.0.5 and 4.0.7 are still in the lockfile, and no
+patched release exists to move to — npm's `latest` is still `4.0.7` (published
+2026-08-24) and no `4.0.8` has been published. Both upstream fix candidates
+are unmerged: `micromatch/picomatch` #235 ("detect glob-star-in-branch and
+repetition overlap as ReDoS-risky extglobs", the PR the advisory cites) is
+**closed and unmerged**, and #194 ("treat a leading `?` in an extglob body as a
+wildcard"), which the advisory references, is **open and unmerged**. There is
+therefore nothing to pin. The gate is green because the advisory is withdrawn,
+not because the locked code was remediated; a re-listing of this advisory
+would redden the gate again with no repository change.
+
+**The withdrawal's own wording is unsettled upstream.** The advisory currently
+reads, verbatim: *"This advisory has been withdrawn because it is a security
+issue."* That wording points to an upstream maintainer comment which disputes
+the classification — "How many times do I have to explain that globs are
+regular expressions … It's not a vulnerability, it's nonsense", with the
+recommendation not to use that pattern and not to let untrusted users define
+regular expressions. An advisory-database update is **proposed** to change the
+reason to "because it is **not** a security issue"; as read on 2026-11-18 both
+GitHub's record and OSV's copy still carry the "because it is a security
+issue" wording, so the proposed change had not landed. Both positions are
+recorded here without adjudication: this entry records the **gate state**, the
+**upstream state**, and the **pending wording change**, and it does not rule
+on whether the underlying behaviour is a vulnerability.
+
+**Reachability in this repository.** `picomatch` is not a direct dependency and
+is not imported by any application source — a repository-wide search across
+`src/`, `apps/desktop/src/`, `services/`, `libs/`, `scripts/`, `tests/` and
+`infra/` finds no occurrence outside the lockfile. It is reached only
+transitively, through `vite` and `vite`'s own build-time globbing
+dependencies (`tinyglobby`/`fdir`, and `@rolldown/plugin-babel` via
+`@vitejs/plugin-react`). `vite` is a build-time tool here — the shipped
+desktop app is a built bundle, not a live dev server. The only globs applied
+are the static patterns in `apps/desktop/vite.config.ts`
+(`**/src-tauri/**`, `src/**/*.{test,spec}.{ts,tsx}`, `**/node_modules/**`,
+`**/dist/**`, `tests/e2e/**`) — build-system literals, not attacker-supplied
+input, and not the single-branch repeated extglob pattern the advisory
+describes. No repository code path passes user-controlled glob patterns to
+`picomatch`. This is a reachability observation, not a risk acceptance, and
+it does not change the gate's behaviour.
+
+**Audit-log discipline.** This entry exists because a dependency-audit gate
+turned red at an unchanged SHA; the gate's red state was reproduced locally
+with the CI's exact command and the CI log was read directly.
+
+**The dev-dependency graph is NOT covered by the gate and is not clean.**
+`pnpm audit --audit-level moderate` (without `--prod`) exits 1 with **32
+vulnerabilities** — 2 critical, 11 high, 16 moderate, 3 low — from **25
+distinct advisories** across **8 packages**: `tinypool`, `undici`,
+`brace-expansion`, `js-yaml`, `vitest`, `@vitest/mocker`, `glob`, and
+`minimatch`. None of those appear in the `--prod` gate, so the gate's green
+result says nothing about them. They are outside the gate's scope and are
+**not** claimed as resolved by this entry.
+
+**A second, still-false comment in the same job.** The `pnpm-audit` job's
+comment block in `.github/workflows/security-audit.yml` carries two claims. The
+first — that the locked dep graph "has 0 prod-only vulnerabilities at
+moderate-or-higher" — was true when written, was false during the advisory
+window, and is true again now that the advisory is withdrawn. The second —
+that "Dev deps are 0 of the 0 total vulns after the upgrade" — is **false
+now** and was false before the advisory window: the dev-only graph carries the
+32 vulnerabilities listed above. The comment was not edited here. This entry
+is a ledger record; the dev-graph claim is a separate stale-comment defect
+that needs its own one-line workflow correction, and the prod-graph claim
+would become stale again if the advisory is re-listed.
+
+**Cross-references:** FU-44 — the same shape (a pre-existing dependency
+advisory blocking `main` CI), resolved there by pinning the affected version,
+which is not possible here; FU-12, FU-14, FU-34 — the same `pnpm audit`
+workstream; `docs/08_security/security-strategy.md` — the JS dependency and
+audit-gate policy this entry's gate implements.
+
 ---
 
 ## Resolved
