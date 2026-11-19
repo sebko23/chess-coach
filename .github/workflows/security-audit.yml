@@ -280,9 +280,20 @@ jobs:
         # locally after the dep upgrades and overrides in
         # apps/desktop/package.json + apps/desktop/pnpm-lock.yaml).
         #
+        # That prod count is 0 as of 2026-11-19 because the
+        # `picomatch` advisory (GHSA-fc5q-39xc-vjpf) was WITHDRAWN,
+        # not because the locked code changed - see FU-49 in
+        # docs/16_audit/OPEN-FOLLOWUPS.md. A re-listing would redden
+        # this gate again with no repository change.
+        #
         # `--prod` excludes dev deps from the audit. Dev deps are
-        # 0 of the 0 total vulns after the upgrade; they don't ship
-        # to users and auditing them would surface noise.
+        # NOT zero: the dev-only graph reports 32 vulnerabilities
+        # (3 low | 16 moderate | 11 high | 2 critical) across 8
+        # packages (tinypool, undici, brace-expansion, js-yaml, vitest,
+        # @vitest/mocker, glob, minimatch), itemised as 25 distinct
+        # advisories. They don't ship to users, which is why `--prod`
+        # is used; auditing them would surface noise. See FU-49 in
+        # docs/16_audit/OPEN-FOLLOWUPS.md.
         working-directory: apps/desktop
         run: pnpm audit --audit-level moderate --prod
 
