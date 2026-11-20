@@ -64,6 +64,30 @@ This flip does not touch:
 - **L1786** — historical prose, not a declaration record.
 - **FU-35** at L2538 — ledger text remains `**Status:** OPEN. Resolution shape:`; external triage category: `LIVE OPEN`, because the runtime hook and tree-level spec scope remain.
 - **FU-38** at L2855 — ledger text remains `**Status:** OPEN. Resolution BBF:`; external triage category: `LIVE OPEN`, because two deleted-file findings remain residual scope.
+
+**Correction (2026-11-19, doc-drift fix-up):** the three triage categories above
+are preserved as the reading at the time of this flip (2026-10-24). Each has
+since been overtaken:
+
+- **FU-20.** The Windows Job Object scope decision it was pending was taken on
+  2026-10-29 by PR #190 (`BBF-FU-22-B2-windows-job-object`), and FU-20's own
+  `**Status:**` line is now `RESOLVED for the named release scope (2026-10-30)`.
+  The quoted mid-entry string is still present in the ledger, but it now sits
+  under a lead that has been superseded. The per-deployment enablement FU-20
+  records remains open as a standing item.
+- **FU-35.** The runtime hook and the tree-level spec scope it names were
+  removed: the packaging half shipped in `bcb70d88` and FU-35's `**Status:**`
+  line is now `RESOLVED 2026-10-27`. The quoted string is no longer present in
+  the ledger.
+- **FU-38.** The two deleted-file findings it names remain, but the
+  product-owner decision of 2026-10-27 accepted them as residual risk rather
+  than leaving the entry open, and PR #184 (`a5bd6d38`) shipped the allowlist
+  fix. FU-38's `**Status:**` line is now `RESOLVED 2026-10-15`. The quoted
+  string is no longer present in the ledger.
+
+The scope decision this flip made is not re-opened: each of the three entries
+was correctly excluded from a doc-only flip at the time. Only the triage
+categories, which assert a live state, are corrected.
 - Any source, lockfile, package manifest, workflow, or unrelated ledger text.
 
 The excluded anchors were compared byte-for-byte with the base tree and are identical.

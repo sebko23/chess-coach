@@ -60,6 +60,14 @@ are replaced with the one-line shape above. The clarification block at post-patc
 - **Does not delete the "PARTIAL" wording entirely.** Replacing the 2-line headline with a single RESOLVED line that *contains* the dates and PR numbers inherently retires the misleading "PARTIAL" framing; further deletion would be destructive beyond scope.
 - **Does not touch FU-17.** It has the same shape (stale `Status: OPEN` headline + accurate 2026-08-11 clarification block) and is a flip-9b candidate. Out of scope here.
 - **Does not edit FU-2's PARTIALLY RESOLVED status.** FU-2 is `PARTIALLY RESOLVED` per line 56, with the live part being the doc-fix in PR #79 and the deferred part being FU-5. Now that FU-5 is RESOLVED, FU-2's PARTIAL wording is technically stale, but FU-2's status shape (`PARTIALLY RESOLVED` per the regex, with one of its sub-parts satisfied by FU-5) is intentionally preserved for now — flagged as a separate potential flip-9 candidate. (Verbatim from `BBF-doc-drift-flip-8.md:82`; flip-8 deliberately did not close FU-2.)
+
+  **Correction (2026-11-19, doc-drift fix-up):** the bullet above is preserved
+  as the reading at the time of this flip (2026-10-21), when FU-2's status line
+  did read `PARTIALLY RESOLVED 2026-08-04`. FU-2 is now `RESOLVED 2026-08-06`,
+  its deferred part having been discharged by FU-5 (`cada4ab2`), so the
+  `PARTIALLY RESOLVED` shape this bullet names is no longer the live status.
+  The scoping decision this flip made is not re-opened: leaving FU-2 alone was
+  correct then, and only the current-state claim is corrected.
 - **Does not touch FU-5, FU-6, FU-21.** FU-5/FU-6 were closed by **flip-8** (`12d4962e`, PR #171); FU-21 was closed by flip-6 (`1487ff76`, PR #167) and flip-7 (`c883c352`, PR #170). None of their appends are byte-identical preserved by *this* flip; they remain as those earlier flips left them.
 - **Does not re-implement FU-15.** Its ships are on `main`; the on-disk truth (`apps/desktop/src/components/panels/coach/CoachPanel.test.tsx` no longer contains the rail-mode test; `apps/desktop/src/components/panels/profile/ProfileDashboard.test.tsx` uses `@testing-library/react`) is intact.
 - **Does not touch any tracked file outside `docs/16_audit/`.** This is a doc-only BBF; no source, no lockfile, no CI workflow touched.

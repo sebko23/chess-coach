@@ -89,6 +89,17 @@ main (`fa0bfd73`).
    Each has its own resolution work; this BBF is
    bookkeeping only for FU-20.
 
+   **Correction (2026-11-19, doc-drift fix-up):** the list above is preserved
+   as the reading at the time of this flip (2026-10-18), when all seven named
+   FUs were still open or in progress. Four of them have since been resolved:
+   FU-5 by the squash `cada4ab2`, FU-6 by `e091988c`, FU-11 for the approved
+   α-ext scope on 2026-11-04, and FU-21 by PR #169 (`d3fbb35c`). FU-9, FU-23
+   and FU-27 are still OPEN, so the list remains true for those three. Each
+   entry's own `**Status:**` line in the `## FU-N` section is the live status.
+   The scope decision this flip made is not re-opened: this BBF was
+   bookkeeping for FU-20, and the exclusion list is corrected only as a
+   current-state statement.
+
 ## §5. Cross-references
 
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-20 entry (line 1620, +4 lines Status block).

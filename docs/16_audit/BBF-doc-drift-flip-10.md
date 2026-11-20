@@ -127,6 +127,17 @@ Pre-commit hygiene:
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-21 region: stale status at L1722 (the target), investigation plan L1723–L1726, flip-6 clarification L1728–L1748, flip-7 clarification L1750+ (the canonical LIVE marker).
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-22 region: identical stale string at L1860 — out of scope, see §4.
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-20 region: leads with `PARTIALLY RESOLVED 2026-10-18` at L1637 but also carries a stale `**Status:** OPEN. Real contract gap, but heavy-lift caveat applies:` line at L1664; it needs a separate flip and is out of scope for flip-10.
+
+  **Correction (2026-11-19, doc-drift fix-up):** the bullet above is preserved
+  as the reading at the time of this flip (2026-10-23), when FU-20's entry did
+  lead with `PARTIALLY RESOLVED 2026-10-18` and did carry that mid-entry
+  `**Status:** OPEN` line. FU-20 now leads with `RESOLVED for the named release
+  scope (2026-10-30)`. The quoted mid-entry line is still present in the ledger
+  and is still live: flip-17, which changed that entry, rewrote the
+  `**Out of scope (follow-up BBFs):**` block only, and did not touch this line.
+  Reconciling it is still open work. The scope decision this flip made is not
+  re-opened: deferring FU-20's mid-entry line to a separate flip was correct
+  then, and only the current-state claim is corrected.
 - `docs/16_audit/BBF-doc-drift-flip-9b.md` (flip-9b, PR #173) — structural precedent for retiring a mid-entry `Status: OPEN` block.
 - `docs/16_audit/BBF-doc-drift-flip-9c.md` (flip-9c, PR #174) — precedent for retaining an investigation plan under a corrected status line.
 - PR #169, squash `d3fbb35c` (BBF-FU-21-bind-mount) — the implementation this flip's status line cites.

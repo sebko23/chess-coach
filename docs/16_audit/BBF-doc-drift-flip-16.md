@@ -123,13 +123,29 @@ pointer's correctness is a property of the tree it lands in.
   it would delete history.
 - **FU-7, FU-9, FU-23, FU-27.** Each truthfully open, each excluded for a
   stated reason in §2's sibling analysis.
-- **BBF-86.7 and PR #48.** The BBF-86 release-readiness audit and the
-  external-review findings both claim BBF-86.7 is "✅ shipped", citing the
-  commit PR #48 carries. That commit is **not** an ancestor of the base, and the
-  corpus `version` field and the Dockerfile `BUILD_ARG` flags it would introduce
-  are absent from the base tree. The claim is false and the scope is unlanded,
-  but it is a separate BBF and a separate decision (PR #48's branch is far
-  behind the base and would need a rebase), so it is **not** discharged here.
+- **BBF-86.7 and PR #48.** At the time of this flip (2026-11-13) the BBF-86
+  release-readiness audit and the external-review findings both claimed BBF-86.7
+  was "✅ shipped", citing the commit PR #48 carries; that commit was **not** an
+  ancestor of this flip's base, and the corpus `version` field and the Dockerfile
+  `BUILD_ARG` flags it would introduce were absent from that base tree. The
+  claim was false then and the scope was unlanded then, but it was a separate BBF
+  and a separate decision (PR #48's branch was far behind the base and would
+  have needed a rebase), so it was **not** discharged here.
+
+  **Correction (2026-11-19, doc-drift fix-up):** the scope has since landed, so
+  the passage above is preserved as the historical reading and its live status is
+  the following. PR #199 (`0243d315`) shipped BBF-86.7's reviewed implementation
+  on 2026-11-14 — the day after this flip landed — and it is an ancestor of
+  `main`. The corpus `version` field and the Dockerfile `BUILD_ARG` flags
+  (`NARRATIVE_VERSION=v2`, `ARCHETYPE_VERSION=v0`) are now present in the tree,
+  and the two audit briefs no longer claim "✅ shipped" for BBF-86.7: both now
+  read "Implemented by this BBF", with PR #48 recorded as historical. PR #48
+  itself was closed as superseded on 2026-11-19 (its source branch deleted,
+  `refs/pull/48/head` retained), so the quoted wording above no longer resolves
+  against either brief. The scope this passage excluded is discharged by PR #199,
+  not by this flip. The scope decision this flip made is not re-opened:
+  deferring BBF-86.7 to a separate BBF and decision was correct then, and only
+  the current-state claim is corrected.
 - No source, test, workflow, or configuration file is touched.
 
 ## §7. Honest limitations

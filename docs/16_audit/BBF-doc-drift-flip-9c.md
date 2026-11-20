@@ -104,6 +104,14 @@ Investigation during this BBF found a **stale skip reason and a FU-numbering err
 - it is composed into the child's `preexec_fn` at L602 alongside `set_rlimit_as_preexec(...)()` at L601 and `set_fs_isolation_preexec(tmpdir)()` at L603;
 - the canonical ledger entry for network isolation is **FU-20**, whose status reads `PARTIALLY RESOLVED 2026-10-18` via PRs #163/#164 — **not FU-22**, which is the 2 GB memory cap.
 
+  **Correction (2026-11-19, doc-drift fix-up):** the bullet above is preserved
+  as the reading at the time of this flip (2026-10-22), when FU-20's status
+  line did read `PARTIALLY RESOLVED 2026-10-18`. FU-20 is now `RESOLVED for
+  the named release scope (2026-10-30)`; the per-deployment enablement it
+  records remains open as a standing item. The FU-20-versus-FU-22 mapping the
+  bullet corrects is unchanged and remains correct. The scope decision this
+  flip made is not re-opened: only the quoted status is corrected.
+
 FU-42's own tables repeat the same numbering error (L3013 attributes the network test to FU-22; L3015 attributes the memory test to FU-20, inverting the correct mapping). Correcting the skip reason and the two table cells requires editing test code and ledger prose in one change; per the one-BBF-one-clean-change rule this is deferred to a separate test-code BBF.
 
 Two related observations from the same investigation, also recorded rather than acted on:

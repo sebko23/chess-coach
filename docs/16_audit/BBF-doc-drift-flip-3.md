@@ -106,6 +106,19 @@ for the FU-35 resolution.
    BBF. Each has its own resolution work; this BBF is
    bookkeeping only for FU-29 and FU-35.
 
+   **Correction (2026-11-19, doc-drift fix-up):** the list above is preserved
+   as the reading at the time of this flip (2026-10-18), when all eight named
+   FUs were still open or in progress. Four of them have since been resolved:
+   FU-5 by the squash `cada4ab2`, FU-6 by `e091988c`, FU-11 for the approved
+   α-ext scope on 2026-11-04, and FU-21 by PR #169 (`d3fbb35c`). FU-20 was
+   resolved for the named release scope on 2026-10-30; its per-deployment
+   enablement remains open as a standing item, which is why FU-20 is still
+   named in later briefs. FU-9, FU-23 and FU-27 are still OPEN, so the list
+   remains true for those three. Each entry's own `**Status:**` line in the
+   `## FU-N` section is the live status. The scope decision this flip made is
+   not re-opened: this BBF was bookkeeping for FU-29 and FU-35, and the
+   exclusion list is corrected only as a current-state statement.
+
 ## §5. Cross-references
 
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-29 entry (line 2086, +22 lines Status block).

@@ -152,6 +152,14 @@ This flip does not touch:
   part. That status shape is intentionally preserved, exactly as flip-8
   recorded it: FU-2's docstring fix is resolved and the FU-5 deferral is
   named as its remaining part.
+
+  **Correction (2026-11-19, doc-drift fix-up):** the bullet above is preserved
+  as the reading at the time of this flip (2026-11-12), when FU-2's status line
+  did read `PARTIALLY RESOLVED 2026-08-04`. FU-2 is now `RESOLVED 2026-08-06`,
+  its deferred part having been discharged by FU-5 (`cada4ab2`), so the
+  `PARTIALLY RESOLVED` shape this bullet names is no longer the live status.
+  The scope decision this flip made is not re-opened: leaving FU-2 alone was
+  correct then, and only the current-state claim is corrected.
 - **FU-7**, whose plain `**Status:**` lines also read PARTIAL and OPEN.
   They are not stale: FU-7's own scope retains the full `.bin`
   import/export surface beyond the alpha-ext shape, so both declarations

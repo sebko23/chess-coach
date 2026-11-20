@@ -146,6 +146,14 @@ $ git merge-base --is-ancestor 1487ff76 origin/main  # exit 0 (the flip-6 squash
    not bookkeeping — they each need their own
    implementation or a separate flip.
 
+   **Correction (2026-11-19, doc-drift fix-up):** the passage above is
+   preserved as the reading at the time of this flip (2026-10-19). One of the
+   four named FUs has since been resolved: FU-11 was resolved for the approved
+   α-ext scope on 2026-11-04, and its own `**Status:**` line in the `## FU-N`
+   section is the live status. FU-9, FU-23 and FU-27 are still OPEN and the
+   passage holds for them. The queueing conclusion this flip drew is not
+   re-opened; only the current-state list is corrected.
+
 4. **The well is now dry.** Per the prior session's
    "well is drying up" observation (PR #97) and the
    explicit discipline in flip-6 §5 #1: doc-drift flips
