@@ -121,6 +121,15 @@ pointer's correctness is a property of the tree it lands in.
   carries an explicit `**Historical state (superseded 2026-10-29 by ...)**`
   block. It is historical content, not a contradiction to correct, and touching
   it would delete history.
+
+  **Correction (2026-11-24, doc-drift fix-up):** the passage above is preserved
+  as the reading at the time of this flip (2026-11-13), when that mid-entry line
+  was still present in the ledger. It has since been retired by
+  `BBF-doc-drift-flip-23` (2026-11-24), which replaced the line with the live
+  status and an explicit superseded marker while preserving the investigation
+  plan beneath it verbatim. The scope decision this flip made is not re-opened:
+  excluding that line as historical content was correct then, and only the
+  current-state claim is corrected.
 - **FU-7, FU-9, FU-23, FU-27.** Each truthfully open, each excluded for a
   stated reason in §2's sibling analysis.
 - **BBF-86.7 and PR #48.** At the time of this flip (2026-11-13) the BBF-86

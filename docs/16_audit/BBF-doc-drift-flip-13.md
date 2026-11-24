@@ -215,9 +215,12 @@ This flip does not touch:
 preserved as the reading at the time of this flip (2026-10-27), when both
 quoted mid-entry strings were present in the ledger and byte-identical to this
 flip's base. Their *byte-identity* claim still holds against that pinned base,
-but the strings are no longer both live: FU-20's quoted mid-entry line is still
-in the ledger, sitting under a lead that now reads `RESOLVED for the named
-release scope (2026-10-30)`, while FU-35's quoted line is no longer present at
+but the strings are no longer both live: FU-20's quoted mid-entry line was
+still in the ledger at the time of this correction, sitting under a lead that
+then read `RESOLVED for the named release scope (2026-10-30)`; it has since
+been retired by `BBF-doc-drift-flip-23` (2026-11-24), which replaced it with
+the live status and an explicit superseded marker while preserving the
+investigation plan beneath it verbatim. FU-35's quoted line is no longer present at
 all — FU-35 is `RESOLVED 2026-10-27`, its packaging half having shipped in
 `bcb70d88`. The scope decision this flip made is not re-opened: each entry was
 correctly excluded from a doc-only flip at the time. Only the current-state

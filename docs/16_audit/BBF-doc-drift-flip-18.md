@@ -145,6 +145,16 @@ prose in a markdown file with no behavioural surface.
   accurate as it stands; the `OPEN` line is preserved history under a
   `RESOLVED` lead. flip-16 and flip-17 both recorded the same reasoning, and
   it still holds.
+
+  **Correction (2026-11-24, doc-drift fix-up):** the passage above is preserved as the
+  reading at the time of this flip (2026-11-15), when that mid-entry
+  `**Status:** OPEN` line was still present in the ledger and was preserved
+  history under a `RESOLVED` lead. The line itself has since been retired by
+  `BBF-doc-drift-flip-23` (2026-11-24), which replaced it with the live status
+  and an explicit superseded marker while preserving the investigation plan
+  beneath it verbatim. The scope decision this flip made is not re-opened:
+  excluding that line as preserved history was correct then, and only the
+  current-state claim is corrected.
 - **Decision B (the shipped-default flip).** Not requested here.
 - **The companion policy file's own "untracked" self-description.**
   `docs/16_audit/HERMES-POLICY-AUTH-BOUNDARIES-2026-08-03.md` — the file the

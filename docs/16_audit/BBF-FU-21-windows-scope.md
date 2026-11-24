@@ -462,3 +462,34 @@ adding `pywin32` would not change that conclusion.
 
 **Correction of record:** `BBF-FU-22-windows-contract-correction` (see
 `docs/16_audit/BBF-FU-22-windows-contract-correction.md`).
+
+> **Correction (2026-11-24, doc-drift fix-up).** The claims quoted below were true when this brief was
+> written (2026-10-19) and have since been overtaken. The original wording is
+> preserved above as the historical reading; the live status is as follows.
+>
+> - §1.3's "There is no **FU-21-windows-impl** BBF coming. The open work for
+>   FU-21 is:" and its item 1, "**The bind-mount follow-up BBF**", together with
+>   §6's "**The Linux FU-21 bind-mount BBF is still open.**" — superseded. Both were
+>   true when
+>   this brief was written (2026-10-19, 09:59 +0200) and were overtaken the
+>   same day (2026-10-19, 22:11 +0200), when the bind-mount BBF landed as
+>   PR #169 (`d3fbb35c`, `BBF-FU-21-bind-mount`); FU-21's ledger entry is now
+>   `RESOLVED 2026-10-19` on both the Linux full-enforcement surface and the
+>   Windows deployment-config surface. What remains open is the separate
+>   deployment-config / AppLocker-WDAC artifact, which is a deployment-team
+>   concern in another repo and was never this repository's code.
+> - **The "Sprint intent" paragraph's "The Windows path remains a no-op on the
+>   `subprocess_runner.py` side"** — still accurate for **filesystem**
+>   isolation, and unchanged by this correction. A-F11 property 3 on Windows
+>   remains closed as a deployment-config concern (AppLocker / WDAC). The
+>   Windows AppContainer and Job Object backends that landed in 2026-10-29 and
+>   2026-11-11 enforce **properties 2 and 4**, not property 3.
+> - **§1.1's table row 3 and §4's `win32job` claim** — already corrected in
+>   place by the 2026-10-28 `BBF-FU-22-windows-contract-correction`; see this
+>   brief's own `§N. Correction`. It remains accurate: `win32job` is never
+>   imported and `pywin32` is not a declared dependency. The Windows Job
+>   Object backend added in 2026-10-29 uses `ctypes`, not `pywin32`.
+>
+> The scope decision this brief made is not re-opened: closing the Windows
+> filesystem path as a deployment-config concern was correct then, and only the
+> current-state claims are corrected.

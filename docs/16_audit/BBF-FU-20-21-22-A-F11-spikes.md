@@ -249,6 +249,31 @@ This BBF produces 2 file changes:
   in one BBF would take 5-8 hours and risks shipping
   incomplete code. Investigation-first is the
   §1.3-honest scope.
+
+  > **Correction (2026-11-24, doc-drift fix-up).** The sentence above
+  > was true when this brief was written (2026-10-18) in part, and
+  > over-stated in part; the original wording is preserved above as the
+  > historical reading, and the live status is as follows.
+  >
+  > - The quoted ledger sentence was FU-20's **own mid-entry** status
+  >   line - and FU-20's alone. FU-21's and FU-22's entries never
+  >   carried it. The claim that "each" of the three properties carried
+  >   that line was therefore already imprecise when written.
+  > - FU-20's mid-entry line has since been retired. Its ledger entry
+  >   now leads with `RESOLVED for the named release scope (2026-10-30)`,
+  >   and the mid-entry line reads `**Status:** RESOLVED for the named
+  >   release scope (2026-10-30); see the lead status line ... **This
+  >   mid-entry line is superseded:** ...` (retired 2026-11-24 by
+  >   `BBF-doc-drift-flip-23`). The Linux network namespace and the
+  >   Windows zero-capability AppContainer backend it described as
+  >   unimplemented have since been implemented and measured.
+  > - The investigation-first scope decision this brief made is not
+  >   re-opened: scoping three investigations separately was correct
+  >   then, and only the current-state claims are corrected.
+  > - FU-20 itself deliberately remains open as the standing
+  >   per-deployment enablement item: the Windows boundary is opt-in
+  >   through `CHESS_COACH_WINDOWS_APPCONTAINER=1`, and the shipped
+  >   default remains the 501 `internal.not_implemented` refusal.
 - **The 3 follow-up implementation BBFs are NOT in
   scope for this BBF.** The user's directive
   `go FU-20-and-FU-21-and-FU-22` names 3 ledger

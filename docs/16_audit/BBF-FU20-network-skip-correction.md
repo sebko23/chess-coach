@@ -112,8 +112,21 @@ production while every existing test stayed green. That is the hole this BBF clo
 - **Does not modify the memory test body**, which works as-is.
 - **Does not claim Windows network isolation.** The Windows path remains proxy-env
   stripping, a defense-in-depth measure.
+
 - **Does not modify `subprocess_runner.py`** — this is a test-only correction of claims
   about it.
+
+> **Correction (2026-11-24, doc-drift fix-up):** §4's "The Windows path remains
+> proxy-env stripping" was true when this brief was written (2026-10-22) and has
+> since been overtaken. Windows PDF parsing is no longer proxy-environment
+> stripping: it runs in the zero-capability AppContainer backend
+> (`services/chess_coach/pdf_ocr/windows_appcontainer.py`) behind the opt-in
+> `CHESS_COACH_WINDOWS_APPCONTAINER=1`, and the proxy-environment stripping
+> fallback was itself removed from the production path by squash `df3ed9bf`
+> (2026-11-02) - `tests/unit/test_subprocess_runner.py` asserts the runner has
+> no proxy-stripping fallback at all. The scope decision this brief made is not
+> re-opened: declining to claim Windows network isolation was correct then, and
+> only the current-state claim is corrected.
 
 ---
 
@@ -176,3 +189,49 @@ binary, or on timing.
 6. **Wiring test is load-bearing:** confirm the mutation experiment in §5 (dropping the
    network hook must fail the test).
 7. **Filesystem skip untouched** and still capability-gated.
+
+> **Correction (2026-11-24, doc-drift fix-up).** This brief was written on 2026-10-22 to correct the
+> A-F11 property-2 skip reason and its FU attribution. Its correction was
+> correct then, and its **file:line citations are now stale**: the helper it
+> names has since been retired and replaced. The original wording is preserved
+> above as the historical reading; the live status is as follows.
+>
+> - **`set_network_isolation_preexec()` does not exist on `main` today.** The
+>   `set_rlimit_as_preexec`, `set_network_isolation_preexec` and
+>   `set_fs_isolation_preexec` callbacks were **retired** by the
+>   `BBF-FU-20-linux-phase1-network-isolation` landing, squash `df3ed9bf`
+>   (2026-11-02; the BBF itself is dated 2026-10-29), which rewrote
+>   `services/chess_coach/pdf_ocr/subprocess_runner.py` and added
+>   `services/chess_coach/pdf_ocr/linux_sandbox.py`. The Linux boundary
+>   is now enforced by a dedicated launcher,
+>   `services/chess_coach/pdf_ocr/linux_sandbox.py`, which enters a
+>   `CLONE_NEWUSER | CLONE_NEWNET | CLONE_NEWNS` namespace before the parser
+>   is executed; the Windows boundary is the AppContainer backend in
+>   `services/chess_coach/pdf_ocr/windows_appcontainer.py`. The current
+>   guard is `ensure_network_isolation_supported()`, which raises the typed
+>   `NetworkIsolationUnsupportedError` (HTTP 501, `internal.not_implemented`)
+>   **before** any parser process or Job target is created. The cited line
+>   numbers (L128, L182–183, L206–242, L600–) no longer resolve.
+> - **The "NOT a guarantee" caveat the brief quotes** still holds in substance
+>   — the file that formerly owned the proxy-environment stripping now states it
+>   (that fallback was itself removed; `tests/unit/test_subprocess_runner.py`
+>   asserts the runner has no proxy-stripping fallback at all).
+>   The landed `NetworkIsolationUnsupportedError` class docstring in
+>   `services/chess_coach/pdf_ocr/subprocess_runner.py` says: *"Job Object
+>   network-rate control is throttling rather than isolation. Proxy-environment
+>   stripping is defense in depth, never isolation."*
+> - **§3's "not on Windows (best-effort proxy-env stripping"** - superseded as
+>   a description of the live implementation. Windows PDF parsing is no longer
+>   proxy-environment stripping: it runs in the zero-capability AppContainer
+>   backend (`services/chess_coach/pdf_ocr/windows_appcontainer.py`) behind the
+>   opt-in flag `CHESS_COACH_WINDOWS_APPCONTAINER=1`, and while that opt-in is
+>   off the route keeps the 501 `internal.not_implemented` refusal rather than
+>   falling back to the best-effort path.
+> - **The skip's own `SKIP` disposition** is unchanged: the end-to-end
+>   formulation remains capability-dependent on Linux and impossible on
+>   Windows, so `test_subprocess_cannot_initiate_outbound_network` remains
+>   skip-gated.
+>
+> The scope decision this brief made is not re-opened: correcting FU-22 to
+> FU-20 and rewriting the skip reason was correct then, and only the
+> current-state claims are corrected.
