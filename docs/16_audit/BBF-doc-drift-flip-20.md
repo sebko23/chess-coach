@@ -248,6 +248,16 @@ read of a named revision.
   accurate as it stands; the `OPEN` line is preserved history under a
   `RESOLVED` lead. flip-16, flip-17 and flip-18 all recorded the same
   reasoning, and it still holds.
+
+  **Correction (2026-11-24, doc-drift fix-up):** the passage above is preserved as the
+  reading at the time of this flip (2026-11-17), when that mid-entry
+  `**Status:** OPEN` line was still present in the ledger and was preserved
+  history under a `RESOLVED` lead. The line itself has since been retired by
+  `BBF-doc-drift-flip-23` (2026-11-24), which replaced it with the live status
+  and an explicit superseded marker while preserving the investigation plan
+  beneath it verbatim. The scope decision this flip made is not re-opened:
+  excluding that line as preserved history was correct then, and only the
+  current-state claim is corrected.
 - **Decision B (the shipped-default flip).** Not requested here.
 - **The Windows filesystem-isolation property (A-F11 property 3).** A
   deployment-config concern (AppLocker/WDAC), unaffected by any date wording.

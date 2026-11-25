@@ -233,6 +233,38 @@ corrupts unrelated runtime behaviour (asyncio / anyio). The module therefore rea
 
 ## 6. Outstanding — B2 (separately approved; **not** implemented here)
 
+> **Correction (2026-11-24, doc-drift fix-up).** This brief was written on 2026-10-28 to correct the
+> A-F11 property-4 contract, and its findings were correct then. Two of its
+> own current-state passages have since been overtaken. The original wording is
+> preserved above as the historical reading; the live status is as follows.
+>
+> - **§6 "Outstanding — B2 (separately approved; **not** implemented here)"**
+>   — discharged. B2 landed on 2026-10-29 as PR #190
+>   (`BBF-FU-22-B2-windows-job-object`, brief at
+>   `docs/16_audit/BBF-FU-22-B2-windows-job-object.md`). The Windows Job
+>   Object enforcement, the job lifecycle, descendant inclusion and
+>   kill-on-close semantics are implemented in
+>   `services/chess_coach/pdf_ocr/windows_job.py`; the limit-violation
+>   reporting and the Windows CI job are in place. The `pywin32` dependency
+>   listed in that section was **not** added, because the implementation uses
+>   `ctypes` rather than `pywin32` — so that section's "An **explicitly declared
+>   dependency** (`pywin32`) if that mechanism is used" is satisfied by that
+>   choice rather than outstanding.
+> - **The Sprint intent's "the Windows half was never implemented"** — accurate as of
+>   2026-10-28 and superseded by B2. Windows enforcement now exists and is
+>   directly tested. FU-22's ledger entry is now `RESOLVED 2026-10-29 via
+>   PR #190`, with both halves of the 2 GB cap enforced: Linux through
+>   `resource.setrlimit(RLIMIT_AS, (2 GiB, 2 GiB))` and Windows through a Job
+>   Object per-process limit.
+> - **§1's "FU-20 ... is `PARTIALLY RESOLVED` since PR #163/#164"** — that was
+>   the reading on 2026-10-28. FU-20 now leads `RESOLVED for the named
+>   release scope (2026-10-30)`, and the Windows AppContainer implementation
+>   followed on 2026-11-11.
+>
+> The scope decision this brief made is not re-opened: reopening FU-22 and
+> making the Windows contract truthfully *unsupported* was correct then, and
+> only the current-state claims are corrected.
+
 - Real Windows Job Object enforcement (`JOB_OBJECT_LIMIT_PROCESS_MEMORY`), with the job
   lifecycle, descendant inclusion, kill-on-close semantics and limit-violation reporting
   defined.

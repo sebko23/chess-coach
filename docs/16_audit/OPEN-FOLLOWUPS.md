@@ -1761,7 +1761,7 @@ plus FU-21 and FU-22, are the missing log entries.
   JOB_OBJECT_NET_RATE_CONTROL flag, plus firewall-rules-by-app.
 - Neither is currently implemented.
 
-**Status:** OPEN. Real contract gap, but heavy-lift caveat applies:
+**Status:** RESOLVED for the named release scope (2026-10-30); see the lead status line and the 2026-10-30 release-scope closure record below. Historical investigation plan preserved below. **This mid-entry line is superseded:** the Linux network namespace and Windows Job-Object paths it describes as unimplemented have since been implemented and measured -- Linux through the fail-closed combined user/network/mount namespace launcher (`BBF-FU-20-linux-phase1-network-isolation`, 2026-10-29) and Windows through the zero-capability AppContainer backend (squash `f57bfcc1`, PR #195, 2026-11-11). The Windows boundary is opt-in through `CHESS_COACH_WINDOWS_APPCONTAINER=1`, so the shipped default remains the 501 `internal.not_implemented` refusal and FU-20 deliberately remains open as the standing per-deployment enablement item.
 both Linux network-namespace and Windows Job-Object paths are significant
 implementation work, not a small test addition. Investigation-first BBF
 would: (1) confirm the platform scope (Linux-only? Windows-first? both?),

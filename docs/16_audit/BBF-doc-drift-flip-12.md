@@ -72,8 +72,11 @@ since been overtaken:
 - **FU-20.** The Windows Job Object scope decision it was pending was taken on
   2026-10-29 by PR #190 (`BBF-FU-22-B2-windows-job-object`), and FU-20's own
   `**Status:**` line is now `RESOLVED for the named release scope (2026-10-30)`.
-  The quoted mid-entry string is still present in the ledger, but it now sits
-  under a lead that has been superseded. The per-deployment enablement FU-20
+  The quoted mid-entry string was still present in the ledger at the time of
+  this correction, sitting under a lead that had been superseded; it was
+  retired by `BBF-doc-drift-flip-23` on 2026-11-24, which replaced it with
+  the live status and an explicit superseded marker while preserving the
+  investigation plan beneath it verbatim. The per-deployment enablement FU-20
   records remains open as a standing item.
 - **FU-35.** The runtime hook and the tree-level spec scope it names were
   removed: the packaging half shipped in `bcb70d88` and FU-35's `**Status:**`

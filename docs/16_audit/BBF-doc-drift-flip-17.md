@@ -99,6 +99,10 @@ The historical prose around it is preserved **byte-for-byte**: the lead's
 2026-10-18 history paragraph, the `**Historical state (superseded
 2026-10-29 ...)**` block, the `**Identified:**` / `**The gap:**` body, and
 the `**Status:** OPEN` line at 1764 that flip-16 deliberately left alone.
+*(That line was still present when this flip landed on 2026-11-14; it was
+retired later by `BBF-doc-drift-flip-23` on 2026-11-24, which replaced it with
+the live status and an explicit superseded marker while preserving the
+investigation plan beneath it verbatim.)*
 
 No clarification block is introduced, so the unique-clarification rule holds.
 
@@ -121,6 +125,20 @@ AppContainer is created while the opt-in is off.
 **FU-20 remains open** after this flip, because the product-enablement
 decision has not been taken. The flip records the decision's surface; it does
 not make the decision.
+
+> **Correction (2026-11-24, doc-drift fix-up):** §4's "the product-enablement
+> decision has not been taken" was true when this flip landed (2026-11-14) and
+> has since been overtaken. The decision was taken on **2026-11-17** and is
+> recorded by `BBF-doc-drift-flip-21`: **Decision A** was accepted generally as
+> available-for-enablement, subject to the per-deployment staging,
+> package-profile and residual-limitation requirements the enablement contract
+> governs, and **Decision B** was not accepted. What remains open is not the
+> decision but **per-deployment activation**: the Windows path stays opt-in
+> through `CHESS_COACH_WINDOWS_APPCONTAINER=1`, the shipped default stays the
+> 501 `internal.not_implemented` refusal, and no parser process, Job target or
+> AppContainer is created while the opt-in is off. The scope decision this flip
+> made is not re-opened: recording the contract as documentation-only was
+> correct then, and only the current-state claim is corrected.
 
 ## §5. Why line-count neutrality is load-bearing here
 
@@ -197,7 +215,7 @@ committed and the real `.env` stays out of both git and the image.
   | `--anchor docs/16_audit/OPEN-FOLLOWUPS.md:1682=all three enumerated items are now` | the replacement states the discharge |
   | `--anchor docs/16_audit/OPEN-FOLLOWUPS.md:1682=landed 2026-11-11` | the corrected date |
   | `--anchor docs/16_audit/OPEN-FOLLOWUPS.md:1682=FU-20 remains open` | the remaining item is named |
-  | `--anchor docs/16_audit/OPEN-FOLLOWUPS.md:1764=Status:** OPEN` | the historical OPEN line is untouched |
+  | `--anchor docs/16_audit/OPEN-FOLLOWUPS.md:1764=Status:** OPEN` | the historical OPEN line is untouched *(this flip's own gate spec; the line was retired later by `BBF-doc-drift-flip-23` on 2026-11-24)* |
   | `--anchor .env.example:81=Windows AppContainer network isolation (opt-in)` | the new block's heading |
   | `--anchor .env.example:92=CHESS_COACH_WINDOWS_APPCONTAINER=1` | the opt-in line is commented in place |
   | `--anchor .env.example:96=CHESS_COACH_APPCONTAINER_STAGING_ROOT` | the staging line is commented in place |
@@ -216,6 +234,15 @@ committed and the real `.env` stays out of both git and the image.
   preserved `**Identified:**` / `**The gap:**` historical body, under a lead
   that reads `RESOLVED for the named release scope (2026-10-30)`. This is the
   same reasoning flip-16 recorded, and it still holds.
+
+  **Correction (2026-11-24, doc-drift fix-up):** the passage above is preserved
+  as the reading at the time of this flip (2026-11-14), when that mid-entry line
+  was still present in the ledger. It has since been retired by
+  `BBF-doc-drift-flip-23` (2026-11-24), which replaced the line with the live
+  status and an explicit superseded marker while preserving the investigation
+  plan beneath it verbatim. The scope decision this flip made is not re-opened:
+  excluding that line as historical content was correct then, and only the
+  current-state claim is corrected.
 - **FU-20's lead status line (1665).** It is accurate: the named release scope
   is closed, and the same line already states that the Windows AppContainer
   work "remains **opt-in**, so the 501 refusal is still what ships by

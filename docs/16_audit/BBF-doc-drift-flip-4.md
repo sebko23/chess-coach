@@ -76,6 +76,23 @@ main (`fa0bfd73`).
    RESOLVED" with the remaining work documented in the
    "Out of scope" paragraph.
 
+   **Correction (2026-11-24, doc-drift fix-up):** the passage above is
+   preserved as the reading at the time of this flip (2026-10-18), when
+   FU-20's lead did read `PARTIALLY RESOLVED 2026-10-18` and its Windows
+   path was proxy-environment stripping only. Both halves of that reading
+   have since been overtaken. FU-20's lead now reads `RESOLVED for the named
+   release scope (2026-10-30)` - the Linux boundary is enforced fail closed
+   by the combined user/network/mount namespace launcher - and the Windows
+   path is no longer proxy stripping: the zero-capability AppContainer
+   backend landed on 2026-11-11 as squash `f57bfcc1` (PR #195) behind the
+   opt-in flag `CHESS_COACH_WINDOWS_APPCONTAINER=1`. The shipped default
+   remains the 501 `internal.not_implemented` refusal, so **FU-20
+   deliberately remains open** as the standing per-deployment enablement
+   item; Decision A was accepted generally on 2026-11-17 as
+   available-for-enablement and Decision B was not accepted. The scope
+   decision this flip made is not re-opened: recording FU-20 as PARTIALLY
+   RESOLVED was correct then, and only the current-state claim is corrected.
+
 2. **No code changes; no test changes; no CI impact.**
    This BBF is doc-only, matching the prior
    BBF-doc-drift-flip pattern (PR #142, #146, #162).

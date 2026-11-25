@@ -44,6 +44,17 @@ this flip repairs. It went undetected because its wording differs from the FU-21
 string, so an exact-string grep for the FU-21 line does not match it. FU-20 therefore needs
 its own flip (flip-11 or later); see §4.
 
+  **Correction (2026-11-24, doc-drift fix-up):** the passage above is preserved as the
+  reading at the time of this flip (2026-10-23), when FU-20's entry did lead
+  with `PARTIALLY RESOLVED 2026-10-18` and did carry that mid-entry
+  `**Status:** OPEN` line at L1664. FU-20 now leads with `RESOLVED for the
+  named release scope (2026-10-30)`, and the mid-entry line itself has since
+  been retired by `BBF-doc-drift-flip-23` on 2026-11-24, which replaced it with
+  the live status and an explicit superseded marker while preserving the
+  investigation plan beneath it verbatim. The scope decision this flip made is
+  not re-opened: deferring FU-20's mid-entry line to a separate flip was
+  correct then, and only the current-state claim is corrected.
+
 ---
 
 ## §2. The replacement
@@ -94,6 +105,16 @@ Verified by direct diff against `main @ 42e426cc`:
   it is a separate flip. A ledger-wide `**Status:** OPEN` sweep is warranted before the next
   flip is scoped, because this flip's disambiguation grep was anchored to one exact string
   rather than to the class of line.
+
+  **Correction (2026-11-24, doc-drift fix-up):** the bullet above is preserved as the
+  reading at the time of this flip (2026-10-23), when FU-20 did carry that
+  same defect class at L1664. The separate flip this bullet called for was
+  `BBF-doc-drift-flip-23`, which retired the line on 2026-11-24. The sweep
+  this bullet recommended was also done: flip-23 swept the ledger for the
+  retired string and the `**Status:** OPEN` class across `docs/16_audit/`, not
+  by exact-string match alone. The scope decision this flip made is not
+  re-opened: excluding FU-20 was correct then, and only the current-state claim
+  is corrected.
 - **Does not edit either clarification block.** Both are preserved byte-identical; flip-10
   only retires the stale headline above them.
 - **Does not delete the investigation plan.**
@@ -126,16 +147,20 @@ Pre-commit hygiene:
 
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-21 region: stale status at L1722 (the target), investigation plan L1723–L1726, flip-6 clarification L1728–L1748, flip-7 clarification L1750+ (the canonical LIVE marker).
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-22 region: identical stale string at L1860 — out of scope, see §4.
-- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-20 region: leads with `PARTIALLY RESOLVED 2026-10-18` at L1637 but also carries a stale `**Status:** OPEN. Real contract gap, but heavy-lift caveat applies:` line at L1664; it needs a separate flip and is out of scope for flip-10.
+- `docs/16_audit/OPEN-FOLLOWUPS.md` FU-20 region: leads with `PARTIALLY RESOLVED 2026-10-18` at L1637 but also carries a stale `**Status:** OPEN. Real contract gap, but heavy-lift caveat applies:` line at L1664; it needs a separate flip and is out of scope for flip-10. *(That separate flip was `BBF-doc-drift-flip-23`, which retired the line on 2026-11-24; the correction below records that.)*
 
   **Correction (2026-11-19, doc-drift fix-up):** the bullet above is preserved
   as the reading at the time of this flip (2026-10-23), when FU-20's entry did
   lead with `PARTIALLY RESOLVED 2026-10-18` and did carry that mid-entry
   `**Status:** OPEN` line. FU-20 now leads with `RESOLVED for the named release
-  scope (2026-10-30)`. The quoted mid-entry line is still present in the ledger
-  and is still live: flip-17, which changed that entry, rewrote the
-  `**Out of scope (follow-up BBFs):**` block only, and did not touch this line.
-  Reconciling it is still open work. The scope decision this flip made is not
+  scope (2026-10-30)`. The quoted mid-entry line was still present and still
+  live at the time of this correction, on 2026-11-19: flip-17, which changed
+  that entry, rewrote the `**Out of scope (follow-up BBFs):**` block only and
+  did not touch this line, so reconciling it was still open work. That
+  reconciliation has since been done: the mid-entry line was retired in
+  `BBF-doc-drift-flip-23` (2026-11-24), which replaced it with the live
+  status and an explicit superseded marker while preserving the investigation
+  plan beneath it verbatim. The scope decision this flip made is not
   re-opened: deferring FU-20's mid-entry line to a separate flip was correct
   then, and only the current-state claim is corrected.
 - `docs/16_audit/BBF-doc-drift-flip-9b.md` (flip-9b, PR #173) — structural precedent for retiring a mid-entry `Status: OPEN` block.

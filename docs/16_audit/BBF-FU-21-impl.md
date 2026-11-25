@@ -9,6 +9,18 @@ filesystem isolation on Linux; the Windows path remains
 a no-op (genuine isolation requires AppLocker/WDAC, a
 follow-up BBF).
 
+> **Correction (2026-11-24, doc-drift fix-up):** the Sprint intent's "the Windows path
+> remains a no-op (genuine isolation requires AppLocker/WDAC, a follow-up BBF)"
+> was true when this brief was written (2026-10-18) and has since been
+> overtaken. The follow-up BBF landed the same day as PR #169 (`d3fbb35c`,
+> `BBF-FU-21-bind-mount`, 2026-10-19, 22:11 +0200): the Linux path now performs
+> the full read-only filesystem enforcement, and FU-21's ledger entry reads
+> `RESOLVED 2026-10-19` on both the Linux full-enforcement surface and the
+> Windows deployment-config surface. What remains open is the separate
+> deployment-config / AppLocker-WDAC artifact, which is a deployment-team
+> concern in another repo and was never this repository's code. The scope
+> decision this brief made is not re-opened.
+
 **Status:** Code + test BBF. 2 files modified.
 
 ## §1. The implementation
@@ -182,6 +194,15 @@ dir, not in `/tmp` or `/var/tmp`.
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-21 entry (to be
   flipped to PARTIALLY RESOLVED in a follow-up
   doc-drift-flip).
+
+  **Correction (2026-11-24, doc-drift fix-up):** the reference above is preserved
+  as the reading at the time of this brief (2026-10-19), when the FU-21 entry
+  was still to be flipped to `PARTIALLY RESOLVED`. It was flipped on the same
+  day: FU-21's ledger entry now reads `RESOLVED 2026-10-19 via PR #169`
+  (`d3fbb35c`, `BBF-FU-21-bind-mount`), on both the Linux full-enforcement
+  surface and the Windows deployment-config surface. The scope decision this
+  brief made is not re-opened: it was correct then, and only the
+  current-state claim is corrected.
 - `docs/16_audit/BBF-FU-20-21-22-A-F11-spikes.md` Section B
   (the spike brief that designed this implementation).
 - `docs/16_audit/BBF-FU-20-impl.md` (the prior BBF that

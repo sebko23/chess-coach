@@ -148,6 +148,36 @@ superseded. The correction is of record in
 
 ## §8. Superseded by the AppContainer implementation (landed 2026-11-11, squash `f57bfcc1`, PR #195)
 
+> **Correction (2026-11-24, doc-drift fix-up).** The three claims quoted below were true when this brief
+> was written (2026-10-18) and have since been overtaken. The original wording
+> is preserved above as the historical reading; the live status is as follows.
+>
+> - **The Sprint intent's "The ideal Windows implementation would use a Job
+>   Object with `JOB_OBJECT_NET_RATE_CONTROL`" and §1's item 3, "AppContainer
+>   (requires significant new code)"** — superseded. The Windows no-network boundary was implemented on
+>   2026-11-11 as squash `f57bfcc1` (PR #195) as a **zero-capability
+>   AppContainer**, behind the opt-in flag `CHESS_COACH_WINDOWS_APPCONTAINER=1`.
+>   The shipped default remains the 501 `internal.not_implemented` refusal.
+>   §8 of this brief already records that supersession.
+> - **§5's "**The `JOB_OBJECT_LIMIT_PROCESS_MEMORY` (memory cap on Windows)**
+>   is still not implemented"** — superseded. The Windows memory cap **is**
+>   implemented: `services/chess_coach/pdf_ocr/windows_job.py` is a
+>   standard-library `ctypes` Win32 backend that creates the target suspended,
+>   assigns it to a Job, and sets `JOB_OBJECT_LIMIT_PROCESS_MEMORY` at 2 GiB
+>   before resuming it. It landed on 2026-10-29 as PR #190
+>   (`BBF-FU-22-B2-windows-job-object`), one day after the 2026-10-28 correction
+>   below. §7's correction is therefore itself now out of date: it was accurate
+>   on 2026-10-28 and is superseded by PR #190.
+> - **§6's "FU-20 entry (will be flipped to PARTIALLY RESOLVED in a follow-up
+>   doc-drift-flip)"** — superseded. The FU-20 entry was flipped, and further:
+>   its lead now reads `RESOLVED for the named release scope (2026-10-30)`, and
+>   the Windows AppContainer implementation followed on 2026-11-11. FU-20
+>   deliberately remains open as the standing per-deployment enablement item.
+>
+> The scope decision this brief made is not re-opened: the env-var-stripping
+> approach was a correct defense-in-depth step at the time, and only the
+> current-state claims are corrected.
+
 The proxy-environment stripping described in §2 is **not** network
 isolation, and this brief's own §2 says so. It was never presented as
 otherwise, and it was removed from the production path when the Linux

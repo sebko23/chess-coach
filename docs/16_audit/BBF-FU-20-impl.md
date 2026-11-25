@@ -125,6 +125,19 @@ Found 1 error (expected, Windows-only)
 
 - `docs/16_audit/OPEN-FOLLOWUPS.md` FU-20 entry (to be
   flipped to PARTIALLY RESOLVED in a follow-up doc-drift-flip).
+
+  **Correction (2026-11-24, doc-drift fix-up):** the reference above is preserved
+  as the reading at the time of this brief (2026-10-18), when the FU-20 entry
+  was still to be flipped to `PARTIALLY RESOLVED`. It was flipped, and
+  further: FU-20's lead now reads `RESOLVED for the named release scope
+  (2026-10-30)`, with the Linux boundary enforced fail closed, and the
+  zero-capability AppContainer backend landed on 2026-11-11 as squash
+  `f57bfcc1` (PR #195) behind the opt-in flag
+  `CHESS_COACH_WINDOWS_APPCONTAINER=1`. The shipped default remains the 501
+  `internal.not_implemented` refusal, so **FU-20 deliberately remains open**
+  as the standing per-deployment enablement item. The scope decision this
+  brief made is not re-opened: it was correct then, and only the
+  current-state claim is corrected.
 - `docs/16_audit/BBF-FU-20-21-22-A-F11-spikes.md` Section A
   (the spike brief that designed this implementation).
 - `docs/16_audit/BBF-FU-22-impl.md` (the prior BBF that
