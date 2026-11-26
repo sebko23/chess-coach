@@ -3669,6 +3669,46 @@ distinct advisories** across **8 packages**: `tinypool`, `undici`,
 result says nothing about them. They are outside the gate's scope and are
 **not** claimed as resolved by this entry.
 
+> **Correction (2026-11-26, i18next advisory remediation).** The paragraph
+> above is **unchanged and still accurate**, but its heading names the
+> "dev-dependency graph" while the command it runs — `pnpm audit
+> --audit-level moderate`, with no scope flag — measures the **full** graph,
+> production and development together. The two are different, and the
+> distinction matters here:
+>
+> - The **full** graph (no scope flag) reports **32 vulnerabilities**
+>   (2 critical, 11 high, 16 moderate, 3 low) from **25 distinct
+>   advisories** across **8 packages**, itemised as **29 advisory rows**
+>   (pnpm prints one row per module/range pair, and four advisory ids appear
+>   twice). Before the `i18next` remediation (FU-50) it reported 33
+>   vulnerabilities across 9 packages, 26 distinct advisories and 30 rows,
+>   because the `i18next` advisory this remediation fixed was one of them; it
+>   left the graph, and the graph returned to exactly the figures recorded
+>   above.
+> - The **`--dev`-only** graph reports 32 vulnerabilities, 25 distinct
+>   advisories, 29 rows and 8 packages on the base tree and on the remediated
+>   tree alike — **unchanged**. `i18next` is declared in `dependencies`, not
+>   `devDependencies`, so its advisory was never in the development-only
+>   graph.
+>
+> No advisory outside the `--prod` gate is remediated by FU-50, and none is
+> claimed as resolved. The `picomatch` claims in this entry are unaffected:
+> the locked versions are still 4.0.5 and 4.0.7, npm's `latest` is still
+> `4.0.7`, and both upstream items remain unmerged — #235, the proposed fix for
+> the disputed repeated-extglob issue, closed and unmerged, and #194, a
+> separate open wildcard-parser change that expressly disclaims being a
+> security fix.
+>
+> **Current withdrawal reason (2026-11-26).** The advisory's live text now
+> reads *"This advisory has been withdrawn because it is **not** a security
+> issue"*, pointing at `micromatch/picomatch` #235's discussion. The historical
+> paragraph above records the reason as it read on 2026-11-18 — *"because it is
+> a security issue"* — and that earlier wording is preserved unchanged as the
+> historical reading. The two positions are recorded without adjudication:
+> this entry records the **gate state**, the **upstream state**, and the
+> **withdrawal wording as it now stands**, and it does not rule on whether the
+> underlying behaviour is a vulnerability.
+
 **A second, still-false comment in the same job.** The `pnpm-audit` job's
 comment block in `.github/workflows/security-audit.yml` carries two claims. The
 first — that the locked dep graph "has 0 prod-only vulnerabilities at
@@ -3689,6 +3729,140 @@ audit-gate policy this entry's gate implements.
 
 ---
 
+## FU-50 — `i18next` deepExtend advisory (`GHSA-6jcc-5g8w-32mx`) reddened the production `pnpm audit` gate on `main`
+
+**Identified:** 2026-11-26, while clearing the production dependency-audit
+gate left open by the PR #210 progress report. The `pnpm audit (JS dep
+vulnerability scan)` job in `.github/workflows/security-audit.yml` reports one
+moderate-severity finding against `i18next` on the production dependency
+graph.
+
+**The finding, as the gate reported it.** `pnpm audit --audit-level moderate
+--prod` (the exact CI invocation, `working-directory: apps/desktop`) reported
+one vulnerability, exit 1:
+
+| Package | Locked version | Vulnerable range | Patched range | Severity | Advisory |
+|---|---|---|---|---|---|
+| `i18next` | 25.10.10 | `< 26.3.4` | `>= 26.3.4` | medium | `GHSA-6jcc-5g8w-32mx` |
+
+The advisory's own summary: `i18next deepExtend recurses into inherited
+built-ins, allowing corruption of shared built-in objects (DoS)`. It is
+**live** — `withdrawn_at` is null, `published_at` is 2026-11-23T20:53:00Z —
+and it is materially different from the withdrawn `picomatch` advisory in
+FU-49, which is the reason this gate is red where that one is green.
+
+**Root cause: the wrong floor, in a direct dependency.** `i18next` is a
+**direct** dependency of `apps/desktop` (declared in `dependencies`, not
+`devDependencies`). Its declared range `^25.8.11` excluded every patched
+version, so no lockfile refresh could have fixed this — the declaration
+itself had to move. `react-i18next` is also direct, and
+`react-i18next@16.6.6` pins `i18next: '>= 25.10.9'`, so it had to move too or
+it would have continued to resolve the vulnerable 25.x line.
+
+**Status:** **RESOLVED ON PR HEAD 2026-11-26 / PENDING MERGE** — PR #211
+(branch `bbf/i18next-advisory-remediation`). The closure authority for this
+entry is the **merged** PR; until PR #211 lands, this records the state at the
+PR head only. (No commit SHA is cited here on purpose: the head SHA changes
+with every amend, so a SHA written into the commit it identifies cannot
+identify its own final head. The merged PR is the durable reference.) Both direct declarations moved to exact
+pins: `i18next` `^25.8.11` -> `26.3.4` and `react-i18next` `^16.5.4` ->
+`17.0.11`. The lockfile was regenerated (`pnpm install --lockfile-only`), and
+`pnpm audit --audit-level moderate --prod` now exits 0 with `No known
+vulnerabilities found`. The production graph resolves a single `i18next`
+version, 26.3.4.
+
+**The fix floor, and why these versions.** `26.3.4` is the advisory's own
+per-package fix floor, and it satisfies `react-i18next@17.0.11`'s peer
+constraint (`i18next >= 26.2.0`). Both are exact pins rather than carets, so
+the resolution is deterministic and cannot drift into a future advisory range.
+Two other `i18next` advisories exist (`GHSA-f89g-whpf-6q9m` affecting
+`<= 1.10.2`, `GHSA-cmh5-qc8w-xvcq` affecting `>= 2.0.0, < 3.4.4`); neither
+applies to the versions in this graph, so `26.3.4` is the binding floor here.
+The current npm `latest` (`27.2.9`) also clears the advisory but is a major
+bump of a library used across 73 desktop source files, with no value to this
+gate; it was not taken.
+
+**The gate was not weakened.** The audit job's `run:` line is byte-identical
+— still `pnpm audit --audit-level moderate --prod`, still
+`working-directory: apps/desktop`. `.github/workflows/security-audit.yml` is
+**not modified at all** by this remediation — `git diff` against the base
+produces no output for that file — and the dev-graph advisory count its
+comment block records (32 vulnerabilities, 25 distinct advisories across 8
+packages) is re-measured and remains accurate. The audit level was not
+lowered, the `--prod` scope was not dropped, and no advisory allowlist or
+ignore mechanism was introduced anywhere in the tree.
+
+**Migration surface, measured rather than assumed.** `i18next` v26.0.0 is a
+major release; its published breaking changes remove the `initImmediate`
+option, the legacy monolithic `interpolation.format` function, the
+`showSupportNotice` option and `simplifyPluralSuffix`. A search across the
+desktop source and config files — every tracked file under `apps/desktop/`
+ending in `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs` or `.json`, **274** files —
+found **zero** occurrences of each. The
+repository's only `interpolation` use is
+`apps/desktop/src/components/home/AccountCard.tsx:285` —
+`interpolation: { escapeValue: false }` — which is not the removed API. The
+app's i18n initialization uses `resources`, `detection`, `fallbackLng` and
+`returnEmptyString`, none of which changed in v26.
+
+**Verification against the change.** `pnpm run lint:ci` exits 0 (the i18n
+keygate reports `OK: all 548 source-referenced keys exist in committed
+en-US.json`); `pnpm run test` exits 0 with 7 test files and 44 tests passed.
+`pnpm run i18n:status` exits 1, but it exits 1 identically on the base tree
+with the change stashed, so it is a pre-existing translation-coverage state
+rather than a regression, and it is not a CI gate.
+
+**The full dependency graph is NOT covered by the gate and is not clean.**
+`pnpm audit --audit-level moderate` — the **full** graph, production and
+development together, with no scope flag — exits 1 with **32
+vulnerabilities** — 3 low, 16 moderate, 11 high, 2 critical — across **8
+packages** (`tinypool`, `undici`, `brace-expansion`, `js-yaml`, `vitest`,
+`@vitest/mocker`, `glob`, `minimatch`), itemised as **29 advisory rows**
+carrying **25 distinct advisory ids**. Before this remediation the same
+graph reported 33 vulnerabilities (3 low / 17 moderate / 11 high /
+2 critical) across 9 packages, 30 rows and 26 distinct ids; the one that
+left is the `i18next` advisory fixed here — `i18next` is a **production**
+dependency, so that advisory was in the production graph and in this full
+graph.
+
+**The `--dev`-only graph is unchanged by this remediation.**
+`pnpm audit --audit-level moderate --dev` reports 32 vulnerabilities, 25
+distinct advisory ids, 29 rows and 8 packages on the base tree and on this
+tree alike, because `i18next` is declared in `dependencies`, not
+`devDependencies`, so its advisory is absent from the development-only graph
+either way.
+
+None of these are in the `--prod` gate's scope, so the green production result
+says nothing about them. They are not claimed as resolved by this entry.
+
+**`picomatch` remains upstream-blocked and is NOT remediated here.** The
+`GHSA-fc5q-39xc-vjpf` / `CVE-2026-112366` advisory is **withdrawn**
+(`withdrawn_at: 2026-11-18T15:38:56Z`) — its current text reads *"This advisory
+has been withdrawn because it is **not** a security issue"* — and no patched
+release exists: npm
+`latest` is still `4.0.7` and there is no `4.0.8`. The two upstream items
+are not the same kind of thing: `micromatch/picomatch` **#235** is the proposed
+fix for the disputed repeated-extglob issue the advisory cites (**closed and
+unmerged**), while **#194** is a separate open wildcard-parser change whose
+own body states *"This is not a security fix and I am not claiming a
+vulnerability"* and that it *"does not fix #175 generally"* (**open and
+unmerged**). The locked versions 4.0.5 and 4.0.7 are
+unchanged by this remediation. Two other `picomatch` advisories
+(`GHSA-3v7f-55p6-f55p`, `GHSA-c2c7-rcm5-vvqj`) remain live but affect only
+`< 4.0.4`, `>= 3.0.0, < 3.0.2` and `< 2.3.2` — none of the locked versions.
+**Standing condition:** the production gate's green state for `picomatch`
+rests on the advisory's withdrawal, not on any change to this repository, and
+a re-listing would redden the gate again with no repository change. See FU-49.
+
+**Cross-references:** FU-49 — the withdrawn `picomatch` advisory, and the
+dev-graph advisory count whose CI comment FU-49 left as separate work and
+which this entry re-measures without changing; FU-44 — the same shape (a pre-existing
+dependency advisory blocking `main` CI), resolved there by pinning the
+affected versions; FU-12, FU-14, FU-34 — the same `pnpm audit` workstream;
+`docs/08_security/security-strategy.md` — the JS dependency and audit-gate
+policy this entry's gate implements.
+
+---
 ## Resolved
 
 Entries that were tracked as open but have since been addressed (by a merged PR) or
