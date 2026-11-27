@@ -3759,17 +3759,32 @@ itself had to move. `react-i18next` is also direct, and
 `react-i18next@16.6.6` pins `i18next: '>= 25.10.9'`, so it had to move too or
 it would have continued to resolve the vulnerable 25.x line.
 
-**Status:** **RESOLVED ON PR HEAD 2026-11-26 / PENDING MERGE** — PR #211
-(branch `bbf/i18next-advisory-remediation`). The closure authority for this
-entry is the **merged** PR; until PR #211 lands, this records the state at the
-PR head only. (No commit SHA is cited here on purpose: the head SHA changes
-with every amend, so a SHA written into the commit it identifies cannot
-identify its own final head. The merged PR is the durable reference.) Both direct declarations moved to exact
-pins: `i18next` `^25.8.11` -> `26.3.4` and `react-i18next` `^16.5.4` ->
-`17.0.11`. The lockfile was regenerated (`pnpm install --lockfile-only`), and
+**Status:** RESOLVED 2026-11-26 via squash-merge of PR #211 (squash
+`a395d1189bb2dbe4a1cbf8183146f9e2c4c7562d`, merge
+`a4e954c4d8802a1051794827c46de49be4535c82` on `main`). Both direct
+declarations moved to exact pins: `i18next` `^25.8.11` -> `26.3.4` and
+`react-i18next` `^16.5.4` -> `17.0.11`. The lockfile was regenerated
+(`pnpm install --lockfile-only`), and
 `pnpm audit --audit-level moderate --prod` now exits 0 with `No known
 vulnerabilities found`. The production graph resolves a single `i18next`
 version, 26.3.4.
+
+> **Status history.** This entry was authored on PR #211's branch and first
+> read `RESOLVED ON PR HEAD 2026-11-26 / PENDING MERGE`, deliberately citing
+> no commit SHA: a SHA written into the commit it identifies changes with
+> every amend and can never identify its own final head, so the merged PR was
+> the intended durable reference. PR #211 has now merged, and the line above
+> names the merged PR, its branch squash and its merge commit as the closure
+> authority, matching the ledger's convention for every other closed entry.
+>
+> The distinction matters because GitHub's API squash merge produces a
+> **two-parent** commit: `a4e954c4…` has parents `7d19b442…` (the pre-merge
+> `main`) and `a395d118…` (the PR head), so it is a merge commit, while
+> `a395d118…` is the one-parent branch squash. The two carry the same tree —
+> the landed content is the reviewed content — which is why the closure
+> authority is unambiguous. Where the branch squash and the merge commit
+> differ, the ledger names both — the same form used for PR #161 at the
+> `## Resolved` disposition below.
 
 **The fix floor, and why these versions.** `26.3.4` is the advisory's own
 per-package fix floor, and it satisfies `react-i18next@17.0.11`'s peer
@@ -3861,6 +3876,20 @@ dependency advisory blocking `main` CI), resolved there by pinning the
 affected versions; FU-12, FU-14, FU-34 — the same `pnpm audit` workstream;
 `docs/08_security/security-strategy.md` — the JS dependency and audit-gate
 policy this entry's gate implements.
+
+> **Current ledger state (2026-11-26, after PR #211).** This file now holds
+> **48** primary `## FU-N` entries and **67** plain `**Status:**` lines (up
+> from 47 and 66 before PR #211, which added FU-50 and its status line).
+> The counts are measured directly from this blob; the status-line count is a
+> raw marker count and does not include the clarification markers, which
+> overlap it.
+>
+> `docs/16_audit/PROGRESS_REPORT_2026-11-25.md` states 47 entries and 66 plain
+> status lines. That remains **correct for its own dated baseline** — the
+> report is recorded 2026-11-25 and its own stated source basis is
+> `origin/main` at `7eef904e443a44df624fd63a51f90d518dee6c44` (the landed
+> flip-23 squash), before PR #211 — and it is **not** retroactively rewritten
+> here. The figures above are the current state.
 
 ---
 ## Resolved
